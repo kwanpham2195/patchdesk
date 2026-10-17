@@ -29,7 +29,12 @@ afterEach(cleanupRoots);
 
 /** Keeps every run active, so a test reads the request while its run still runs. */
 const runsUntilStopped: InsightInvoker = {
-  invoke: () => new Promise(() => undefined),
+  invoke: (_input, { signal }) =>
+    new Promise((resolve) => {
+      const stop = () => resolve(err({ reason: "cancelled" }));
+      if (signal.aborted) stop();
+      else signal.addEventListener("abort", stop, { once: true });
+    }),
 };
 
 const localSource = {

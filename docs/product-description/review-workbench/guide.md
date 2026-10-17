@@ -51,6 +51,8 @@ A file row expands or collapses only that appearance. Text diffs show code witho
 
 The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
+Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#while-the-action-runs). Empty or unindexable patches, context over 512 KiB, or a serialized inventory over 512 KiB fail the saved queued run during preparation, rather than refusing the start before it has a run identity. The captured patch has no separate 2 MiB limit; its complete bytes remain local for inventory and retained-result validation. No provider is invoked for that failure.
+
 A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Stop requests cancellation; cancellation is not complete until the run settles.
 
 Reading progress updates immediately while Patchdesk saves it. A failed save keeps the displayed progress and offers Retry reading progress. Navigation that would leave the Review waits for its registered progress saves. If they fail, Patchdesk keeps the current Review open.
@@ -93,7 +95,7 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 
 **GitHub permissions and write authority.** Guide uses the same [inline conversations](inline-conversations.md) and [pending review](pending-review-and-finish.md) as Diff. Typing, navigation, and generation do not publish. A successful action clears only the confirmed draft, not newer text.
 
-**Network, local tools, and Insight providers.** Generation uses the chosen provider and represented Review input. Oversized or invalid evidence is rejected rather than silently dropping changed files.
+**Network, local tools, and Insight providers.** Generation uses the chosen provider and represented Review input. Invalid evidence or context and inventory beyond their supported limits is rejected rather than silently dropping changed files. Patch content reaches the model only through bounded captured pages.
 
 **Concurrent operations and locking.** Progress saves are serialized and reject stale result identities or versions. Shared GitHub actions preserve the [write safety rules](../cross-cutting/write-safety-and-freshness.md).
 
@@ -124,3 +126,5 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
 
 Captured input and failure behavior revised from source commit `1148d23c` for #821. Provider generation across every Insight and Review source remains unverified.
+
+Queued Guide preparation failures revised for #821. Before removal of the patch cap, PR #140 was checked live with Codex CLI account selected: the run was acknowledged before preparation failed, and its saved failure named the supported input size. No provider invocation was observed. That check does not verify successful large-patch Guide generation after the cap removal.

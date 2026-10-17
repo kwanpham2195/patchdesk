@@ -33,8 +33,7 @@ import {
 afterEach(cleanupRoots);
 
 describe("InsightRunCoordinator current lifecycle", () => {
-  // Every Insight type is swept at startup, so the table is over the types
-  // rather than one test for the one that happened to be written first.
+  // Startup recovery sweeps every Insight type.
   it.each(["analysis", "walkthrough", "brief", "guide"] as const)(
     "recovers a persisted active %s run during bounded startup recovery",
     async (type) => {
@@ -124,7 +123,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       );
     },
   );
-
   it("waits for an existing Review mutation before starting an Insight", async () => {
     const operations = new ReviewOperationCoordinator();
     const value = await fixture(
@@ -175,54 +173,67 @@ describe("InsightRunCoordinator current lifecycle", () => {
     if (result._tag === "err") throw new Error("expected queued Insight");
     await settled(value.coordinator, value.review.id, result.value.runId);
   });
-  it("starts from session artifacts in the chosen language, retains a valid result, and exposes completion", async () => {
-    let received: unknown;
-    const value = await fixture({
-      async invoke(input) {
-        received = input;
-        return ok(analysisResult);
-      },
-    });
-    const started = await value.coordinator.start({
-      profileId,
-      reviewId: value.review.id,
-      type: "analysis",
-      model: "model",
-      reasoning: "medium",
-      language: "vi",
-    });
-    expect(started).toMatchObject({
-      _tag: "ok",
-      value: { status: "queued", type: "analysis" },
-    });
-    if (started._tag === "err") throw new Error("expected run");
-    expect(
-      await settled(value.coordinator, value.review.id, started.value.runId),
-    ).toMatchObject({ status: "completed" });
-    expect(received).toMatchObject({
-      sessionId: value.session.id,
-      contextPath: value.paths.preparedContextFile(profileId, value.session.id),
-      reviewInputPath: value.paths.preparedReviewInputFile(
-        profileId,
-        value.session.id,
-      ),
-      patchPath: value.session.patchPath,
-      worktreePath: value.session.worktree.path,
-      language: "vi",
-    });
-    expect(
-      await value.insights.load(profileId, value.review.id, "analysis"),
-    ).toMatchObject({
-      _tag: "ok",
-      value: {
-        retained: {
-          provenance: { language: "vi" },
-          value: { summary: "Check the guard." },
+  it.each(["resolved", "rejected"] as const)(
+    "retains a valid result in the chosen language after a %s request link",
+    async (link) => {
+      let received: unknown;
+      const value = await fixture({
+        async invoke(input) {
+          received = input;
+          return ok(analysisResult);
         },
-      },
-    });
-  });
-
+      });
+      const started = await value.coordinator.start(
+        {
+          profileId,
+          reviewId: value.review.id,
+          type: "analysis",
+          model: "model",
+          reasoning: "medium",
+          language: "vi",
+        },
+        {
+          admit: () => undefined,
+          started: async () => {
+            if (link === "rejected") throw new Error("Request link failed");
+          },
+        },
+      );
+      expect(started).toMatchObject({
+        _tag: "ok",
+        value: { status: "queued", type: "analysis" },
+      });
+      if (started._tag === "err") throw new Error("expected run");
+      expect(
+        await settled(value.coordinator, value.review.id, started.value.runId),
+      ).toMatchObject({ status: "completed" });
+      expect(received).toMatchObject({
+        sessionId: value.session.id,
+        contextPath: value.paths.preparedContextFile(
+          profileId,
+          value.session.id,
+        ),
+        reviewInputPath: value.paths.preparedReviewInputFile(
+          profileId,
+          value.session.id,
+        ),
+        patchPath: value.session.patchPath,
+        worktreePath: value.session.worktree.path,
+        language: "vi",
+      });
+      expect(
+        await value.insights.load(profileId, value.review.id, "analysis"),
+      ).toMatchObject({
+        _tag: "ok",
+        value: {
+          retained: {
+            provenance: { language: "vi" },
+            value: { summary: "Check the guard." },
+          },
+        },
+      });
+    },
+  );
   it("runs a Brief and retains it with its citations resolved", async () => {
     const value = await fixture({
       async invoke() {
@@ -288,7 +299,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
   });
-
   it("retains the Reach block the reach service counted for a Brief", async () => {
     const requests: Array<BriefReachRequest> = [];
     const value = await fixture(
@@ -361,10 +371,8 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
   });
-
   it("keeps a finding's reported location when the patch cannot map it", async () => {
-    // An unmapped finding is the model's only record of where it looked, so
-    // mapping must never blank the file and lines it reported.
+    // Unmapped findings must preserve their reported locations.
     const value = await fixture({
       async invoke() {
         return ok({
@@ -420,7 +428,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
   });
-
   it("observes a Codex run's activity and keeps it after the run ends", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => {
@@ -476,7 +483,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
         }),
       ).resolves.toMatchObject({
         _tag: "ok",
-        value: { status: "queued", activity: trace },
+        value: { status: "running", activity: trace },
       });
     });
     release();
@@ -484,7 +491,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       await settled(value.coordinator, value.review.id, started.value.runId),
     ).toMatchObject({ status: "completed", activity: trace });
   });
-
   it("keeps no activity trace for a pi CLI account run, so its panel shows the start time", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => {
@@ -534,7 +540,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
     release();
     await settled(value.coordinator, value.review.id, started.value.runId);
   });
-
   it("never answers one run's poll with another run's trace", async () => {
     let release!: () => void;
     const wait = new Promise<void>((resolve) => {
@@ -688,10 +693,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
   });
 
   it("fails a run as invalid_result when the invoker's payload is outside the JSON grammar", async () => {
-    // `InsightInvoker.invoke` types its payload `unknown`, so an in-process
-    // invoker can hand back a key whose value is `undefined` — which no JSON
-    // boundary produces, and which the analysis schema's optional field would
-    // otherwise accept and retain.
+    // The JSON boundary must reject undefined even when the result schema accepts an optional field.
     const value = await fixture({
       async invoke() {
         return ok({ ...analysisResult, coverage: undefined });

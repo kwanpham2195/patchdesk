@@ -69,9 +69,9 @@ export function InsightNavRail({
   readonly setSelectedInsight: React.Dispatch<
     React.SetStateAction<InsightRunDialogType>
   >;
-  /** The projection learns of a run only when it ends, so a tab reads Running from its controller's accepted run (#670). */
+  /** The controller supplies the accepted run phase between workbench loads. */
   readonly runs: Readonly<
-    Record<InsightRunDialogType, Pick<InsightRunController, "runId">>
+    Record<InsightRunDialogType, Pick<InsightRunController, "runId" | "status">>
   >;
   /** Opens the Run Insights dialog; absent on a merged or closed Review, which can never run one. */
   readonly onRunInsights?: (() => void) | undefined;
@@ -109,6 +109,11 @@ export function InsightNavRail({
                 <InsightTab
                   key={type}
                   type={type}
+                  activeStatus={
+                    runs[type].runId === undefined
+                      ? projection.activeRun?.status
+                      : runs[type].status
+                  }
                   status={
                     runs[type].runId === undefined
                       ? projection.status
@@ -141,12 +146,19 @@ export function InsightNavRail({
 function InsightTab({
   type,
   status,
+  activeStatus,
 }: {
+  readonly activeStatus: InsightRunController["status"] | undefined;
   readonly type: InsightRunDialogType;
   readonly status: InsightProjection["status"];
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
-  const label = INSIGHT_STATUS_LABELS[status];
+  const label =
+    activeStatus === "queued"
+      ? "Preparing"
+      : activeStatus === "cancelling"
+        ? "Cancelling"
+        : INSIGHT_STATUS_LABELS[status];
   if (label === undefined)
     return <TabsTrigger value={type}>{noun}</TabsTrigger>;
   return (
@@ -174,21 +186,35 @@ export function InsightRunning({
   type,
   projection,
   activity,
+  status,
 }: {
+  readonly status?: InsightRunController["status"] | undefined;
   readonly type: InsightRunDialogType;
   readonly projection: InsightProjection | undefined;
   /** Absent for a Pi run, which projects no trace. */
   readonly activity: InsightRunActivity | undefined;
 }): React.JSX.Element {
+  const preparing =
+    status === "queued" ||
+    status === "idle" ||
+    (projection?.activeRun?.status === "queued" && status === undefined);
   return (
     <Empty className={INSIGHT_STATE_CLASS}>
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Spinner />
         </EmptyMedia>
-        <EmptyTitle>{INSIGHT_NOUNS[type]} is running</EmptyTitle>
+        <EmptyTitle>
+          {INSIGHT_NOUNS[type]} is{" "}
+          {preparing
+            ? "preparing"
+            : status === "cancelling"
+              ? "cancelling"
+              : "running"}
+        </EmptyTitle>
         <EmptyDescription>
           {projection?.activeRun === undefined ||
+          preparing ||
           activity?.phase === "preparing" ? (
             "Preparing…"
           ) : (
@@ -344,6 +370,12 @@ function failureMessage(category: InsightFailureCategory | undefined): string {
       return "This Review’s local files are unavailable.";
     case "timed_out":
       return "The Insight run timed out.";
+    case "guide_patch_empty":
+      return "The represented patch has no changes Guide can index.";
+    case "guide_artifact_unreadable":
+      return "Guide could not read the represented Review evidence.";
+    case "guide_input_too_large":
+      return "The represented Review input exceeds Guide's supported size.";
     case "execution_failed":
       return "The provider refused or failed this run.";
     case "invalid_result":

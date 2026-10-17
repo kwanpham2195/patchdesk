@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed Guide's 2 MiB patch limit for captured evidence, while keeping model requests and evidence pages bounded and validating the complete retained patch. #821
+
+- Changed Insight startup to acknowledge saved runs before preparing evidence, show Preparing and Cancelling separately from Running, and recover an active run after a lost start response. Guide preparation failures follow the same saved-run lifecycle. #821
+
 - Increased desktop request waits to 60 seconds and Analysis execution to 20 minutes, with larger bounded native prompts, evidence pages, and buffered command output. Incomplete Analysis and Codex cleanup failures retain safe explanations in Review activity. #821
 
 - Fixed opening large pull requests with a local checkout by capturing the diff directly to disk instead of applying the command-output limit.

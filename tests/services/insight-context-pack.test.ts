@@ -303,7 +303,6 @@ describe("Insight run context pack", () => {
     if (first._tag === "err" || second._tag === "err")
       throw new Error("expected two queued runs");
 
-    expect(value.contextPack.commentReads).toBe(1);
     expect(
       await settled(value.coordinator, value.review.id, first.value.runId),
     ).toMatchObject({ status: "completed" });
@@ -315,6 +314,7 @@ describe("Insight run context pack", () => {
         "brief",
       ),
     ).toMatchObject({ status: "completed" });
+    expect(value.contextPack.commentReads).toBe(1);
   });
 
   it("runs an Insight on a local Review bound to its session, with no GitHub read", async () => {
@@ -371,7 +371,7 @@ describe("Insight run context pack", () => {
     });
   });
 
-  it("refuses the run when the pack cannot be built", async () => {
+  it("fails the queued run when the pack cannot be built", async () => {
     const value = await fixture(completes, {
       // No `comments` fixture value, so the comments read fails the way an
       // unreachable GitHub does.
@@ -380,7 +380,7 @@ describe("Insight run context pack", () => {
       }),
     });
 
-    expect(
+    const started = must(
       await value.coordinator.start({
         profileId,
         reviewId: value.review.id,
@@ -389,10 +389,18 @@ describe("Insight run context pack", () => {
         reasoning: "medium",
         language: "en",
       }),
-    ).toEqual({ _tag: "err", error: "storage_unavailable" });
-    // Nothing started, so nothing has to be swept later.
+    );
+    expect(started.status).toBe("queued");
     expect(
+      await settled(value.coordinator, value.review.id, started.runId),
+    ).toMatchObject({
+      status: "failed",
+      failureCategory: "evidence_unavailable",
+    });
+    const record = must(
       await value.insights.load(profileId, value.review.id, "analysis"),
-    ).toMatchObject({ _tag: "err" });
+    );
+    expect(record.activeRun).toBeUndefined();
+    expect(record.replacementFailure?.runId).toBe(started.runId);
   });
 });

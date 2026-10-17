@@ -16,7 +16,9 @@ stateDiagram-v2
     [*] --> retained : open Insights with current Brief
     empty --> configuring : Generate brief
     retained --> configuring : Regenerate
-    configuring --> running : Start run
+    configuring --> preparing : Start run accepted
+    preparing --> running : captured evidence ready
+    preparing --> failed : preparation failed or cancelled
     running --> retained : completed and retained
     running --> failed : failed or timed out
     failed --> configuring : Try again
@@ -56,9 +58,13 @@ The run captures the represented revision before generation. Its first request n
 
 Start run changes to Starting…, and the dialog cannot be closed until the start request answers. If the start request fails, the dialog shows "Insight run did not start." with "Brief could not start. Check the run options and try again."
 
-In the Run Insights dialog, Start runs changes to Starting…, and the dialog cannot be closed until every start answers. When every start is accepted, the dialog closes and each started Insight's tab shows Running. A refused start shows "Brief did not start." with the same reason on its own row, while the other checked Insights still start. The dialog then stays open: the started rows read as running, and Start runs starts only the rows still checked.
+In the Run Insights dialog, Start runs changes to Starting…, and the dialog cannot be closed until every start answers. When every start is accepted, the dialog closes and each queued Insight's tab shows Preparing. A refused start shows "Brief did not start." with the same reason on its own row, while the other checked Insights still start. The dialog then stays open: the started rows read as running, and Start runs starts only the rows still checked.
 
-Once the run exists, the Brief tab shows Running until the run ends, whichever dialog started it, and then shows the result's status. The reader shows "Brief is running" with a spinner and, below it, how long ago the run started. It reads "Preparing…" instead until Codex starts the turn. A retained Brief stays visible below that state. The meta line shows an icon button named Cancel Brief in place of Regenerate; while cancellation is requested it shows a spinner and is named Cancelling Brief….
+Accepted Brief, Walkthrough, Analysis, and Guide runs first show Preparing while Patchdesk builds their captured evidence. The run already has a saved identity, so the dialog can close before that work finishes. The tab and reader change to Running only when provider execution starts, and to Cancelling after cancellation is confirmed as pending. A preparation failure settles the saved run without invoking a provider.
+
+If the start response is lost or another start reports an existing run, Patchdesk reads the Review once and adopts its saved active run. It does not repeat Start run automatically. If that read finds a new saved result or run failure, Patchdesk shows that terminal outcome. If it finds only the previous result, the start failure stays visible.
+
+The running reader shows "Brief is running" with a spinner and, below it, how long ago the run started. A retained Brief stays visible below that state. The meta line shows an icon button named Cancel Brief in place of Regenerate; while cancellation is requested it shows a spinner and is named Cancelling Brief….
 
 A Codex CLI account run also shows what it is doing. Below the start time it shows the last line of the model's reasoning summary, when the model sends one, and a **Commands** list with one row per command Codex ran: its exit status, **declined**, or a spinner while it runs; the command as plain text; and its duration. Codex uses native automatic review for approval requests. Patchdesk checks the effective policy before generation and refuses unsupported or changed settings. An API key or pi CLI account run shows only the spinner and start time. When the run fails, times out, or is cancelled, the failure notice keeps the last command list until another run starts or the renderer reloads.
 
@@ -162,3 +168,5 @@ A failed run shows one warning block that names the failure category, such as a 
 Baseline drafted from Patchdesk application source commit `dd613996`; verified against `737c515c`, including the Codex activity trace and the model list prices; command approval behavior revised from source commit `2e2fac4c` and not live-verified. Terminology guidance is revised from the current source change and is not live-verified. Codex thread persistence is revised from source (#596) and verified live on 2026-09-29: a Codex Brief left no new file under `~/.codex/sessions`. The Scope card's filter rows are revised from source (#612) and verified live on 2026-09-29 on pull request #441. The Codex output schema is revised from source (#597) and verified live on 2026-09-29: Brief, Analysis, and Walkthrough runs on gpt-6-luna completed on pull request #113. The Run Insights dialog is revised from source (#610) and not yet live-verified. The pi CLI account provider is revised from source (#551) and not yet live-verified in the app; a real `pi` 0.87.1 listed its models and answered one JSON prompt through the same client on 2026-09-30. The removal of Start here and the header walkthrough button are revised from source (#716) and verified live on 2026-10-01: Briefs stored with Start here on pull requests #113 and #723 loaded without it, and Open walkthrough on #113 opened the Walkthrough tab. Generate walkthrough on an open Review was not live-checked.
 
 Captured input and failure behavior revised from source commit `1148d23c` for #821. Provider generation across every Insight and Review source remains unverified.
+
+Startup lifecycle revised for #821. PR #140 live checks confirmed a saved queued Analysis before evidence preparation, preparation cancellation, and a saved Guide size failure. Lost-response terminal recovery was verified in an isolated hook probe, not by dropping a live desktop response. Complete large-change generation remains unverified.

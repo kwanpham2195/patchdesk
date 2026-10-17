@@ -52,6 +52,7 @@ import {
 } from "#src/services/insight-run-coordinator";
 
 const roots: string[] = [];
+const stopFixtures: Array<() => Promise<void>> = [];
 export const must = <T>(value: Result<T, unknown>): T => {
   if (value._tag === "ok") return value.value;
   throw new Error("fixture value is invalid");
@@ -71,6 +72,7 @@ export const analysisResult = {
 
 /** Each importing suite registers this in its own `afterEach`. */
 export async function cleanupRoots(): Promise<void> {
+  for (const stop of stopFixtures.splice(0)) await stop();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -263,6 +265,17 @@ export async function fixture(
       ? undefined
       : { notifier, profiles: { list: async () => ok(profiles) } },
   );
+  stopFixtures.push(async () => {
+    for (const type of ["analysis", "brief", "walkthrough", "guide"] as const) {
+      await coordinator.recover({ profileId, reviewId: review.id, type });
+      const record = await insights.load(profileId, review.id, type);
+      if (record._tag !== "ok" || record.value.activeRun === undefined)
+        continue;
+      const runId = record.value.activeRun.id;
+      await coordinator.cancel({ profileId, reviewId: review.id, type, runId });
+      await settled(coordinator, review.id, runId, type);
+    }
+  });
   return {
     coordinator,
     insights,
@@ -283,7 +296,8 @@ export async function settled(
   runId: string,
   type: InsightType = "analysis",
 ): Promise<InsightRunResponse> {
-  for (let retry = 0; retry < 100; retry += 1) {
+  const deadline = performance.now() + 4000;
+  while (performance.now() < deadline) {
     const state = await coordinator.observe({
       profileId,
       // SAFETY: every caller of settled() passes a reviewId/runId that a prior parseReviewId /

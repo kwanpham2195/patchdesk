@@ -108,6 +108,9 @@ export const INSIGHT_FAILURE_CATEGORIES = [
   "evidence_unavailable",
   "evidence_mismatch",
   "analysis_incomplete",
+  "guide_patch_empty",
+  "guide_artifact_unreadable",
+  "guide_input_too_large",
 ] as const;
 /** Durable failure vocabulary shared by storage and API projections. */
 export type InsightFailureCategory =
@@ -188,7 +191,9 @@ const retainedEnvelopeSchema = v.strictObject({
  * Callers never cast an unparsed record or duplicate the envelope rules.
  */
 export function parseRetainedInsight<T>(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- stored JSON enters this parser before its envelope and value are validated.
   raw: unknown,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the producing Insight parser validates its own untrusted value.
   parseValue: (input: unknown) => Result<T, unknown>,
 ): Result<RetainedInsight<T>, undefined> {
   const envelope = v.safeParse(retainedEnvelopeSchema, raw);
@@ -278,6 +283,21 @@ export function beginInsightRun(
       status: "queued",
     },
     updatedAt: input.startedAt,
+  });
+}
+
+/** Only a prepared, uncancelled queued run can enter provider execution. */
+export function startInsightExecution(
+  record: InsightRecord<unknown>,
+  runId: InsightRunId,
+  at: IsoTimestamp,
+): Result<InsightRecord<unknown>, "superseded"> {
+  if (record.activeRun?.id !== runId || record.activeRun.status !== "queued")
+    return err("superseded");
+  return ok({
+    ...record,
+    activeRun: { ...record.activeRun, status: "running" },
+    updatedAt: at,
   });
 }
 

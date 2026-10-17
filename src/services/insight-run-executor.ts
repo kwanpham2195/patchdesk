@@ -15,6 +15,7 @@ import {
 } from "#src/domain/ids";
 import {
   completeInsightRun,
+  startInsightExecution,
   failInsightRun,
   provenanceFromRun,
   sameInsightRevision,
@@ -36,6 +37,8 @@ import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-sto
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewSession } from "#src/domain/review-session";
+import type { PreparedGuide } from "./guide-operation";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type { BriefReachComputer } from "./brief-reach-service";
@@ -95,6 +98,114 @@ export class InsightRunExecutor {
     private readonly notifications?: InsightSettledNotifier,
   ) {}
 
+  /** Preparation owns the Review lock; provider work starts only after a fresh admission check. */
+  async prepareAndExecute(
+    input: ProviderInvocationInput,
+    session: ReviewSession,
+    startedHash: ContentHash,
+    controller: AbortController,
+    onActivity: InsightActivitySink | undefined,
+    prepare: () => Promise<
+      Result<
+        {
+          readonly evidence: InsightEvidenceBundle;
+          readonly guide?: PreparedGuide;
+        },
+        InsightFailureCategory | "cancelled"
+      >
+    >,
+  ): Promise<void> {
+    try {
+      const prepared = await this.operations.withReviewLock(
+        input.profileId,
+        input.reviewId,
+        async () => {
+          const current = await this.reviews.load(
+            input.profileId,
+            input.reviewId,
+          );
+          if (current._tag === "err")
+            return err("evidence_unavailable" as const);
+          if (
+            current.value.status._tag === "Terminal" ||
+            current.value.currentSessionId !== session.id
+          )
+            return err("superseded" as const);
+          const record = await this.insights.load(
+            input.profileId,
+            input.reviewId,
+            input.type,
+          );
+          if (record._tag === "err")
+            return err("evidence_unavailable" as const);
+          if (record.value.activeRun?.id !== input.runId)
+            return err("superseded" as const);
+          if (record.value.activeRun.status === "cancelling")
+            return err("cancelled" as const);
+          if (controller.signal.aborted) return err("cancelled" as const);
+          return prepare();
+        },
+      );
+      if (prepared._tag === "err") {
+        await this.failPreparation(input, controller, prepared.error);
+        return;
+      }
+      const invocation = { ...input, ...prepared.value };
+      await this.execute(
+        invocation,
+        input.type,
+        input.runId,
+        startedHash,
+        controller,
+        onActivity,
+      );
+    } catch {
+      await this.failPreparation(input, controller, "unexpected_failure");
+    } finally {
+      this.active.delete(input.runId);
+    }
+  }
+
+  private async failPreparation(
+    input: ProviderInvocationInput,
+    controller: AbortController,
+    failure: InsightFailureCategory | "cancelled" | "superseded",
+  ): Promise<void> {
+    const at = this.now();
+    await this.persistTerminal(
+      input,
+      input.type,
+      input.runId,
+      at,
+      (record) =>
+        failInsightRun(
+          record,
+          input.runId,
+          {
+            runId: input.runId,
+            reason:
+              controller.signal.aborted || failure === "cancelled"
+                ? "cancelled"
+                : failure === "superseded"
+                  ? "superseded"
+                  : "failed",
+            ...definedProps({
+              category:
+                failure === "cancelled" || failure === "superseded"
+                  ? undefined
+                  : failure,
+            }),
+            retryable: true,
+            failedAt: at,
+          },
+          at,
+        ),
+      "preparation",
+    );
+    if (failure !== "cancelled" && failure !== "superseded")
+      await this.recordDiagnostic(input, input.type, `preparation_${failure}`);
+  }
+
   async execute(
     input: InsightInvocationInput,
     type: InsightType,
@@ -132,10 +243,7 @@ export class InsightRunExecutor {
               phase: "evidence",
               stderr: undefined,
             })
-          : await this.invokers[type].invoke(input, {
-              signal: controller.signal,
-              onActivity,
-            });
+          : await this.invokePrepared(input, controller, onActivity);
       const latestReview = await this.reviews.load(
         input.profileId,
         input.reviewId,
@@ -359,6 +467,55 @@ export class InsightRunExecutor {
     }
   }
 
+  private async invokePrepared(
+    input: InsightInvocationInput,
+    controller: AbortController,
+    onActivity: InsightActivitySink | undefined,
+  ): ReturnType<InsightInvoker["invoke"]> {
+    const admitted = await this.operations.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      async () => {
+        const review = await this.reviews.load(input.profileId, input.reviewId);
+        if (review._tag === "err")
+          return err({ reason: "evidence_unavailable" as const });
+        if (
+          review.value.status._tag === "Terminal" ||
+          review.value.currentSessionId !== input.sessionId ||
+          (await contentHash(input.patchPath)) !==
+            input.evidence.identity.patchHash ||
+          controller.signal.aborted
+        )
+          return err({ reason: "cancelled" as const });
+        const at = this.now();
+        const changed = await this.insights.mutate({
+          profileId: input.profileId,
+          reviewId: input.reviewId,
+          type: input.type,
+          now: at,
+          operation: (record) => startInsightExecution(record, input.runId, at),
+        });
+        if (changed._tag === "err")
+          return err({ reason: "execution_failed" as const });
+        if (controller.signal.aborted)
+          return err({ reason: "cancelled" as const });
+        const active = this.active.get(input.runId);
+        if (active !== undefined) active.preparing = false;
+        // Keep only invocation admission under the lock, never its pending provider result.
+        return {
+          _tag: "ok" as const,
+          value: {
+            result: this.invokers[input.type].invoke(input, {
+              signal: controller.signal,
+              onActivity,
+            }),
+          },
+        };
+      },
+    );
+    return admitted._tag === "err" ? admitted : admitted.value.result;
+  }
+
   /**
    * One terminal record for every rejected payload, whether the JSON grammar
    * or the type's own schema turned it down, so the renderer shows a single
@@ -398,7 +555,7 @@ export class InsightRunExecutor {
   }
 
   private async persistTerminal(
-    input: InsightInvocationInput,
+    input: ProviderInvocationInput,
     type: InsightType,
     runId: InsightRunId,
     at: IsoTimestamp,
@@ -427,7 +584,7 @@ export class InsightRunExecutor {
           );
           if (patchHash._tag === "err") return undefined;
           const evidence =
-            detail === "completion"
+            detail === "completion" && input.evidence !== undefined
               ? await new InsightEvidenceStore(this.paths).validate(
                   input.evidence,
                 )
@@ -562,7 +719,7 @@ export class InsightRunExecutor {
   }
 
   private async recordExecutionFailure(
-    input: InsightInvocationInput,
+    input: ProviderInvocationInput,
     type: InsightType,
     runId: InsightRunId,
     category: InsightFailureCategory,
@@ -600,7 +757,7 @@ export class InsightRunExecutor {
   }
 
   private async recordDiagnostic(
-    input: InsightInvocationInput,
+    input: ProviderInvocationInput,
     type: InsightType,
     detail: string,
   ): Promise<void> {

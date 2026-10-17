@@ -23,7 +23,7 @@ import {
 import { InsightEvidencePages } from "#src/domain/insight-evidence-pages";
 import { narrativeHunkManifest } from "#src/domain/narrative-walkthrough";
 import { err, ok, type Result } from "#src/domain/result";
-import { tokenizeUnifiedPatch } from "#src/domain/unified-patch";
+import { iterateUnifiedPatch } from "#src/domain/unified-patch";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
@@ -38,6 +38,11 @@ export class InsightEvidenceService {
   async prepare(input: {
     readonly identity: InsightEvidenceIdentity;
     readonly patchPath: string;
+    readonly observe?: (
+      phase: "evidence-build" | "evidence-publish",
+      durationMs: number,
+      counts: { readonly sources: number; readonly pages: number },
+    ) => Promise<void>;
     readonly snapshots: (
       context: string,
     ) => Promise<Readonly<Record<string, string>>>;
@@ -71,8 +76,9 @@ export class InsightEvidenceService {
           reason: "evidence_mismatch",
         });
     try {
+      const began = performance.now();
       const patchRead =
-        identity.type === "analysis"
+        identity.type === "analysis" || identity.type === "guide"
           ? ok(await readFile(input.patchPath, "utf8"))
           : await readBoundedArtifact(input.patchPath, 2 * 1024 * 1024);
       if (patchRead._tag === "err")
@@ -118,7 +124,22 @@ export class InsightEvidenceService {
         ),
       });
       if (bundle._tag === "err") return bundle;
+      const counts = {
+        sources: bundle.value.sources.length,
+        pages: bundle.value.pages.length,
+      };
+      await input.observe?.(
+        "evidence-build",
+        performance.now() - began,
+        counts,
+      );
+      const publishBegan = performance.now();
       const published = await this.store.publish(bundle.value);
+      await input.observe?.(
+        "evidence-publish",
+        performance.now() - publishBegan,
+        counts,
+      );
       return published._tag === "err" ? published : bundle;
     } catch {
       return err({
@@ -137,8 +158,12 @@ function buildBundle(input: {
   readonly snapshots: Readonly<Record<string, string>>;
   readonly directory: string;
 }): Result<InsightEvidenceBundle, InsightEvidenceFailure> {
-  const tokens = tokenizeUnifiedPatch(input.patch);
-  const hasFiles = tokens.some((token) => token.kind === "file_header");
+  let hasFiles = false;
+  for (const token of iterateUnifiedPatch(input.patch)) {
+    if (token.kind !== "file_header") continue;
+    hasFiles = true;
+    break;
+  }
   const inventory = hasFiles ? buildGuideInventory(input.patch) : ok([]);
   if (inventory._tag === "err")
     return err({ _tag: "InsightEvidenceFailure", reason: "evidence_mismatch" });
@@ -195,6 +220,7 @@ function buildBundle(input: {
   let aliasIndex = 0;
   let hunkAlias: string | undefined;
   let byteStart = 0;
+  let characterStart = 0;
   const canonicalAliases = new Set(
     input.identity.type === "brief"
       ? briefCitations.map((entry) => entry.alias)
@@ -202,7 +228,7 @@ function buildBundle(input: {
         ? narrativeCitations.value.map((entry) => entry.id)
         : [],
   );
-  for (const token of tokens) {
+  for (const token of iterateUnifiedPatch(input.patch)) {
     if (token.kind === "file_header") {
       fileIndex += 1;
       fileRecords.push([]);
@@ -213,7 +239,9 @@ function buildBundle(input: {
       const alias = `h${aliasIndex}`;
       hunkAlias = canonicalAliases.has(alias) ? alias : undefined;
     }
-    const newline = token.index < tokens.length - 1 ? "\n" : "";
+    characterStart += token.raw.length;
+    const newline = characterStart < input.patch.length ? "\n" : "";
+    characterStart += newline.length;
     const text = token.raw + newline;
     const file = inventory.value[fileIndex];
     const records = fileRecords[fileIndex];

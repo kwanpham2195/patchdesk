@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RawJsonValue } from "#src/domain/json";
 import type {
@@ -164,12 +164,14 @@ const started = {
 };
 
 const activeRun = (runId: string) => ({
+  status: "running" as const,
   runId,
   sessionId: `session-${runId}`,
   startedAt: "2026-08-01T00:00:00.000Z",
 });
 
 afterEach(() => {
+  cleanup();
   desktop?.restore();
   desktop = undefined;
   vi.restoreAllMocks();

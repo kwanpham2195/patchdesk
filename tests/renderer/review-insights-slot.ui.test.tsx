@@ -626,6 +626,9 @@ describe("InsightsSlot run requests", () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/run": () => start.promise,
+      "/v1/reviews/load": () =>
+        // SAFETY: this workbench fixture contains only JSON-compatible values.
+        success(structuredClone(projection()) as RawJsonValue),
     });
     const user = userEvent.setup();
     renderInsights(projection(), "analysis");
@@ -657,6 +660,7 @@ describe("InsightsSlot run requests", () => {
           analysis: {
             status: "running",
             activeRun: {
+              status: "running",
               runId: "run-a",
               sessionId: "session-a",
               startedAt: "2026-08-01T00:00:00.000Z",
@@ -706,6 +710,7 @@ describe("InsightsSlot run requests", () => {
           analysis: {
             status: "running",
             activeRun: {
+              status: "running",
               runId: "run-a",
               sessionId: "session-a",
               startedAt: "2026-08-01T00:00:00.000Z",

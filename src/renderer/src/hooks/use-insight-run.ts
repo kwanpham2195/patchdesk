@@ -112,6 +112,7 @@ export function useInsightRun(input: {
   readonly activeRun?: NonNullable<
     WorkbenchResponse["insights"][InsightRunType]
   >["activeRun"];
+  readonly settledRunId?: string | undefined;
   readonly onWorkbenchReplace?: (workbench: WorkbenchResponse) => void;
   readonly onInsightPatch?: (
     type: InsightRunType,
@@ -127,6 +128,7 @@ export function useInsightRun(input: {
     reviewId,
     type,
     activeRun,
+    settledRunId,
     onWorkbenchReplace,
     onInsightPatch,
     onCompleted,
@@ -134,8 +136,8 @@ export function useInsightRun(input: {
   } = input;
   const persistedRunId = activeRun?.runId;
   const scope = `${profileId}\u0000${reviewId}\u0000${type}`;
-  const [status, setStatus] = useState<InsightRunState>(() =>
-    persistedRunId === undefined ? "idle" : "running",
+  const [status, setStatus] = useState<InsightRunState>(
+    () => activeRun?.status ?? "idle",
   );
   const [runId, setRunId] = useState<string | undefined>(persistedRunId);
   const [recordedFailure, setRecordedFailure] =
@@ -165,7 +167,7 @@ export function useInsightRun(input: {
       startingRef.current = false;
       cancellingRef.current = false;
       setRunId(persistedRunId);
-      setStatus(persistedRunId === undefined ? "idle" : "running");
+      setStatus(activeRun?.status ?? "idle");
       setRecordedFailure(undefined);
       setFailureReason(undefined);
       setActivity(undefined);
@@ -185,12 +187,12 @@ export function useInsightRun(input: {
     activeRunRef.current = persistedRunId;
     cancellingRef.current = false;
     setRunId(persistedRunId);
-    setStatus("running");
+    setStatus(activeRun?.status ?? "queued");
     setRecordedFailure(undefined);
     setFailureReason(undefined);
     setActivity(undefined);
     setCancelling(false);
-  }, [persistedRunId, scope]);
+  }, [activeRun?.status, persistedRunId, scope]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -245,7 +247,64 @@ export function useInsightRun(input: {
           setStatus(parsed.status);
           options?.onAccepted?.(parsed.runId);
         })
-        .catch((cause: unknown) => {
+        .catch(async (cause: unknown) => {
+          if (!mountedRef.current || generationRef.current !== generation)
+            return;
+          const refusal =
+            isApiErrorCode(cause, "guide_input_too_large") ||
+            isApiErrorCode(cause, "guide_patch_empty") ||
+            isApiErrorCode(cause, "guide_artifact_unreadable") ||
+            isApiErrorCode(cause, "request_not_awaiting") ||
+            changeIntentRunRefusal(cause) !== undefined;
+          if (!refusal) {
+            try {
+              const workbench = parseWorkbenchResponse(
+                await requestJson("/v1/reviews/load", {
+                  method: "POST",
+                  body: { profileId, reviewId },
+                }),
+              );
+              if (!mountedRef.current || generationRef.current !== generation)
+                return;
+              const projected = workbench?.insights[type];
+              const persisted = projected?.activeRun;
+              if (persisted?.runId !== undefined) {
+                activeRunRef.current = persisted.runId;
+                setRunId(persisted.runId);
+                setStatus(persisted.status);
+                options?.onAccepted?.(persisted.runId);
+                return;
+              }
+              const failure = projected?.replacementFailure;
+              const terminalRunId =
+                failure?.runId ?? projected?.retained?.runId;
+              if (
+                workbench !== undefined &&
+                terminalRunId !== undefined &&
+                terminalRunId !== settledRunId
+              ) {
+                if (
+                  onInsightPatchRef.current !== undefined &&
+                  projected !== undefined
+                )
+                  onInsightPatchRef.current(
+                    type,
+                    projected,
+                    definedProps({
+                      analysisReviewActions: workbench.analysisReviewActions,
+                    }),
+                  );
+                else onWorkbenchReplaceRef.current?.(workbench);
+                setStatus(failure === undefined ? "completed" : "failed");
+                setFailureReason(failure === undefined ? undefined : "failed");
+                options?.onAccepted?.(terminalRunId);
+                if (failure === undefined) onCompletedRef.current?.();
+                return;
+              }
+            } catch {
+              // An unreadable reconciliation leaves the start failure visible; it never retries Run.
+            }
+          }
           if (!mountedRef.current || generationRef.current !== generation)
             return;
           setRecordedFailure({
@@ -270,7 +329,16 @@ export function useInsightRun(input: {
           setStarting(false);
         });
     },
-    [profileId, refusalInputs, reviewId, type],
+    [
+      onCompletedRef,
+      onInsightPatchRef,
+      onWorkbenchReplaceRef,
+      profileId,
+      refusalInputs,
+      reviewId,
+      settledRunId,
+      type,
+    ],
   );
 
   const dismissStartRefusal = useCallback((): void => {

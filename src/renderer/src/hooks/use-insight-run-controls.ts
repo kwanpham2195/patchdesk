@@ -122,6 +122,9 @@ export function useInsightRunControls({
     reviewId,
     type: "analysis",
     activeRun: workbench.insights.analysis.activeRun,
+    settledRunId:
+      workbench.insights.analysis.replacementFailure?.runId ??
+      workbench.insights.analysis.retained?.runId,
     onWorkbenchReplace,
     onInsightPatch,
     // A spec-file refusal is judged on the Change intent in the reviewed session (#500).
@@ -135,6 +138,9 @@ export function useInsightRunControls({
     reviewId,
     type: "walkthrough",
     activeRun: workbench.insights.walkthrough.activeRun,
+    settledRunId:
+      workbench.insights.walkthrough.replacementFailure?.runId ??
+      workbench.insights.walkthrough.retained?.runId,
     onWorkbenchReplace,
     onInsightPatch,
   });
@@ -143,6 +149,9 @@ export function useInsightRunControls({
     reviewId,
     type: "guide",
     activeRun: workbench.insights.guide.activeRun,
+    settledRunId:
+      workbench.insights.guide.replacementFailure?.runId ??
+      workbench.insights.guide.retained?.runId,
     onWorkbenchReplace,
     onInsightPatch,
   });
@@ -151,6 +160,9 @@ export function useInsightRunControls({
     reviewId,
     type: "brief",
     activeRun: workbench.insights.brief?.activeRun,
+    settledRunId:
+      workbench.insights.brief?.replacementFailure?.runId ??
+      workbench.insights.brief?.retained?.runId,
     onWorkbenchReplace,
     onInsightPatch,
   });
