@@ -46,6 +46,12 @@ import {
   type StorageFailure,
 } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
+import {
+  InsightMigrationStore,
+  type AnalysisShadowCheckpoint,
+  type AnalysisShadowFailure,
+} from "./insight-migration-store";
+import type { FileHandle } from "node:fs/promises";
 
 const revisionSchema = v.strictObject({
   sessionId: v.pipe(v.string(), v.minLength(1)),
@@ -143,6 +149,26 @@ export class InsightStore {
   private readonly locks = new KeyedMutex();
 
   constructor(private readonly paths: PatchdeskPaths) {}
+
+  /** Explicit private shadow work does not run during load, mutation, recovery or startup. */
+  async prepareAnalysisShadow(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    spoolInput: (
+      source: FileHandle,
+      destination: FileHandle,
+    ) => Promise<
+      Result<AnalysisShadowCheckpoint["spool"], AnalysisShadowFailure>
+    >,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Result<AnalysisShadowCheckpoint, AnalysisShadowFailure>> {
+    return new InsightMigrationStore(this.paths).prepareAnalysisShadow(
+      profileId,
+      reviewId,
+      spoolInput,
+      options,
+    );
+  }
 
   /**
    * The record without its retained value. `parseRetainedInsight` has already
