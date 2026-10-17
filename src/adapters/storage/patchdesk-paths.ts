@@ -339,6 +339,20 @@ export class PatchdeskPaths {
     return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
   }
 
+  /** Private shadow backups outlive prepared evidence and never replace the live Insight slot. */
+  insightMigrationDirectory(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.dataDirectory(),
+      "insight-migrations",
+      profileId,
+      reviewId,
+      "analysis",
+    );
+  }
+
   sessionFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

@@ -5,9 +5,19 @@ import {
   readdir,
   rm,
   writeFile,
+  open,
+  lstat,
+  realpath,
+  type FileHandle,
 } from "node:fs/promises";
+import filesystem from "node:fs/promises";
+import { constants } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+import { URL } from "node:url";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,6 +25,9 @@ import {
   parseInsightRecord,
 } from "#src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { isPathContained } from "#src/adapters/storage/path-containment";
+import { InsightMigrationService } from "#src/services/insight-migration-service";
+import type { LegacyJsonToken } from "#src/services/insight-legacy-json-tokenizer";
 import {
   parseIsoTimestamp,
   parseReviewId,
@@ -342,3 +355,258 @@ describe("InsightStore mutate over a stored record it cannot use", () => {
     expect(await readdir(file)).toEqual([]);
   });
 });
+
+describe("InsightStore lexical shadow preparation", () => {
+  let root: string | undefined;
+  afterEach(async () => {
+    if (root !== undefined) await rm(root, { recursive: true, force: true });
+    root = undefined;
+  });
+  const profile = parseWorkspaceProfileId("acme");
+  const review = parseReviewId(currentRecord.reviewId);
+  if (profile._tag === "err" || review._tag === "err")
+    throw new Error("invalid shadow fixture ids");
+
+  it("refuses a FIFO source without waiting for its writer after cancellation", async () => {
+    root = await mkdtemp(
+      join(await realpath(tmpdir()), "patchdesk-shadow-repair-fifo-"),
+    );
+    const paths = PatchdeskPaths.forTest(root);
+    const source = paths.insightFile(profile.value, review.value, "analysis");
+    await mkdir(dirname(source), { recursive: true });
+    execFileSync("mkfifo", [source]);
+    const controller = new AbortController();
+    let settled = false;
+    let flags: string | number | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await withShadowFileOpens(
+      root,
+      async (path, openedWith, openFile) => {
+        if (path === source) {
+          flags = openedWith;
+          controller.abort();
+        }
+        return openFile();
+      },
+      async () => {
+        const pending = new InsightMigrationService(paths)
+          .prepareAnalysisShadow(profile.value, review.value, {
+            signal: controller.signal,
+          })
+          .then((result) => {
+            settled = true;
+            return result;
+          });
+        try {
+          return await Promise.race([
+            pending,
+            new Promise<"pending">((resolve) => {
+              timeout = setTimeout(() => resolve("pending"), 1000);
+            }),
+          ]);
+        } finally {
+          if (timeout !== undefined) clearTimeout(timeout);
+          if (!settled) {
+            const writer = await open(
+              source,
+              constants.O_WRONLY | constants.O_NONBLOCK,
+            );
+            await writer.close();
+          }
+          await pending;
+        }
+      },
+    );
+    expect(outcome).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "storage_unavailable" },
+    });
+    expect(flags).toBe(
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    expect((await lstat(source)).isFIFO()).toBe(true);
+    expect(await readdir(dirname(source))).toEqual(["analysis.json"]);
+  });
+
+  it("fails closed when syncing the parent of its first migration directory fails", async () => {
+    root = await mkdtemp(
+      join(await realpath(tmpdir()), "patchdesk-shadow-repair-sync-"),
+    );
+    const paths = PatchdeskPaths.forTest(root);
+    const source = paths.insightFile(profile.value, review.value, "analysis");
+    const original = Buffer.from('{"title":"original"}');
+    await mkdir(dirname(source), { recursive: true });
+    await writeFile(source, original);
+    const faultDirectory = paths.dataDirectory();
+    let parentSyncs = 0;
+    let refuseSync = true;
+    const outcomes = await withShadowFileOpens(
+      root,
+      async (path, _flags, openFile) => {
+        const handle = await openFile();
+        if (path === faultDirectory) {
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            parentSyncs += 1;
+            if (refuseSync) throw new Error("fixture parent sync failure");
+            await sync();
+          };
+        }
+        return handle;
+      },
+      async () => {
+        const service = new InsightMigrationService(paths);
+        const first = await service.prepareAnalysisShadow(
+          profile.value,
+          review.value,
+        );
+        const retry = await service.prepareAnalysisShadow(
+          profile.value,
+          review.value,
+        );
+        refuseSync = false;
+        const recovered = await service.prepareAnalysisShadow(
+          profile.value,
+          review.value,
+        );
+        return { first, retry, recovered };
+      },
+    );
+    expect(parentSyncs).toBe(3);
+    expect(outcomes.first).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "storage_unavailable" },
+    });
+    expect(outcomes.retry).toEqual(outcomes.first);
+    expect(outcomes.recovered._tag).toBe("ok");
+    expect(await readFile(source)).toEqual(original);
+  });
+
+  it("spools ordered bounded lexical fragments from the same verified backup descriptor", async () => {
+    root = await mkdtemp(
+      join(await realpath(tmpdir()), "patchdesk-shadow-repair-lexical-"),
+    );
+    const paths = PatchdeskPaths.forTest(root);
+    const source = paths.insightFile(profile.value, review.value, "analysis");
+    const longText = "x".repeat(20000);
+    const number = "1".repeat(5000);
+    const original = Buffer.concat([
+      Buffer.from('{"long":"' + longText + '\\uD800\\n","malformed":"'),
+      Buffer.from([0xff]),
+      Buffer.from('","dup":1,"dup":2,"number":' + number + "}"),
+    ]);
+    await mkdir(dirname(source), { recursive: true });
+    await writeFile(source, original);
+    const backupHandles: FileHandle[] = [];
+    const reads: {
+      readonly handle: FileHandle;
+      readonly position: unknown;
+    }[] = [];
+    const outcome = await withShadowFileOpens(
+      root,
+      async (path, _flags, openFile) => {
+        const handle = await openFile();
+        if (path.endsWith("/source.json")) {
+          backupHandles.push(handle);
+          handle.read = new Proxy(handle.read.bind(handle), {
+            apply(read, _receiver, args) {
+              reads.push({ handle, position: args[3] });
+              return read(args[0], args[1], args[2], args[3]);
+            },
+          });
+        }
+        return handle;
+      },
+      () =>
+        new InsightMigrationService(paths).prepareAnalysisShadow(
+          profile.value,
+          review.value,
+        ),
+    );
+    expect(outcome._tag).toBe("ok");
+    if (outcome._tag === "err") throw new Error("shadow fixture failed");
+    expect(await readFile(source)).toEqual(original);
+    expect(
+      await readFile(join(outcome.value.directory, "source.json")),
+    ).toEqual(original);
+    expect(outcome.value).toMatchObject({
+      state: "lexical_spooled",
+      sourceBytes: original.length,
+      sourceHash: createHash("sha256").update(original).digest("hex"),
+      pending: "structure_duplicates_sensitive_scan_schema_conversion_equality",
+    });
+    expect(backupHandles).toHaveLength(2);
+    expect(reads.every((read) => read.handle === backupHandles[1])).toBe(true);
+    expect(reads.filter((read) => read.position === 0)).toHaveLength(2);
+    const raw: ReadonlyArray<LegacyJsonToken> = (
+      await readFile(join(outcome.value.directory, "tokens.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line: string) => JSON.parse(line));
+    const values: string[] = [];
+    let value = "";
+    for (const token of raw) {
+      if (token.tag === "string_fragment" || token.tag === "number_fragment") {
+        expect(token.value.length).toBeLessThanOrEqual(2048);
+        value += token.value;
+      }
+      if (token.tag === "string_end" || token.tag === "number_end") {
+        values.push(value);
+        value = "";
+      }
+    }
+    expect(values).toEqual([
+      "long",
+      longText + "\uD800\n",
+      "malformed",
+      "\uFFFD",
+      "dup",
+      "1",
+      "dup",
+      "2",
+      "number",
+      number,
+    ]);
+    expect(raw.filter((token) => token.tag === "punctuation")).toEqual([
+      { tag: "punctuation", value: "{" },
+      { tag: "punctuation", value: ":" },
+      { tag: "punctuation", value: "," },
+      { tag: "punctuation", value: ":" },
+      { tag: "punctuation", value: "," },
+      { tag: "punctuation", value: ":" },
+      { tag: "punctuation", value: "," },
+      { tag: "punctuation", value: ":" },
+      { tag: "punctuation", value: "," },
+      { tag: "punctuation", value: ":" },
+      { tag: "punctuation", value: "}" },
+    ]);
+    expect(raw).toHaveLength(outcome.value.spool.tokens);
+  });
+});
+
+async function withShadowFileOpens<T>(
+  root: string,
+  observe: (
+    path: string,
+    flags: string | number | undefined,
+    openFile: () => Promise<FileHandle>,
+  ) => Promise<FileHandle>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originalOpen = filesystem.open;
+  filesystem.open = async (path, flags, mode) => {
+    const openFile = () => originalOpen(path, flags, mode);
+    if (path instanceof URL || Buffer.isBuffer(path)) return openFile();
+    return isPathContained(root, path)
+      ? observe(path, flags, openFile)
+      : openFile();
+  };
+  syncBuiltinESMExports();
+  try {
+    return await run();
+  } finally {
+    filesystem.open = originalOpen;
+    syncBuiltinESMExports();
+  }
+}

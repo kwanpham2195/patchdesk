@@ -10,7 +10,7 @@
         "tests/**/*.{ts,tsx}"
       ],
       "ignore": ["src/renderer/src/components/ui/**"],
-      "ignoreBinaries": ["ditto"]
+      "ignoreBinaries": ["ditto", "mkfifo"]
     },
     "runtime/insight": {
       "entry": ["scripts/*.mjs", "tests/**/*.ts"],
