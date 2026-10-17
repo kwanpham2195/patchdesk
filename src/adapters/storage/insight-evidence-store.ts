@@ -18,6 +18,7 @@ import { writeAtomicFile } from "./json-file";
 import {
   evidencePathIsOwned,
   readEvidenceFile,
+  validateEvidenceFile,
 } from "./insight-evidence-validation";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
@@ -109,7 +110,7 @@ export class InsightEvidenceStore {
           reason: "evidence_mismatch",
         });
       const checked = await mapConcurrent(expected, 4, (file) =>
-        readEvidenceFile({
+        validateEvidenceFile({
           root: this.paths.dataDirectory(),
           path: join(bundle.directory, file.name),
           sha256: file.sha256,
