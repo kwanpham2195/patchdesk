@@ -543,10 +543,10 @@ describe("InsightStore shadow preparation", () => {
       await readFile(join(outcome.value.directory, "source.json")),
     ).toEqual(original);
     expect(outcome.value).toMatchObject({
-      state: "properties_resolved",
+      state: "sensitive_checked",
       sourceBytes: original.length,
       sourceHash: createHash("sha256").update(original).digest("hex"),
-      pending: "sensitive_scan_schema_conversion_equality",
+      pending: "schema_conversion_equality",
     });
     expect(backupHandles).toHaveLength(2);
     expect(reads.every((read) => read.handle === backupHandles[1])).toBe(true);
@@ -606,7 +606,7 @@ describe("InsightStore shadow preparation", () => {
     ).prepareAnalysisShadow(profile.value, review.value);
     expect(result._tag).toBe("ok");
     if (result._tag === "err") throw new Error("structural fixture failed");
-    expect(result.value.state).toBe("properties_resolved");
+    expect(result.value.state).toBe("sensitive_checked");
     expect(result.value.structure).toEqual({
       root: 1,
       values: 516,
@@ -828,10 +828,8 @@ describe("InsightStore shadow preparation", () => {
       fixture.paths,
     ).prepareAnalysisShadow(shadowProfileId, shadowReviewId);
     if (result._tag === "err") throw new Error("property fixture failed");
-    expect(result.value.state).toBe("properties_resolved");
-    expect(result.value.pending).toBe(
-      "sensitive_scan_schema_conversion_equality",
-    );
+    expect(result.value.state).toBe("sensitive_checked");
+    expect(result.value.pending).toBe("schema_conversion_equality");
     expect(await readFile(fixture.source)).toEqual(fixture.original);
     expect(await readFile(join(result.value.directory, "source.json"))).toEqual(
       fixture.original,

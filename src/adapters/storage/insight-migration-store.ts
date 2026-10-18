@@ -10,7 +10,7 @@ import { isPathContained } from "./path-containment";
 
 /** This checkpoint has no migration authority and cannot be used as a retained result. */
 export type AnalysisShadowCheckpoint = {
-  readonly state: "properties_resolved";
+  readonly state: "sensitive_checked";
   readonly sourceHash: string;
   readonly sourceBytes: number;
   readonly directory: string;
@@ -39,7 +39,7 @@ export type AnalysisShadowCheckpoint = {
     readonly records: number;
     readonly indexRowBytes: 1024;
   };
-  readonly pending: "sensitive_scan_schema_conversion_equality";
+  readonly pending: "schema_conversion_equality";
 };
 
 /** Fixed scratch descriptors remain storage-owned through lexical and structural processing. */
@@ -60,6 +60,7 @@ export type AnalysisShadowFailure = {
     | "backup_mismatch"
     | "invalid_legacy"
     | "invalid_spool"
+    | "sensitive_value"
     | "storage_unavailable"
     | "representation_exhausted"
     | "cancelled";
@@ -69,7 +70,7 @@ export type AnalysisShadowFailure = {
 export class InsightMigrationStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  /** Explicit internal preparation only; never changes the live schema-2 file or a slot pointer. */
+  /** The callback must resolve properties and scan the resulting value before returning success. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -240,14 +241,14 @@ export class InsightMigrationStore {
       await syncDirectory(attempt);
       options.signal?.throwIfAborted();
       return ok({
-        state: "properties_resolved",
+        state: "sensitive_checked",
         sourceHash: copied.hash,
         sourceBytes: copied.bytes,
         directory: attempt,
         spool: spool.value.spool,
         structure: spool.value.structure,
         properties: spool.value.properties,
-        pending: "sensitive_scan_schema_conversion_equality",
+        pending: "schema_conversion_equality",
       });
     } catch (cause: unknown) {
       if (options.signal?.aborted) return shadowFailure("cancelled");
