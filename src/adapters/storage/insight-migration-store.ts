@@ -10,7 +10,7 @@ import { isPathContained } from "./path-containment";
 
 /** This checkpoint has no migration authority and cannot be used as a retained result. */
 export type AnalysisShadowCheckpoint = {
-  readonly state: "structure_spooled";
+  readonly state: "properties_resolved";
   readonly sourceHash: string;
   readonly sourceBytes: number;
   readonly directory: string;
@@ -27,7 +27,19 @@ export type AnalysisShadowCheckpoint = {
     readonly records: number;
     readonly maxDepth: number;
   };
-  readonly pending: "duplicates_sensitive_scan_schema_conversion_equality";
+  readonly properties: {
+    readonly root: number;
+    readonly nodeRows: number;
+    readonly keyBytes: number;
+    readonly sourceProperties: number;
+    readonly duplicateProperties: number;
+    readonly reachableValues: number;
+    readonly selectedProperties: number;
+    readonly arrayElements: number;
+    readonly records: number;
+    readonly indexRowBytes: 1024;
+  };
+  readonly pending: "sensitive_scan_schema_conversion_equality";
 };
 
 /** Fixed scratch descriptors remain storage-owned through lexical and structural processing. */
@@ -35,6 +47,9 @@ export type AnalysisShadowFiles = {
   readonly tokens: FileHandle;
   readonly frames: FileHandle;
   readonly structure: FileHandle;
+  readonly nodes: FileHandle;
+  readonly keys: FileHandle;
+  readonly properties: FileHandle;
 };
 
 /** Private preparation failures never substitute an empty or healed Insight. */
@@ -63,7 +78,7 @@ export class InsightMigrationStore {
       files: AnalysisShadowFiles,
     ) => Promise<
       Result<
-        Pick<AnalysisShadowCheckpoint, "spool" | "structure">,
+        Pick<AnalysisShadowCheckpoint, "spool" | "structure" | "properties">,
         AnalysisShadowFailure
       >
     >,
@@ -164,7 +179,7 @@ export class InsightMigrationStore {
         return shadowFailure("storage_unavailable");
       const structure = await open(
         join(attempt, "structure.ndjson"),
-        constants.O_WRONLY |
+        constants.O_RDWR |
           constants.O_CREAT |
           constants.O_EXCL |
           constants.O_NOFOLLOW |
@@ -174,11 +189,33 @@ export class InsightMigrationStore {
       handles.push(structure);
       if (!(await structure.stat()).isFile())
         return shadowFailure("storage_unavailable");
+      const propertyFiles: FileHandle[] = [];
+      for (const name of ["nodes.bin", "keys.utf16le", "properties.ndjson"]) {
+        const handle = await open(
+          join(attempt, name),
+          constants.O_RDWR |
+            constants.O_CREAT |
+            constants.O_EXCL |
+            constants.O_NOFOLLOW |
+            constants.O_NONBLOCK,
+          0o600,
+        );
+        handles.push(handle);
+        propertyFiles.push(handle);
+        if (!(await handle.stat()).isFile())
+          return shadowFailure("storage_unavailable");
+      }
+      const [nodes, keys, properties] = propertyFiles;
+      if (nodes === undefined || keys === undefined || properties === undefined)
+        return shadowFailure("storage_unavailable");
       // Both passes use explicit offsets on this verified descriptor, never a pathname reopen.
       const spool = await spoolInput(verified, {
         tokens: output,
         frames,
         structure,
+        nodes,
+        keys,
+        properties,
       });
       if (spool._tag === "err") return spool;
       const verifiedAfter = await verified.stat();
@@ -194,19 +231,23 @@ export class InsightMigrationStore {
         output.sync(),
         frames.sync(),
         structure.sync(),
+        nodes.sync(),
+        keys.sync(),
+        properties.sync(),
       ]);
       if (synced.some((result) => result.status === "rejected"))
         return shadowFailure("storage_unavailable");
       await syncDirectory(attempt);
       options.signal?.throwIfAborted();
       return ok({
-        state: "structure_spooled",
+        state: "properties_resolved",
         sourceHash: copied.hash,
         sourceBytes: copied.bytes,
         directory: attempt,
         spool: spool.value.spool,
         structure: spool.value.structure,
-        pending: "duplicates_sensitive_scan_schema_conversion_equality",
+        properties: spool.value.properties,
+        pending: "sensitive_scan_schema_conversion_equality",
       });
     } catch (cause: unknown) {
       if (options.signal?.aborted) return shadowFailure("cancelled");

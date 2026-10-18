@@ -28,6 +28,12 @@ import {
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { isPathContained } from "#src/adapters/storage/path-containment";
 import { InsightMigrationService } from "#src/services/insight-migration-service";
+import {
+  InsightLegacyJsonIndexStore,
+  type LegacyJsonIndexRow,
+  type LegacyJsonPropertyRecord,
+} from "#src/adapters/storage/insight-legacy-json-index-store";
+import type { LegacyJsonStructureRecord } from "#src/services/insight-legacy-json-records";
 import type { LegacyJsonToken } from "#src/services/insight-legacy-json-tokenizer";
 import {
   parseIsoTimestamp,
@@ -537,10 +543,10 @@ describe("InsightStore shadow preparation", () => {
       await readFile(join(outcome.value.directory, "source.json")),
     ).toEqual(original);
     expect(outcome.value).toMatchObject({
-      state: "structure_spooled",
+      state: "properties_resolved",
       sourceBytes: original.length,
       sourceHash: createHash("sha256").update(original).digest("hex"),
-      pending: "duplicates_sensitive_scan_schema_conversion_equality",
+      pending: "sensitive_scan_schema_conversion_equality",
     });
     expect(backupHandles).toHaveLength(2);
     expect(reads.every((read) => read.handle === backupHandles[1])).toBe(true);
@@ -600,7 +606,7 @@ describe("InsightStore shadow preparation", () => {
     ).prepareAnalysisShadow(profile.value, review.value);
     expect(result._tag).toBe("ok");
     if (result._tag === "err") throw new Error("structural fixture failed");
-    expect(result.value.state).toBe("structure_spooled");
+    expect(result.value.state).toBe("properties_resolved");
     expect(result.value.structure).toEqual({
       root: 1,
       values: 516,
@@ -675,6 +681,247 @@ describe("InsightStore shadow preparation", () => {
       fixture.original,
     );
   });
+
+  it("selects the last duplicate subtree and retains the first property position", async () => {
+    const fixture = await propertyFixture(
+      '{"a":{"stale":1},"b":0,"a":{"live":[1,1]}}',
+    );
+    expect(fixture.value).toEqual({
+      kind: "object",
+      entries: [
+        [
+          "a",
+          {
+            kind: "object",
+            entries: [
+              [
+                "live",
+                {
+                  kind: "array",
+                  items: [
+                    { kind: "number", text: "1" },
+                    { kind: "number", text: "1" },
+                  ],
+                },
+              ],
+            ],
+          },
+        ],
+        ["b", { kind: "number", text: "0" }],
+      ],
+    });
+    expect(fixture.rootEdges.map((row) => row.firstOrdinal)).toEqual([0, 1]);
+    const stale = fixture.structure.find(
+      (row) => row.tag === "fragment" && row.text === "stale",
+    );
+    if (stale === undefined)
+      throw new Error("missing retained fixture occurrence");
+    const oldEdge = fixture.structure.find(
+      (row) => row.tag === "child" && row.key === stale.id,
+    );
+    if (oldEdge?.tag !== "child")
+      throw new Error("missing retained fixture edge");
+    expect(fixture.reachable.has(oldEdge.parent)).toBe(false);
+    expect(fixture.reachable.has(oldEdge.id)).toBe(false);
+    const elements = fixture.edges.filter(
+      (row) => fixture.nodes.get(row.parent)?.kind === "array",
+    );
+    expect(elements.map((row) => row.ordinal)).toEqual([0, 1]);
+    expect(new Set(elements.map((row) => row.id)).size).toBe(2);
+  });
+
+  it("enumerates array indices before ordinary names and keeps duplicate insertion order", async () => {
+    const fixture = await propertyFixture(
+      '{"10":0,"2":1,"4294967294":2,"4294967295":3,"01":4,"-0":5,"0":6,"2":7,"x":8}',
+    );
+    const names = ["0", "2", "10", "4294967294", "4294967295", "01", "-0", "x"];
+    const values = ["6", "7", "0", "2", "3", "4", "5", "8"];
+    expect(fixture.value).toEqual({
+      kind: "object",
+      entries: names.map((name, index) => [
+        name,
+        { kind: "number", text: values[index] },
+      ]),
+    });
+    expect(fixture.rootEdges.map((row) => row.firstOrdinal)).toEqual([
+      6, 1, 0, 2, 3, 4, 5, 8,
+    ]);
+  });
+
+  it("compares complete long UTF16 keys and lone surrogates without prefix equality", async () => {
+    const longA = "x".repeat(2049) + "a";
+    const longB = "x".repeat(2049) + "b";
+    const source =
+      '{"' +
+      longA +
+      '":1,"' +
+      longB +
+      '":2,"\\u0078' +
+      "x".repeat(2048) +
+      'a":3,"\\uD800":4,"\\ud800":5,"":6}';
+    const fixture = await propertyFixture(source);
+    const names = [longA, longB, "\uD800", ""];
+    const values = ["3", "2", "5", "6"];
+    expect(fixture.value).toEqual({
+      kind: "object",
+      entries: names.map((name, index) => [
+        name,
+        { kind: "number", text: values[index] },
+      ]),
+    });
+    expect(fixture.rootEdges.map((row) => row.firstOrdinal)).toEqual([
+      0, 1, 3, 5,
+    ]);
+    fixture.rootEdges.forEach((edge, index) => {
+      const row = edge.key === null ? undefined : fixture.nodes.get(edge.key);
+      if (row === undefined) throw new Error("missing fixture key row");
+      const name = names[index];
+      if (name === undefined) throw new Error("missing expected fixture name");
+      expect(
+        fixture.keys.subarray(row.keyOffset, row.keyOffset + row.keyBytes),
+      ).toEqual(Buffer.from(name, "utf16le"));
+    });
+  });
+
+  it("refuses a self-referencing property successor as invalid scratch", async () => {
+    const fixture = await propertyFixture(
+      '{"10":0,"2":1,"4294967294":2,"4294967295":3,"01":4,"-0":5,"0":6,"2":7,"x":8}',
+    );
+    const edge = fixture.rootEdges[0];
+    const key =
+      edge?.key === null ? undefined : fixture.nodes.get(edge?.key ?? 0);
+    const object =
+      edge === undefined ? undefined : fixture.nodes.get(edge.parent);
+    if (key === undefined || object === undefined)
+      throw new Error("missing successor fixture rows");
+    expect(key.order.parent).not.toBeNull();
+    const handles: FileHandle[] = [];
+    try {
+      for (const name of ["nodes.bin", "keys.utf16le", "properties.ndjson"])
+        handles.push(await open(join(fixture.directory, name), "r+"));
+      const [nodes, keys, properties] = handles;
+      if (nodes === undefined || keys === undefined || properties === undefined)
+        throw new Error("missing successor fixture handles");
+      const store = new InsightLegacyJsonIndexStore({
+        nodes,
+        keys,
+        properties,
+      });
+      expect(
+        await store.writeNode({
+          ...key,
+          order: { ...key.order, right: key.id, left: null },
+        }),
+      ).toEqual({ _tag: "ok", value: undefined });
+      expect(await store.orderedKey(object.tail, key.id)).toEqual({
+        _tag: "err",
+        error: { _tag: "LegacyJsonIndexFailure", reason: "invalid_spool" },
+      });
+    } finally {
+      await Promise.allSettled(handles.map((handle) => handle.close()));
+    }
+  });
+
+  async function propertyFixture(text: string) {
+    const fixture = await structuralFixture(text);
+    const result = await new InsightMigrationService(
+      fixture.paths,
+    ).prepareAnalysisShadow(shadowProfileId, shadowReviewId);
+    if (result._tag === "err") throw new Error("property fixture failed");
+    expect(result.value.state).toBe("properties_resolved");
+    expect(result.value.pending).toBe(
+      "sensitive_scan_schema_conversion_equality",
+    );
+    expect(await readFile(fixture.source)).toEqual(fixture.original);
+    expect(await readFile(join(result.value.directory, "source.json"))).toEqual(
+      fixture.original,
+    );
+    const nodeBytes = await readFile(join(result.value.directory, "nodes.bin"));
+    const keys = await readFile(join(result.value.directory, "keys.utf16le"));
+    const nodes = new Map<number, LegacyJsonIndexRow>();
+    for (let offset = 0; offset < nodeBytes.length; offset += 1024) {
+      const size = nodeBytes.readUInt32LE(offset);
+      const row: LegacyJsonIndexRow = JSON.parse(
+        nodeBytes.subarray(offset + 4, offset + 4 + size).toString("utf8"),
+      );
+      nodes.set(row.id, row);
+    }
+    const records: ReadonlyArray<LegacyJsonPropertyRecord> = (
+      await readFile(join(result.value.directory, "properties.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const structure: ReadonlyArray<LegacyJsonStructureRecord> = (
+      await readFile(join(result.value.directory, "structure.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const edges = records.filter((row) => row.tag === "child");
+    const reachable = new Set(
+      records.filter((row) => row.tag === "value").map((row) => row.id),
+    );
+    const visited = new Set<number>();
+    type FixtureValue =
+      | {
+          kind: "object";
+          entries: ReadonlyArray<readonly [string, FixtureValue]>;
+        }
+      | { kind: "array"; items: ReadonlyArray<FixtureValue> }
+      | { kind: "number"; text: string };
+    function project(id: number): FixtureValue {
+      const row = nodes.get(id);
+      if (row === undefined) throw new Error("missing fixture value row");
+      visited.add(id);
+      const children = edges.filter((edge) => edge.parent === id);
+      expect(children.map((edge) => edge.ordinal)).toEqual(
+        children.map((_edge, index) => index),
+      );
+      if (row.kind === "object")
+        return {
+          kind: "object",
+          entries: children.map((edge) => {
+            const key = edge.key === null ? undefined : nodes.get(edge.key);
+            if (key === undefined) throw new Error("missing fixture key");
+            return [
+              keys
+                .subarray(key.keyOffset, key.keyOffset + key.keyBytes)
+                .toString("utf16le"),
+              project(edge.id),
+            ];
+          }),
+        };
+      if (row.kind === "array")
+        return {
+          kind: "array",
+          items: children.map((edge) => project(edge.id)),
+        };
+      if (row.kind !== "number")
+        throw new Error("unexpected fixture scalar kind");
+      return {
+        kind: "number",
+        text: structure
+          .filter((record) => record.tag === "fragment" && record.id === id)
+          .map((record) => (record.tag === "fragment" ? record.text : ""))
+          .join(""),
+      };
+    }
+    const rootId = result.value.properties.root;
+    const value = project(rootId);
+    expect(reachable).toEqual(visited);
+    expect(reachable.size).toBe(result.value.properties.reachableValues);
+    return {
+      directory: result.value.directory,
+      value,
+      nodes,
+      keys,
+      edges,
+      structure,
+      reachable,
+      rootEdges: edges.filter((edge) => edge.parent === rootId),
+    };
+  }
 
   async function structuralFixture(text: string) {
     root = await mkdtemp(
