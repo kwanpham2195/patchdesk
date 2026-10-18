@@ -77,12 +77,12 @@ describe("InsightMigrationService selected Analysis root", () => {
     ]);
   });
 
-  it("leaves version literal and next-token numeric semantics unchecked", async () => {
+  it("rejects invalid version literal and next-token numeric semantics", async () => {
     await prepare(
       base
         .replace('"schemaVersion":2', '"schemaVersion":1')
         .replace('"nextToken":1', '"nextToken":-0.5'),
-      true,
+      false,
       false,
     );
   });
@@ -255,8 +255,8 @@ async function prepare(raw: string, checked: boolean, fullAccepted: boolean) {
     expect(result).toMatchObject({
       _tag: "ok",
       value: {
-        state: "analysis_root_shape_checked",
-        pending: "schema_values_nested_conversion_equality",
+        state: "analysis_root_numbers_checked",
+        pending: "nested_schema_numeric_conversion_equality",
         sourceHash: createHash("sha256").update(original).digest("hex"),
         sourceBytes: original.length,
         spool: {

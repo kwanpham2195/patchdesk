@@ -52,14 +52,19 @@ type Scalar = {
   text: string;
 };
 
-/** Checks only the selected root shape after complete resulting-value privacy, not nested or numeric semantics. */
+/** Returns selected numeric node IDs after root shape/privacy; numeric values and nested schemas remain unchecked here. */
 export async function checkLegacyAnalysisRoot(
   files: LegacyJsonIndexFiles & { readonly structure: FileHandle },
   structure: LegacyJsonStructure,
   properties: LegacyJsonProperties,
   reviewId: ReviewId,
   options: { readonly signal?: AbortSignal } = {},
-): Promise<Result<void, AnalysisRootFailure>> {
+): Promise<
+  Result<
+    { readonly schemaVersion: number; readonly nextToken: number },
+    AnalysisRootFailure
+  >
+> {
   try {
     const store = new InsightLegacyJsonIndexStore(files, options.signal);
     const read = async (id: number) => {
@@ -80,6 +85,8 @@ export async function checkLegacyAnalysisRoot(
       options.signal,
     );
     let mask = 0;
+    let schemaVersion: number | undefined;
+    let nextToken: number | undefined;
     let scalar: Scalar | undefined;
     let records = 0;
     let nodes = 0;
@@ -123,6 +130,8 @@ export async function checkLegacyAnalysisRoot(
                   ? "array"
                   : "object";
           if (value.kind !== kind) fail("invalid_legacy");
+          if (field === 0) schemaVersion = value.id;
+          if (field === 3) nextToken = value.id;
         } else if (
           row.kind === "string" &&
           row.parent === root.id &&
@@ -191,8 +200,10 @@ export async function checkLegacyAnalysisRoot(
     )
       fail("invalid_spool");
     if ((mask & 31) !== 31) fail("invalid_legacy");
+    if (schemaVersion === undefined || nextToken === undefined)
+      fail("invalid_spool");
     options.signal?.throwIfAborted();
-    return ok(undefined);
+    return ok({ schemaVersion, nextToken });
   } catch (cause: unknown) {
     return err({
       _tag: "LegacyAnalysisRootShapeFailure",
