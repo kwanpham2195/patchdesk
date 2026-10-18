@@ -76,7 +76,7 @@ type Dependencies = {
   readonly profiles: ProfileStore;
   readonly sessions: ReviewSessionStore;
   readonly reviews: Pick<ReviewStore, "load" | "delete">;
-  readonly insights: Pick<InsightStore, "load" | "hasLegacySlots">;
+  readonly insights: Pick<InsightStore, "load" | "hasProtectedSlots">;
   readonly mergeOperations: Pick<MergeOperationStore, "load">;
   readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
   readonly artifacts: ReviewArtifactStorage;

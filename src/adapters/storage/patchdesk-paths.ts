@@ -8,6 +8,8 @@ import type {
   WorkspaceProfileId,
 } from "#src/domain/ids";
 import type { InsightType } from "#src/domain/insight-record";
+import { parseContentHash, type InvalidDomainValue } from "#src/domain/ids";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   LocalPatchView,
   StoredLocalPatchView,
@@ -337,6 +339,41 @@ export class PatchdeskPaths {
     type: InsightType,
   ): string {
     return join(this.insightDirectory(profileId, reviewId), `${type}.json`);
+  }
+
+  /** Current pointers are disjoint from the untouched legacy insights directory. */
+  insightSlotPointerFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "insight-artifacts-v2",
+      "slots",
+      `${type}.json`,
+    );
+  }
+
+  /** Object resolution accepts only a validated digest, never a provider filename. */
+  insightArtifactObjectFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    hash: string,
+  ): Result<string, InvalidDomainValue> {
+    if (hash.length !== 64)
+      return err({ _tag: "InvalidDomainValue", field: "contentHash" });
+    const digest = parseContentHash(hash);
+    return digest._tag === "err"
+      ? digest
+      : ok(
+          join(
+            this.reviewDirectory(profileId, reviewId),
+            "insight-artifacts-v2",
+            "objects",
+            `${digest.value}.json`,
+          ),
+        );
   }
 
   sessionFile(

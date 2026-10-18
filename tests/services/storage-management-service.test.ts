@@ -197,7 +197,7 @@ async function fixture(
       },
     },
     insights: {
-      async hasLegacySlots() {
+      async hasProtectedSlots() {
         return ok(
           options.analysis !== undefined ||
             options.walkthrough !== undefined ||
