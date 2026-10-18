@@ -112,7 +112,10 @@ export default defineConfig({
       rollupOptions: {
         input: {
           "electron-main": "src/main/electron-main.ts",
+          "insight-artifact-worker":
+            "src/adapters/storage/insight-artifact-worker-entry.ts",
         },
+        output: { entryFileNames: "[name].js" },
       },
     },
   },

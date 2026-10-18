@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { projectStoredInsight } from "#src/domain/insight";
 import { parseContentHash } from "#src/domain/ids";
 import { createHash } from "node:crypto";
@@ -133,7 +134,10 @@ describe("retained Guide lifecycle", () => {
       },
       {
         insightStore: (paths) => {
-          store = new CompletionFailingStore(paths);
+          store = new CompletionFailingStore(
+            paths,
+            readBoundedInsightArtifactFile,
+          );
           return store;
         },
       },
@@ -191,12 +195,10 @@ describe("retained Guide lifecycle", () => {
     ).toBe("completed");
     await rm(value.session.patchPath);
     const loaded = must(
-      await new InsightStore(value.paths).loadTyped(
-        profileId,
-        value.review.id,
-        "guide",
-        parseRetainedGuide,
-      ),
+      await new InsightStore(
+        value.paths,
+        readBoundedInsightArtifactFile,
+      ).loadTyped(profileId, value.review.id, "guide", parseRetainedGuide),
     );
     expect(loaded.retained?.value.inventory[0]?.newPath).toBe("a.ts");
     expect(loaded.retained?.provenance.language).toBe("vi");
@@ -335,12 +337,10 @@ describe("retained Guide lifecycle", () => {
       }),
     );
     expect(
-      await new InsightStore(value.paths).loadTyped(
-        profileId,
-        value.review.id,
-        "guide",
-        parseRetainedGuide,
-      ),
+      await new InsightStore(
+        value.paths,
+        readBoundedInsightArtifactFile,
+      ).loadTyped(profileId, value.review.id, "guide", parseRetainedGuide),
     ).toMatchObject({ _tag: "err", error: { reason: "invalid_stored_value" } });
   });
 });

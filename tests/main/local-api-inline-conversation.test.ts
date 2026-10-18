@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -59,6 +60,7 @@ async function start(
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-inline-conversation-"));
   const started = await startLocalApiServer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     capability,
     allowedOrigin: origin,
     paths: PatchdeskPaths.forTest(root),

@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -204,7 +205,10 @@ describe.each(mcpProtocolEras)(
         dismissedFix,
         fix("open", 4),
       ];
-      const insights = new InsightStore(app.paths);
+      const insights = new InsightStore(
+        app.paths,
+        readBoundedInsightArtifactFile,
+      );
       const runId = await retainAnalysis(
         insights,
         runTarget(workbench),

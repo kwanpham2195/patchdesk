@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -196,6 +197,7 @@ describe("local API avatar fetcher configuration seam", () => {
     const globalFetchSpy = vi.spyOn(globalThis, "fetch");
 
     const started = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin: origin,
       paths,

@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -195,7 +196,7 @@ export async function localApplyHarness(
   let explanations = 0;
   const reviews = new ReviewStore(paths);
   const viewedFiles = new ViewedFilesStore(paths, { write: () => undefined });
-  const insights = new InsightStore(paths);
+  const insights = new InsightStore(paths, readBoundedInsightArtifactFile);
   const operations = new LocalApplyOperationStore(paths);
   const artifacts = new ReviewArtifactStorage(paths, () => now);
   const realGit = createReadOnlyGitExecutor(new CommandRunner());

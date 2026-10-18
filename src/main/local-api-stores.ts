@@ -254,7 +254,7 @@ export async function buildLocalApiStores(
   const storageArtifacts = new ReviewArtifactStorage(paths, systemNow);
   const lifecycleGate =
     configuration.lifecycleGate ?? new ReviewLifecycleGate();
-  const insights = new InsightStore(paths);
+  const insights = new InsightStore(paths, configuration.insightArtifactReader);
   const storageManagementInput = {
     profiles,
     sessions,

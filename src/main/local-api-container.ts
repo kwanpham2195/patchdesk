@@ -246,6 +246,7 @@ export async function buildLocalApiContainer(
     github,
     readOnlyGit,
     paths,
+    configuration.insightArtifactReader,
     commands,
     avatarRailDependencies,
   );

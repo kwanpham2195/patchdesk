@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import {
   mkdir,
@@ -119,6 +120,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const saved = await controller.saveProfile({
@@ -159,6 +161,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const created = await controller.saveProfile({
@@ -189,6 +192,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const created = await controller.saveProfile({
@@ -258,6 +262,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
         commands,
       );
 
@@ -293,6 +298,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
         commands,
       );
 
@@ -385,6 +391,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
       // The selected workspace is the other one, as it is for a toggle sent
       // between `POST /v1/profiles/select` resolving and the reload landing.
@@ -433,6 +440,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const removed = await controller.updateWatchlist({
@@ -465,6 +473,7 @@ describe("profile settings and dashboard services", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const updated = await controller.updateWatchlist({
@@ -509,6 +518,7 @@ describe("profile settings and dashboard services", () => {
         { listMaintainerPullRequests } as never,
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const result = await controller.inboxForActiveProfile(undefined, {
@@ -612,6 +622,7 @@ describe("workspace roots retired in #641", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       expect(await controller.activeProfile()).toMatchObject({
@@ -667,6 +678,7 @@ describe("choosing a watched repository's checkout", () => {
         new FakeGitHubAdapter({}),
         git,
         paths,
+        readBoundedInsightArtifactFile,
       );
 
       const chosen = await controller.chooseWatchedRepoCheckout({
@@ -721,6 +733,7 @@ describe("choosing a watched repository's checkout", () => {
           new FakeGitHubAdapter({}),
           git,
           paths,
+          readBoundedInsightArtifactFile,
         );
 
         const chosen = await controller.chooseWatchedRepoCheckout({

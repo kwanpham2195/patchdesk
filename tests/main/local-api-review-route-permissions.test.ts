@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -55,6 +56,7 @@ it("permits current Review-id routes and denies deleted routes", async () => {
   const paths = PatchdeskPaths.forTest(root);
   const seeded = await seedRepresentedReview(paths);
   const started = await startLocalApiServer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     allowedOrigin: origin,
     capability,
     paths,

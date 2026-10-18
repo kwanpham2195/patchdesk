@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import type { Server } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,6 +31,7 @@ test("renderer uses the protected loopback API for profile and watchlist control
   const origin = serverOrigin(client);
   root = await mkdtemp(`${tmpdir()}/patchdesk-browser-`);
   const started = await startLocalApiServer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     allowedOrigin: origin,
     capability,
     paths: PatchdeskPaths.forTest(root),

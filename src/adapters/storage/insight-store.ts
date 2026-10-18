@@ -49,6 +49,7 @@ import {
 } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import { InsightSlotStore } from "./insight-slot-store";
+import type { readBoundedInsightArtifactFile } from "./insight-artifact-files";
 
 const revisionSchema = v.strictObject({
   sessionId: v.pipe(v.string(), v.minLength(1)),
@@ -146,8 +147,11 @@ export class InsightStore {
   private readonly locks = new KeyedMutex();
   private readonly currentSlots: InsightSlotStore;
 
-  constructor(private readonly paths: PatchdeskPaths) {
-    this.currentSlots = new InsightSlotStore(paths);
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    insightArtifactReader: typeof readBoundedInsightArtifactFile,
+  ) {
+    this.currentSlots = new InsightSlotStore(paths, insightArtifactReader);
   }
 
   /** Legacy presence or any parsed current slot protects all Review dependencies, including empty slots. */

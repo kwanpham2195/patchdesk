@@ -26,6 +26,7 @@ import {
   type StartedLocalApi,
 } from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
+import { createDesktopInsightArtifactLifecycle } from "./desktop-insight-artifact-lifecycle";
 import {
   answerWindowFullScreenReads,
   sendWindowFullScreen,
@@ -71,6 +72,7 @@ import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import { ReviewStore } from "#src/adapters/storage/review-store";
 import { InsightStore } from "#src/adapters/storage/insight-store";
+import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import type { GitHubFetch } from "#src/adapters/github/github-http-client";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
@@ -284,94 +286,94 @@ const reviewWindow = createReviewWindow({
     }
   },
 });
+const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
+  new URL("./insight-artifact-worker.js", import.meta.url),
+  async (insightArtifactReader) => {
+    const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
+    // Never trust the development server origin from a packaged application.
+    const developmentOriginField = app.isPackaged
+      ? {}
+      : { developmentOrigin: "http://localhost:5173" };
+    const startup = await startLocalApiServer({
+      allowedOrigin: rendererOrigin,
+      ...developmentOriginField,
+      capability: createAppCapability(),
+      insightArtifactReader,
+      appMetadata: {
+        productName: app.name,
+        version: app.getVersion(),
+        architecture: process.arch,
+        distribution: app.isPackaged ? "unsigned_internal" : "development",
+      },
+      insights: (github) =>
+        recoverInsights(
+          runtimeModelCatalog,
+          insightProviders,
+          reviewOperations,
+          github,
+          insightArtifactReader,
+        ),
+      insightProviders,
+      githubFetch,
+      paths,
+      mcpSocketPath: () => desktopMcpSocketPath(paths),
+      reviewWindow,
+      lifecycleGate,
+      retentionSweep: true,
+      reviewsRemovedBySweep() {
+        const window = mainWindow;
+        if (window !== undefined && !window.isDestroyed())
+          sendReviewsRemoved(window.webContents);
+      },
+      watchedPullRequestPolling: true,
+      watchedPullRequestChanged(profileId) {
+        const window = mainWindow;
+        if (window !== undefined && !window.isDestroyed())
+          sendWatchedPullRequestChange(window.webContents, profileId);
+      },
+      reviewOperations,
+      diagnostics,
+      logs,
+      desktopNotifier,
+      modelCatalog: runtimeModelCatalog,
+      trash: {
+        async move(path) {
+          try {
+            await shell.trashItem(path);
+            return { _tag: "ok", value: undefined };
+          } catch {
+            return {
+              _tag: "err",
+              error: {
+                _tag: "StorageFailure",
+                operation: "write",
+                reason: "io",
+              },
+            };
+          }
+        },
+      },
+    });
+    if (!stopping && startup._tag === "started") {
+      runningLocalApi = startup.server;
+    }
+
+    return startup;
+  },
+);
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
-    async start() {
-      const insightProviders =
-        createInsightProviderCatalog(runtimeModelCatalog);
-      // Never trust the development server origin from a packaged application.
-      const developmentOriginField = app.isPackaged
-        ? {}
-        : { developmentOrigin: "http://localhost:5173" };
-      const startup = await startLocalApiServer({
-        allowedOrigin: rendererOrigin,
-        ...developmentOriginField,
-        capability: createAppCapability(),
-        appMetadata: {
-          productName: app.name,
-          version: app.getVersion(),
-          architecture: process.arch,
-          distribution: app.isPackaged ? "unsigned_internal" : "development",
-        },
-        insights: (github) =>
-          recoverInsights(
-            runtimeModelCatalog,
-            insightProviders,
-            reviewOperations,
-            github,
-          ),
-        insightProviders,
-        githubFetch,
-        paths,
-        mcpSocketPath: () => desktopMcpSocketPath(paths),
-        reviewWindow,
-        lifecycleGate,
-        retentionSweep: true,
-        reviewsRemovedBySweep() {
-          const window = mainWindow;
-          if (window !== undefined && !window.isDestroyed())
-            sendReviewsRemoved(window.webContents);
-        },
-        watchedPullRequestPolling: true,
-        watchedPullRequestChanged(profileId) {
-          const window = mainWindow;
-          if (window !== undefined && !window.isDestroyed())
-            sendWatchedPullRequestChange(window.webContents, profileId);
-        },
-        reviewOperations,
-        diagnostics,
-        logs,
-        desktopNotifier,
-        modelCatalog: runtimeModelCatalog,
-        trash: {
-          async move(path) {
-            try {
-              await shell.trashItem(path);
-              return { _tag: "ok", value: undefined };
-            } catch {
-              return {
-                _tag: "err",
-                error: {
-                  _tag: "StorageFailure",
-                  operation: "write",
-                  reason: "io",
-                },
-              };
-            }
-          },
-        },
-      });
-      if (startup._tag === "started") {
-        runningLocalApi = startup.server;
-      }
-
-      return startup;
-    },
+    start: artifactApiLifecycle.start,
     async healthCheck(server) {
       return await healthCheckLocalApi(server, rendererOrigin);
     },
     async stop() {
-      if (runningLocalApi === undefined) {
-        return;
-      }
-
-      const server = runningLocalApi;
       runningLocalApi = undefined;
-      await server.stop();
+      await artifactApiLifecycle.stop();
     },
   },
   async showWorkbench(server) {
-    await ensureWorkbenchWindow(server);
+    if (!stopping) await ensureWorkbenchWindow(server);
   },
 });
 
@@ -391,6 +393,7 @@ function createInsightCoordinator(
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
+  insightArtifactReader: typeof readBoundedInsightArtifactFile,
 ): InsightRunCoordinator {
   const runtime = resolveInsightRuntime(
     app.getAppPath(),
@@ -481,7 +484,7 @@ function createInsightCoordinator(
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
-    new InsightStore(paths),
+    new InsightStore(paths, insightArtifactReader),
     paths,
     modelCatalog,
     { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
@@ -511,12 +514,14 @@ async function recoverInsights(
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
+  insightArtifactReader: typeof readBoundedInsightArtifactFile,
 ): Promise<InsightRunCoordinator> {
   const coordinator = createInsightCoordinator(
     modelCatalog,
     providerCatalog,
     operations,
     github,
+    insightArtifactReader,
   );
   await coordinator.recoverAll();
   return coordinator;
@@ -610,14 +615,14 @@ function registerDesktopEvents(): void {
       importLoginShellEnvironmentOnce,
     );
     const result = await started;
-    if (result._tag === "local-api-unavailable") {
+    if (!stopping && result._tag === "local-api-unavailable") {
       dialog.showErrorBox(
         "Patchdesk could not start",
         "The local review service is unavailable. No review or GitHub write was started.",
       );
       app.exit(1);
     }
-    appUpdate.start();
+    if (!stopping) appUpdate.start();
     await imported;
   });
 
@@ -811,7 +816,7 @@ async function createWorkbenchWindow(
     rendererOrigin,
   );
   window.once("ready-to-show", () => {
-    if (!window.isDestroyed()) {
+    if (!stopping && !window.isDestroyed()) {
       if (activation === "focus") window.show();
       else window.showInactive();
       boundsTrackingEnabled = true;
@@ -894,6 +899,7 @@ function focusOrRecreateWorkbenchLogged(
 }
 
 function focusWindow(window: BrowserWindow): void {
+  if (stopping) return;
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -968,8 +974,10 @@ const rendererRecovery = new DesktopRendererRecovery<BrowserWindow>({
 function terminateAfterServerStops(): void {
   if (stopping) return;
   stopping = true;
-  void desktopLifecycle
+  runningLocalApi = undefined;
+  void artifactApiLifecycle
     .stop()
+    .finally(() => desktopLifecycle.stop())
     .catch((cause: unknown) => {
       logs.write({
         process: "main",
