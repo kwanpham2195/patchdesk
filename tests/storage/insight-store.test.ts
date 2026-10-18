@@ -491,7 +491,11 @@ describe("InsightStore shadow preparation", () => {
       error: { _tag: "AnalysisShadowFailure", reason: "storage_unavailable" },
     });
     expect(outcomes.retry).toEqual(outcomes.first);
-    expect(outcomes.recovered._tag).toBe("ok");
+    expect(outcomes.recovered).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
+    });
+    expect(await failedStructuralBackup(paths)).toEqual(original);
     expect(await readFile(source)).toEqual(original);
   });
 
@@ -536,23 +540,23 @@ describe("InsightStore shadow preparation", () => {
           review.value,
         ),
     );
-    expect(outcome._tag).toBe("ok");
-    if (outcome._tag === "err") throw new Error("shadow fixture failed");
-    expect(await readFile(source)).toEqual(original);
-    expect(
-      await readFile(join(outcome.value.directory, "source.json")),
-    ).toEqual(original);
-    expect(outcome.value).toMatchObject({
-      state: "sensitive_checked",
-      sourceBytes: original.length,
-      sourceHash: createHash("sha256").update(original).digest("hex"),
-      pending: "schema_conversion_equality",
+    expect(outcome).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
     });
+    const directory = await shadowAttempt(paths);
+    expect(await readFile(source)).toEqual(original);
+    expect(await readFile(join(directory, "source.json"))).toEqual(original);
+    const backup = await readFile(join(directory, "source.json"));
+    expect(backup.length).toBe(original.length);
+    expect(createHash("sha256").update(backup).digest("hex")).toBe(
+      createHash("sha256").update(original).digest("hex"),
+    );
     expect(backupHandles).toHaveLength(2);
     expect(reads.every((read) => read.handle === backupHandles[1])).toBe(true);
     expect(reads.filter((read) => read.position === 0)).toHaveLength(2);
     const raw: ReadonlyArray<LegacyJsonToken> = (
-      await readFile(join(outcome.value.directory, "tokens.ndjson"), "utf8")
+      await readFile(join(directory, "tokens.ndjson"), "utf8")
     )
       .trim()
       .split("\n")
@@ -594,7 +598,7 @@ describe("InsightStore shadow preparation", () => {
       { tag: "punctuation", value: ":" },
       { tag: "punctuation", value: "}" },
     ]);
-    expect(raw).toHaveLength(outcome.value.spool.tokens);
+    expect(raw).toHaveLength(52);
   });
 
   it("preserves every nested structural edge and duplicate-key occurrence on disk", async () => {
@@ -604,25 +608,18 @@ describe("InsightStore shadow preparation", () => {
     const result = await new InsightMigrationService(
       fixture.paths,
     ).prepareAnalysisShadow(profile.value, review.value);
-    expect(result._tag).toBe("ok");
-    if (result._tag === "err") throw new Error("structural fixture failed");
-    expect(result.value.state).toBe("sensitive_checked");
-    expect(result.value.structure).toEqual({
-      root: 1,
-      values: 516,
-      keys: 3,
-      records: 1559,
-      maxDepth: 514,
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
     });
+    const directory = await shadowAttempt(fixture.paths);
     expect(await readFile(fixture.source)).toEqual(fixture.original);
-    expect(await readFile(join(result.value.directory, "source.json"))).toEqual(
+    expect(await readFile(join(directory, "source.json"))).toEqual(
       fixture.original,
     );
-    expect((await stat(join(result.value.directory, "frames.bin"))).size).toBe(
-      514 * 512,
-    );
-    const rows: ReadonlyArray<{ readonly tag: string }> = (
-      await readFile(join(result.value.directory, "structure.ndjson"), "utf8")
+    expect((await stat(join(directory, "frames.bin"))).size).toBe(514 * 512);
+    const rows: ReadonlyArray<LegacyJsonStructureRecord> = (
+      await readFile(join(directory, "structure.ndjson"), "utf8")
     )
       .trim()
       .split("\n")
@@ -649,7 +646,14 @@ describe("InsightStore shadow preparation", () => {
       { tag: "fragment", id: 517, sequence: 0, text: "2" },
       { tag: "fragment", id: 518, sequence: 0, text: "empty" },
     ]);
-    expect(rows).toHaveLength(result.value.structure.records);
+    expect(rows).toContainEqual({ tag: "root", id: 1 });
+    expect(
+      rows.filter((row) => row.tag === "node" && row.kind !== "key"),
+    ).toHaveLength(516);
+    expect(
+      rows.filter((row) => row.tag === "node" && row.kind === "key"),
+    ).toHaveLength(3);
+    expect(rows).toHaveLength(1559);
   });
 
   it("refuses a lexically valid trailing comma and preserves the original backup", async () => {
@@ -711,6 +715,7 @@ describe("InsightStore shadow preparation", () => {
       ],
     });
     expect(fixture.rootEdges.map((row) => row.firstOrdinal)).toEqual([0, 1]);
+    expect(fixture.reachable.size).toBe(6);
     const stale = fixture.structure.find(
       (row) => row.tag === "fragment" && row.text === "stale",
     );
@@ -736,6 +741,7 @@ describe("InsightStore shadow preparation", () => {
     );
     const names = ["0", "2", "10", "4294967294", "4294967295", "01", "-0", "x"];
     const values = ["6", "7", "0", "2", "3", "4", "5", "8"];
+    expect(fixture.reachable.size).toBe(9);
     expect(fixture.value).toEqual({
       kind: "object",
       entries: names.map((name, index) => [
@@ -762,6 +768,7 @@ describe("InsightStore shadow preparation", () => {
     const fixture = await propertyFixture(source);
     const names = [longA, longB, "\uD800", ""];
     const values = ["3", "2", "5", "6"];
+    expect(fixture.reachable.size).toBe(5);
     expect(fixture.value).toEqual({
       kind: "object",
       entries: names.map((name, index) => [
@@ -788,6 +795,7 @@ describe("InsightStore shadow preparation", () => {
       '{"10":0,"2":1,"4294967294":2,"4294967295":3,"01":4,"-0":5,"0":6,"2":7,"x":8}',
     );
     const edge = fixture.rootEdges[0];
+    expect(fixture.reachable.size).toBe(9);
     const key =
       edge?.key === null ? undefined : fixture.nodes.get(edge?.key ?? 0);
     const object =
@@ -827,15 +835,17 @@ describe("InsightStore shadow preparation", () => {
     const result = await new InsightMigrationService(
       fixture.paths,
     ).prepareAnalysisShadow(shadowProfileId, shadowReviewId);
-    if (result._tag === "err") throw new Error("property fixture failed");
-    expect(result.value.state).toBe("sensitive_checked");
-    expect(result.value.pending).toBe("schema_conversion_equality");
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
+    });
+    const directory = await shadowAttempt(fixture.paths);
     expect(await readFile(fixture.source)).toEqual(fixture.original);
-    expect(await readFile(join(result.value.directory, "source.json"))).toEqual(
+    expect(await readFile(join(directory, "source.json"))).toEqual(
       fixture.original,
     );
-    const nodeBytes = await readFile(join(result.value.directory, "nodes.bin"));
-    const keys = await readFile(join(result.value.directory, "keys.utf16le"));
+    const nodeBytes = await readFile(join(directory, "nodes.bin"));
+    const keys = await readFile(join(directory, "keys.utf16le"));
     const nodes = new Map<number, LegacyJsonIndexRow>();
     for (let offset = 0; offset < nodeBytes.length; offset += 1024) {
       const size = nodeBytes.readUInt32LE(offset);
@@ -845,13 +855,13 @@ describe("InsightStore shadow preparation", () => {
       nodes.set(row.id, row);
     }
     const records: ReadonlyArray<LegacyJsonPropertyRecord> = (
-      await readFile(join(result.value.directory, "properties.ndjson"), "utf8")
+      await readFile(join(directory, "properties.ndjson"), "utf8")
     )
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
     const structure: ReadonlyArray<LegacyJsonStructureRecord> = (
-      await readFile(join(result.value.directory, "structure.ndjson"), "utf8")
+      await readFile(join(directory, "structure.ndjson"), "utf8")
     )
       .trim()
       .split("\n")
@@ -905,12 +915,13 @@ describe("InsightStore shadow preparation", () => {
           .join(""),
       };
     }
-    const rootId = result.value.properties.root;
+    const rootRecord = records.find((record) => record.tag === "root");
+    if (rootRecord === undefined) throw new Error("missing property root");
+    const rootId = rootRecord.id;
     const value = project(rootId);
     expect(reachable).toEqual(visited);
-    expect(reachable.size).toBe(result.value.properties.reachableValues);
     return {
-      directory: result.value.directory,
+      directory,
       value,
       nodes,
       keys,
@@ -938,6 +949,10 @@ describe("InsightStore shadow preparation", () => {
   }
 
   async function failedStructuralBackup(paths: PatchdeskPaths) {
+    return readFile(join(await shadowAttempt(paths), "source.json"));
+  }
+
+  async function shadowAttempt(paths: PatchdeskPaths) {
     const directory = paths.insightMigrationDirectory(
       shadowProfileId,
       shadowReviewId,
@@ -947,7 +962,7 @@ describe("InsightStore shadow preparation", () => {
     const attempt = attempts[0];
     if (attempt === undefined)
       throw new Error("structural fixture backup missing");
-    return readFile(join(directory, attempt, "source.json"));
+    return join(directory, attempt);
   }
 });
 

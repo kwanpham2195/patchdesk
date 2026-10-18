@@ -10,7 +10,7 @@ import { isPathContained } from "./path-containment";
 
 /** This checkpoint has no migration authority and cannot be used as a retained result. */
 export type AnalysisShadowCheckpoint = {
-  readonly state: "sensitive_checked";
+  readonly state: "analysis_root_shape_checked";
   readonly sourceHash: string;
   readonly sourceBytes: number;
   readonly directory: string;
@@ -39,7 +39,7 @@ export type AnalysisShadowCheckpoint = {
     readonly records: number;
     readonly indexRowBytes: 1024;
   };
-  readonly pending: "schema_conversion_equality";
+  readonly pending: "schema_values_nested_conversion_equality";
 };
 
 /** Fixed scratch descriptors remain storage-owned through lexical and structural processing. */
@@ -70,7 +70,7 @@ export type AnalysisShadowFailure = {
 export class InsightMigrationStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  /** The callback must resolve properties and scan the resulting value before returning success. */
+  /** The callback must scan resulting-value privacy then check root shape, leaving values/nested schemas unchecked. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -79,7 +79,10 @@ export class InsightMigrationStore {
       files: AnalysisShadowFiles,
     ) => Promise<
       Result<
-        Pick<AnalysisShadowCheckpoint, "spool" | "structure" | "properties">,
+        Pick<
+          AnalysisShadowCheckpoint,
+          "state" | "pending" | "spool" | "structure" | "properties"
+        >,
         AnalysisShadowFailure
       >
     >,
@@ -241,14 +244,14 @@ export class InsightMigrationStore {
       await syncDirectory(attempt);
       options.signal?.throwIfAborted();
       return ok({
-        state: "sensitive_checked",
+        state: spool.value.state,
         sourceHash: copied.hash,
         sourceBytes: copied.bytes,
         directory: attempt,
         spool: spool.value.spool,
         structure: spool.value.structure,
         properties: spool.value.properties,
-        pending: "schema_conversion_equality",
+        pending: spool.value.pending,
       });
     } catch (cause: unknown) {
       if (options.signal?.aborted) return shadowFailure("cancelled");

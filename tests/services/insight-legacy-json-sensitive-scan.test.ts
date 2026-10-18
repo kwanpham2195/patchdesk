@@ -199,12 +199,9 @@ async function prepare(text: string, sensitive: boolean) {
       error: { _tag: "AnalysisShadowFailure", reason: "sensitive_value" },
     });
   else
-    expect(result).toMatchObject({
-      _tag: "ok",
-      value: {
-        state: "sensitive_checked",
-        pending: "schema_conversion_equality",
-      },
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
     });
   const directory = paths.insightMigrationDirectory(profileId, reviewId);
   const attempts = await readdir(directory);
