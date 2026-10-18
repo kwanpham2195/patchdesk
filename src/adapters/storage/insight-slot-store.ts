@@ -5,10 +5,8 @@ import {
   type InsightSlotRecord3,
 } from "#src/domain/insight-slot-contract";
 import { err, ok, type Result } from "#src/domain/result";
-import {
-  InsightArtifactStore,
-  readBoundedInsightArtifactFile,
-} from "./insight-artifact-store";
+import { readBoundedInsightArtifactFile } from "./insight-artifact-files";
+import { InsightArtifactStore } from "./insight-artifact-store";
 import type { StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 

@@ -65,10 +65,13 @@ export function insightArtifactJsonIsCanonical(
   text: string,
   value: InsightCanonicalValue,
 ): boolean {
-  return canonicalJson(value) === text;
+  return encodeInsightArtifactCanonicalJson(value) === text;
 }
 
-function canonicalJson(value: InsightCanonicalValue): string | undefined {
+/** Encodes closed-schema values with the same representation used by canonical reads. */
+export function encodeInsightArtifactCanonicalJson(
+  value: InsightCanonicalValue,
+): string | undefined {
   if (value === null) return "null";
   // oxlint-disable-next-line anti-slop/no-runtime-typeof -- canonical encoding distinguishes JSON scalar representations, not application records.
   switch (typeof value) {
@@ -82,7 +85,7 @@ function canonicalJson(value: InsightCanonicalValue): string | undefined {
         : undefined;
     case "object": {
       if (Array.isArray(value)) {
-        const entries = value.map(canonicalJson);
+        const entries = value.map(encodeInsightArtifactCanonicalJson);
         return entries.includes(undefined)
           ? undefined
           : `[${entries.join(",")}]`;
@@ -92,7 +95,7 @@ function canonicalJson(value: InsightCanonicalValue): string | undefined {
       );
       const fields: string[] = [];
       for (const [key, child] of entries) {
-        const encoded = canonicalJson(child);
+        const encoded = encodeInsightArtifactCanonicalJson(child);
         if (encoded === undefined) return undefined;
         fields.push(`${JSON.stringify(key)}:${encoded}`);
       }

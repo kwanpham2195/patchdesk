@@ -2,6 +2,7 @@ import * as v from "valibot";
 
 import { parseInsightRunId, parseIsoTimestamp } from "./ids";
 import {
+  encodeInsightArtifactCanonicalJson,
   insightArtifactIdSchema,
   insightArtifactInteger1Schema,
   insightArtifactJsonIsCanonical,
@@ -91,6 +92,22 @@ export function parseWrappedInsightSlotRecord3(
 ): Result<InsightSlotRecord3, InvalidInsightSlot> {
   const parsed = parseCanonicalSlot(bytes, wrappedSlotRecord3Schema);
   return parsed._tag === "err" ? parsed : ok(parsed.value.value);
+}
+
+/** Validates the complete closed wrapper before producing its exact canonical UTF-8 bytes. */
+export function encodeWrappedInsightSlotRecord3(
+  value: InsightSlotRecord3,
+): Result<Uint8Array, InvalidInsightSlot> {
+  const parsed = v.safeParse(wrappedSlotRecord3Schema, {
+    format: 2,
+    schema: "SlotRecord3",
+    value,
+  });
+  if (!parsed.success) return err({ _tag: "InvalidInsightSlot" });
+  const text = encodeInsightArtifactCanonicalJson(parsed.output);
+  return text === undefined
+    ? err({ _tag: "InvalidInsightSlot" })
+    : ok(new TextEncoder().encode(text));
 }
 
 function parseCanonicalSlot<
