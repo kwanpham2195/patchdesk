@@ -10,6 +10,7 @@ import { spoolLegacyJson } from "./insight-legacy-json-spool";
 import { LegacyJsonLexicalError } from "./insight-legacy-json-tokenizer";
 import { resolveLegacyJsonProperties } from "./insight-legacy-json-resolver";
 import { decodeLegacyJson } from "./insight-legacy-json-decoder";
+import { scanLegacyJsonSensitiveData } from "./insight-legacy-json-sensitive-scan";
 
 /** Explicit shadow preparation has no worker, provider, startup hook or slot publication. */
 export class InsightMigrationService {
@@ -19,7 +20,7 @@ export class InsightMigrationService {
     this.storage = new InsightStore(paths);
   }
 
-  /** Returns selected legacy properties with sensitive scanning and semantic conversion still pending. */
+  /** Returns a sensitive-checked resulting value with schema, conversion and equality still pending. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -46,6 +47,17 @@ export class InsightMigrationService {
             return err({
               _tag: "AnalysisShadowFailure",
               reason: properties.error.reason,
+            });
+          const sensitive = await scanLegacyJsonSensitiveData(
+            files,
+            structure.value,
+            properties.value,
+            options,
+          );
+          if (sensitive._tag === "err")
+            return err({
+              _tag: "AnalysisShadowFailure",
+              reason: sensitive.error.reason,
             });
           return ok({
             spool,
