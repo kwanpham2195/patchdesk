@@ -37,9 +37,9 @@ function echo(input: LocalApiDesktopRequest) {
 }
 
 function sentPaths(): ReadonlyArray<ReadonlyArray<string>> {
-  return (desktop?.request.mock.calls ?? []).map(
-    ([input]) => v.parse(sentRequest, input).body.paths,
-  );
+  return (desktop?.request.mock.calls ?? [])
+    .filter(([input]) => "path" in input && input.path === viewedFilesPath)
+    .map(([input]) => v.parse(sentRequest, input).body.paths);
 }
 
 function renderViewedFiles(
@@ -69,9 +69,11 @@ function renderViewedFiles(
 }
 
 function sentBodies(): ReadonlyArray<v.InferOutput<typeof sentBody>> {
-  return (desktop?.request.mock.calls ?? []).map(([input]) =>
-    v.parse(sentBody, v.parse(v.object({ body: v.unknown() }), input).body),
-  );
+  return (desktop?.request.mock.calls ?? [])
+    .filter(([input]) => "path" in input && input.path === viewedFilesPath)
+    .map(([input]) =>
+      v.parse(sentBody, v.parse(v.object({ body: v.unknown() }), input).body),
+    );
 }
 
 describe("useViewedFiles", () => {

@@ -5,10 +5,9 @@ import {
   encodeInsightArtifactCanonicalJson,
   insightArtifactIdSchema,
   insightArtifactInteger1Schema,
-  insightArtifactJsonIsCanonical,
   insightArtifactReferenceSchema,
   insightArtifactUnsignedSchema,
-  type InsightCanonicalValue,
+  parseInsightArtifactCanonicalJson,
 } from "./insight-artifact-scalars";
 import { err, ok, type Result } from "./result";
 
@@ -83,15 +82,21 @@ type InvalidInsightSlot = { readonly _tag: "InvalidInsightSlot" };
 export function parseInsightSlotPointer(
   bytes: Uint8Array,
 ): Result<InsightSlotPointer, InvalidInsightSlot> {
-  return parseCanonicalSlot(bytes, slotPointerSchema);
+  const parsed = parseInsightArtifactCanonicalJson(bytes, slotPointerSchema);
+  return parsed._tag === "err" ? err({ _tag: "InvalidInsightSlot" }) : parsed;
 }
 
 /** The wrapper participates in byte/hash validation at the storage boundary. */
 export function parseWrappedInsightSlotRecord3(
   bytes: Uint8Array,
 ): Result<InsightSlotRecord3, InvalidInsightSlot> {
-  const parsed = parseCanonicalSlot(bytes, wrappedSlotRecord3Schema);
-  return parsed._tag === "err" ? parsed : ok(parsed.value.value);
+  const parsed = parseInsightArtifactCanonicalJson(
+    bytes,
+    wrappedSlotRecord3Schema,
+  );
+  return parsed._tag === "err"
+    ? err({ _tag: "InvalidInsightSlot" })
+    : ok(parsed.value.value);
 }
 
 /** Validates the complete closed wrapper before producing its exact canonical UTF-8 bytes. */
@@ -108,25 +113,4 @@ export function encodeWrappedInsightSlotRecord3(
   return text === undefined
     ? err({ _tag: "InvalidInsightSlot" })
     : ok(new TextEncoder().encode(text));
-}
-
-function parseCanonicalSlot<
-  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
->(
-  bytes: Uint8Array,
-  schema: TSchema,
-): Result<v.InferOutput<TSchema>, InvalidInsightSlot> {
-  try {
-    const text = new TextDecoder("utf-8", {
-      fatal: true,
-      ignoreBOM: true,
-    }).decode(bytes);
-    const input: unknown = JSON.parse(text);
-    const parsed = v.safeParse(schema, input);
-    if (parsed.success && insightArtifactJsonIsCanonical(text, parsed.output))
-      return ok(parsed.output);
-  } catch {
-    // Rejected bytes never become an absent slot or permission to heal it.
-  }
-  return err({ _tag: "InvalidInsightSlot" });
 }
