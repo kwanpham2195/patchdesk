@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -36,6 +37,7 @@ it("builds the Insight coordinator over the container's GitHub reader", async ()
   const github = new FakeGitHubAdapter({ comments, checks });
   let packReader: GitHubReader | undefined;
   const built = await buildLocalApiContainer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     allowedOrigin: "http://patchdesk.test",
     capability: "cap",
     paths: PatchdeskPaths.forTest(root),

@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -89,7 +90,7 @@ beforeEach(async () => {
   let issued = 0;
   service = new AgentRunRequestService({
     reviews: new ReviewStore(paths),
-    insights: new InsightStore(paths),
+    insights: new InsightStore(paths, readBoundedInsightArtifactFile),
     profiles: { list: async () => ok([profile]) },
     coordinator: new ReviewOperationCoordinator(),
     notifier: { notify: (event) => events.push(event) },

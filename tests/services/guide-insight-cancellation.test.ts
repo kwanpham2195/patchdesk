@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { afterEach, describe, expect, it } from "vitest";
 import { InsightStore } from "#src/adapters/storage/insight-store";
@@ -81,7 +82,8 @@ describe("retained Guide cancellation ordering", () => {
       },
       {
         operations: new ObservedOperations(),
-        insightStore: (paths) => new PausedCancellationStore(paths),
+        insightStore: (paths) =>
+          new PausedCancellationStore(paths, readBoundedInsightArtifactFile),
       },
     );
     const input = {

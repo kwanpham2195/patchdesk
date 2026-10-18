@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -164,7 +165,9 @@ export async function fixture(
   const sessions = new ReviewSessionStore(paths);
   const reviews = new ReviewStore(paths);
   const insights =
-    insightStore === undefined ? new InsightStore(paths) : insightStore(paths);
+    insightStore === undefined
+      ? new InsightStore(paths, readBoundedInsightArtifactFile)
+      : insightStore(paths);
   const diagnostics = recordDiagnostics
     ? new ReviewDiagnosticService(paths, () => now)
     : undefined;

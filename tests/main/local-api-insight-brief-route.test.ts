@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -52,6 +53,7 @@ it("accepts a Brief run and a Brief cancel through the local API", async () => {
   root = await mkdtemp(join(tmpdir(), "patchdesk-brief-route-"));
   const calls: Array<string> = [];
   const started = await startLocalApiServer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     allowedOrigin: origin,
     capability,
     paths: PatchdeskPaths.forTest(root),

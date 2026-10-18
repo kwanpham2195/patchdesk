@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import {
   mkdir,
@@ -175,7 +176,7 @@ async function opening(
     profiles,
     sessions,
     reviews,
-    new InsightStore(paths),
+    new InsightStore(paths, readBoundedInsightArtifactFile),
     paths,
     new ReviewWriteOperationStore(paths),
     viewedFiles,

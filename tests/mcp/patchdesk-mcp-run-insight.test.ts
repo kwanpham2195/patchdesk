@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -243,7 +244,7 @@ async function beginRunOn(
   type: "analysis" | "walkthrough",
 ): Promise<void> {
   await beginRun(
-    new InsightStore(fixture.paths),
+    new InsightStore(fixture.paths, readBoundedInsightArtifactFile),
     {
       review: { id: value(parseReviewId(workbench.review.id)) },
       session: {

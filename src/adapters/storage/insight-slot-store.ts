@@ -5,7 +5,7 @@ import {
   type InsightSlotRecord3,
 } from "#src/domain/insight-slot-contract";
 import { err, ok, type Result } from "#src/domain/result";
-import { readBoundedInsightArtifactFile } from "./insight-artifact-files";
+import type { readBoundedInsightArtifactFile } from "./insight-artifact-files";
 import { InsightArtifactStore } from "./insight-artifact-store";
 import type { StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
@@ -14,8 +14,11 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 export class InsightSlotStore {
   private readonly artifacts: InsightArtifactStore;
 
-  constructor(private readonly paths: PatchdeskPaths) {
-    this.artifacts = new InsightArtifactStore(paths);
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly insightArtifactReader: typeof readBoundedInsightArtifactFile,
+  ) {
+    this.artifacts = new InsightArtifactStore(paths, insightArtifactReader);
   }
 
   /** Only definite pointer absence returns undefined; referenced-record failures remain errors. */
@@ -24,7 +27,7 @@ export class InsightSlotStore {
     reviewId: ReviewId,
     type: InsightType,
   ): Promise<Result<InsightSlotRecord3 | undefined, StorageFailure>> {
-    const bytes = await readBoundedInsightArtifactFile(
+    const bytes = await this.insightArtifactReader(
       this.paths.dataDirectory(),
       this.paths.insightSlotPointerFile(profileId, reviewId, type),
     );

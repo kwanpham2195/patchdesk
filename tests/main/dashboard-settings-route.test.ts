@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -30,6 +31,7 @@ async function routeFixture() {
     new FakeGitHubAdapter({}),
     createReadOnlyGitExecutor(new CommandRunner()),
     paths,
+    readBoundedInsightArtifactFile,
   );
   const saved: NotificationSettings[] = [];
   const app = new Hono();

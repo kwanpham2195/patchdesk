@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -111,7 +112,10 @@ class ControlledInsightStore extends InsightStore {
 async function setup() {
   root = await mkdtemp(join(tmpdir(), "patchdesk-guide-reading-"));
   const paths = PatchdeskPaths.forTest(root);
-  const store = new ControlledInsightStore(paths);
+  const store = new ControlledInsightStore(
+    paths,
+    readBoundedInsightArtifactFile,
+  );
   must(await store.save(profileId, seed));
   return { paths, store };
 }
@@ -205,7 +209,7 @@ describe("Guide reading-state authority", () => {
     );
     expect(saved.version).toBe(1);
     const reloaded = must(
-      await new InsightStore(paths).loadTyped(
+      await new InsightStore(paths, readBoundedInsightArtifactFile).loadTyped(
         profileId,
         seed.reviewId,
         "guide",

@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import {
   mkdir,
   mkdtemp,
@@ -215,7 +216,7 @@ describe("InsightStore Analysis Verification ticks", () => {
   it("writes ticks atomically beside the retained Analysis and reads them back", async () => {
     root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
     const paths = PatchdeskPaths.forTest(root);
-    const store = new InsightStore(paths);
+    const store = new InsightStore(paths, readBoundedInsightArtifactFile);
     const seeded = parseInsightRecord(seed);
     if (seeded._tag === "err") throw new Error("invalid seed record");
     await store.save(profile.value, seeded.value);
@@ -248,7 +249,7 @@ describe("InsightStore Analysis Verification ticks", () => {
   it("reads a record with duplicate ticked steps as invalid", async () => {
     root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
     const paths = PatchdeskPaths.forTest(root);
-    const store = new InsightStore(paths);
+    const store = new InsightStore(paths, readBoundedInsightArtifactFile);
     const seeded = parseInsightRecord(seed);
     if (seeded._tag === "err") throw new Error("invalid seed record");
     await store.save(profile.value, seeded.value);
@@ -310,7 +311,7 @@ describe("InsightStore mutate over a stored record it cannot use", () => {
   ])("overwrites and heals a record holding %s", async (_label, contents) => {
     root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
     const paths = PatchdeskPaths.forTest(root);
-    const store = new InsightStore(paths);
+    const store = new InsightStore(paths, readBoundedInsightArtifactFile);
     const file = paths.insightFile(profile.value, review.value, "walkthrough");
     await mkdir(join(file, ".."), { recursive: true });
     await writeFile(file, contents, "utf8");
@@ -330,7 +331,7 @@ describe("InsightStore mutate over a stored record it cannot use", () => {
   it("fails closed without writing when the record cannot be read", async () => {
     root = await mkdtemp(join(tmpdir(), "patchdesk-insight-store-"));
     const paths = PatchdeskPaths.forTest(root);
-    const store = new InsightStore(paths);
+    const store = new InsightStore(paths, readBoundedInsightArtifactFile);
     const file = paths.insightFile(profile.value, review.value, "walkthrough");
     // A directory at the record path makes the read an I/O error rather than an absent file.
     await mkdir(file, { recursive: true });

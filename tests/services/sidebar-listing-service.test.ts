@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { describe, expect, it, vi } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -157,6 +158,7 @@ function localReview(
 /** An Insight store under a root nothing wrote to, so no Review has a run. */
 const noInsights = new InsightStore(
   PatchdeskPaths.forTest(join(tmpdir(), "patchdesk-sidebar-no-insights")),
+  readBoundedInsightArtifactFile,
 );
 
 function service(
@@ -638,7 +640,10 @@ describe("SidebarListingService agent marker (ADR 0052)", () => {
     async ({ status, active, marked }) => {
       const root = await mkdtemp(join(tmpdir(), "sidebar-agent-"));
       try {
-        const insights = new InsightStore(PatchdeskPaths.forTest(root));
+        const insights = new InsightStore(
+          PatchdeskPaths.forTest(root),
+          readBoundedInsightArtifactFile,
+        );
         const local = localReview("feat/x", "2026-03-01T00:00:00.000Z");
         const request = {
           requestId: createAgentRunRequestId("request-1"),

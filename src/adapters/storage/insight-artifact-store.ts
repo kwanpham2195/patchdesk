@@ -15,14 +15,17 @@ import { err, ok, type Result } from "#src/domain/result";
 import {
   installImmutableInsightArtifactFile,
   MAX_INSIGHT_OBJECT_BYTES,
-  readBoundedInsightArtifactFile,
+  type readBoundedInsightArtifactFile,
 } from "./insight-artifact-files";
 import { containsSensitiveData, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /** Stateless current-format object storage, without slot or publication authority. */
 export class InsightArtifactStore {
-  constructor(private readonly paths: PatchdeskPaths) {}
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly insightArtifactReader: typeof readBoundedInsightArtifactFile,
+  ) {}
 
   /** Verifies the complete SlotRecord3 wrapper, not its transitive referenced graph. */
   async readSlotRecord3(
@@ -36,7 +39,7 @@ export class InsightArtifactStore {
       reference.hash,
     );
     if (path._tag === "err") return artifactReadFailure("invalid_stored_value");
-    const bytes = await readBoundedInsightArtifactFile(
+    const bytes = await this.insightArtifactReader(
       this.paths.dataDirectory(),
       path.value,
     );

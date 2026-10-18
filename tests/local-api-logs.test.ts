@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +42,7 @@ describe("local API log stream", () => {
     );
     const logs = new AppLogService(paths);
     const startup = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin,
       paths,
@@ -106,6 +108,7 @@ describe("local API log stream", () => {
     );
     const logs = new AppLogService(paths);
     const startup = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin,
       paths,
@@ -177,6 +180,7 @@ describe("local API log stream", () => {
       await mkdtemp(join(tmpdir(), "patchdesk-logs-auth-")),
     );
     const startup = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin,
       paths,
@@ -202,6 +206,7 @@ describe("local API log stream", () => {
     );
     const logs = new AppLogService(paths);
     const startup = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin,
       paths,
@@ -256,6 +261,7 @@ describe("local API log stream", () => {
     );
     const logs = new AppLogService(paths);
     const startup = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       capability,
       allowedOrigin,
       paths,

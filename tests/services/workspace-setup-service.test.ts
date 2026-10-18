@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -85,6 +86,7 @@ async function setUp(gh: CommandExecution = signedIn) {
       new FakeGitHubAdapter({}),
       git,
       paths,
+      readBoundedInsightArtifactFile,
       commands,
     ),
     git,

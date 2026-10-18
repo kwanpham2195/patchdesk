@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -55,11 +56,9 @@ afterEach(async () => {
   root = undefined;
 });
 
-type LocalApiServerConfiguration = Parameters<typeof startLocalApiServer>[0];
-
 async function start(
   options: Pick<
-    LocalApiServerConfiguration,
+    Parameters<typeof startLocalApiServer>[0],
     | "readOnlyGit"
     | "resolveGitHubCli"
     | "github"
@@ -70,6 +69,7 @@ async function start(
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
   const value = await startLocalApiServer({
+    insightArtifactReader: readBoundedInsightArtifactFile,
     capability,
     allowedOrigin: origin,
     paths: PatchdeskPaths.forTest(root),

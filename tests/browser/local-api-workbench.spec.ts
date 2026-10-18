@@ -1,3 +1,4 @@
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -42,6 +43,7 @@ test("desktop bridge opens the canonical represented workbench without removed R
       recentPrs: [],
     });
     const started = await startLocalApiServer({
+      insightArtifactReader: readBoundedInsightArtifactFile,
       allowedOrigin: serverOrigin(renderer),
       capability: "cap",
       paths,
