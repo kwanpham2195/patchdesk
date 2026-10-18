@@ -48,6 +48,7 @@ import {
   type StorageFailure,
 } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
+import { InsightSlotStore } from "./insight-slot-store";
 
 const revisionSchema = v.strictObject({
   sessionId: v.pipe(v.string(), v.minLength(1)),
@@ -143,11 +144,14 @@ export function parseInsightRecord(
 /** Owns serialized Insight records and serializes mutations per profile/review/type. */
 export class InsightStore {
   private readonly locks = new KeyedMutex();
+  private readonly currentSlots: InsightSlotStore;
 
-  constructor(private readonly paths: PatchdeskPaths) {}
+  constructor(private readonly paths: PatchdeskPaths) {
+    this.currentSlots = new InsightSlotStore(paths);
+  }
 
-  /** Any legacy slot protects the Review's dependencies without reading bodies or following its final symlink. */
-  async hasLegacySlots(
+  /** Legacy presence or any parsed current slot protects all Review dependencies, including empty slots. */
+  async hasProtectedSlots(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
   ): Promise<Result<boolean, StorageFailure>> {
@@ -164,7 +168,13 @@ export class InsightStore {
           });
       }
     }
-    return ok(false);
+    let protectedSlots = false;
+    for (const type of ["analysis", "walkthrough", "brief", "guide"] as const) {
+      const slot = await this.currentSlots.read(profileId, reviewId, type);
+      if (slot._tag === "err") return slot;
+      if (slot.value !== undefined) protectedSlots = true;
+    }
+    return ok(protectedSlots);
   }
 
   /**

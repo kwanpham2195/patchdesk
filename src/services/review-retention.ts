@@ -42,7 +42,7 @@ type Dependencies = SessionRunningStateDependencies & {
   readonly profiles: Pick<ProfileStore, "load">;
   readonly reviews: Pick<ReviewStore, "load" | "list" | "delete">;
   readonly sessions: Pick<ReviewSessionStore, "load" | "listSessions">;
-  readonly insights: Pick<InsightStore, "load" | "hasLegacySlots">;
+  readonly insights: Pick<InsightStore, "load" | "hasProtectedSlots">;
   readonly localApplyOperations: Pick<LocalApplyOperationStore, "load">;
   readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
   readonly refreshOperations: Pick<RefreshOperationStore, "load">;
@@ -72,7 +72,7 @@ export class ReviewRetention {
 
   /**
    * Removes every superseded session of one Open Review: its worktree, its
-   * managed refs, and its session directory. Legacy slots protect every session,
+   * managed refs, and its session directory. Protected slots keep every session,
    * worktree and ref of their Review. A session a retained Insight
    * names keeps its directory, which holds everything that Insight reads, and
    * loses only its worktree and refs. A Terminal Review is left to ADR 0020's
@@ -202,12 +202,12 @@ export class ReviewRetention {
     ]);
     if (apply._tag === "err" || sessions._tag === "err") return "failed";
     if (apply.value !== undefined) return "kept";
-    const legacy = await this.dependencies.insights.hasLegacySlots(
+    const protectedSlots = await this.dependencies.insights.hasProtectedSlots(
       profileId,
       reviewId,
     );
-    if (legacy._tag === "err") return "failed";
-    if (legacy.value) return "kept";
+    if (protectedSlots._tag === "err") return "failed";
+    if (protectedSlots.value) return "kept";
     const insights = await Promise.all(
       (["analysis", "walkthrough", "brief", "guide"] as const).map((type) =>
         this.dependencies.insights.load(profileId, reviewId, type),
@@ -339,12 +339,13 @@ export class ReviewRetention {
       return err({ _tag: "StorageUnavailable" });
     if (apply.value !== undefined || write.value !== undefined)
       return ok(undefined);
-    const legacy = await this.dependencies.insights.hasLegacySlots(
+    const protectedSlots = await this.dependencies.insights.hasProtectedSlots(
       profileId,
       reviewId,
     );
-    if (legacy._tag === "err") return err({ _tag: "StorageUnavailable" });
-    if (legacy.value) return ok(undefined);
+    if (protectedSlots._tag === "err")
+      return err({ _tag: "StorageUnavailable" });
+    if (protectedSlots.value) return ok(undefined);
     const [review, profile, sessions, insightSessions] = await Promise.all([
       this.dependencies.reviews.load(profileId, reviewId),
       this.dependencies.profiles.load(profileId),
