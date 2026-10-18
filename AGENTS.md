@@ -12,6 +12,10 @@ Child briefs must include applicable rules below or readable absolute paths to t
 
 These commit and check gates apply to accepted authorized changes, including instruction edits. For read-only work or a blocked, partial, or checkpoint report, name dirty-file ownership, checks actually run, and pending gates instead of claiming completion.
 
+## Agent assignments
+
+- Default future Patchdesk assignments to Claude Code. An explicit task harness choice wins. Follow the Claude Code role/model/effort conventions in `~/.agents/skills/delegated-execution/references/model-policy.md`. Verify model and effort availability at dispatch and ask Matthew if unavailable, without substituting. This default grants no launch authority and does not migrate or reconfigure existing threads, schedules, app/runtime settings, accounts, providers or secrets.
+
 ## Project Structure
 
 See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the full picture.
