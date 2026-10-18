@@ -160,7 +160,7 @@ export class InsightStore {
       files: AnalysisShadowFiles,
     ) => Promise<
       Result<
-        Pick<AnalysisShadowCheckpoint, "spool" | "structure">,
+        Pick<AnalysisShadowCheckpoint, "spool" | "structure" | "properties">,
         AnalysisShadowFailure
       >
     >,

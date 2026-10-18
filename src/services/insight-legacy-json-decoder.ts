@@ -2,6 +2,7 @@ import type { FileHandle } from "node:fs/promises";
 import { setImmediate } from "node:timers/promises";
 import * as v from "valibot";
 import { err, ok, type Result } from "#src/domain/result";
+import type { LegacyJsonStructureRecord as StructureRecord } from "./insight-legacy-json-records";
 
 const recordBytes = 16384;
 const frameBytes = 512;
@@ -52,42 +53,7 @@ type Scalar = {
   sequence: number;
   codeUnits: number;
 };
-type NodeKind =
-  | "key"
-  | "string"
-  | "number"
-  | "object"
-  | "array"
-  | "true"
-  | "false"
-  | "null";
-type StructureRecord =
-  | { readonly tag: "node"; readonly id: number; readonly kind: NodeKind }
-  | { readonly tag: "root"; readonly id: number }
-  | {
-      readonly tag: "child";
-      readonly parent: number;
-      readonly id: number;
-      readonly ordinal: number;
-      readonly key: number | null;
-    }
-  | {
-      readonly tag: "fragment";
-      readonly id: number;
-      readonly sequence: number;
-      readonly text: string;
-    }
-  | {
-      readonly tag: "scalar_end";
-      readonly id: number;
-      readonly fragments: number;
-      readonly codeUnits: number;
-    }
-  | {
-      readonly tag: "container_end";
-      readonly id: number;
-      readonly children: number;
-    };
+type NodeKind = Extract<StructureRecord, { tag: "node" }>["kind"];
 
 /** A structural checkpoint preserves every occurrence; it has not resolved keys or accepted a stored schema. */
 export type LegacyJsonStructure = {
