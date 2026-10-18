@@ -10,7 +10,7 @@ import { isPathContained } from "./path-containment";
 
 /** This checkpoint has no migration authority and cannot be used as a retained result. */
 export type AnalysisShadowCheckpoint = {
-  readonly state: "analysis_root_shape_checked";
+  readonly state: "analysis_root_numbers_checked";
   readonly sourceHash: string;
   readonly sourceBytes: number;
   readonly directory: string;
@@ -39,7 +39,7 @@ export type AnalysisShadowCheckpoint = {
     readonly records: number;
     readonly indexRowBytes: 1024;
   };
-  readonly pending: "schema_values_nested_conversion_equality";
+  readonly pending: "nested_schema_numeric_conversion_equality";
 };
 
 /** Fixed scratch descriptors remain storage-owned through lexical and structural processing. */
@@ -70,7 +70,7 @@ export type AnalysisShadowFailure = {
 export class InsightMigrationStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
-  /** The callback must scan resulting-value privacy then check root shape, leaving values/nested schemas unchecked. */
+  /** The callback scans privacy then checks root shape/numbers; nested numeric/schema conversion stays pending. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

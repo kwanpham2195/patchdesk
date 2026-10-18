@@ -12,6 +12,11 @@ import { resolveLegacyJsonProperties } from "./insight-legacy-json-resolver";
 import { decodeLegacyJson } from "./insight-legacy-json-decoder";
 import { scanLegacyJsonSensitiveData } from "./insight-legacy-json-sensitive-scan";
 import { checkLegacyAnalysisRoot } from "./insight-legacy-analysis-root-shape";
+import { readLegacyJsonNumber } from "./insight-legacy-json-number";
+import * as v from "valibot";
+
+const schemaVersion = v.literal(2);
+const nextToken = v.pipe(v.number(), v.integer(), v.minValue(1));
 
 /** Explicit shadow preparation has no worker, provider, startup hook or slot publication. */
 export class InsightMigrationService {
@@ -21,7 +26,7 @@ export class InsightMigrationService {
     this.storage = new InsightStore(paths);
   }
 
-  /** Returns a root-shape checkpoint; numeric values, nested schemas, conversion and equality remain pending. */
+  /** Checks root shape and its two numbers; nested schemas, numeric conversion and equality remain pending. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -72,9 +77,30 @@ export class InsightMigrationService {
               _tag: "AnalysisShadowFailure",
               reason: root.error.reason,
             });
+          for (const [id, schema] of [
+            [root.value.schemaVersion, schemaVersion],
+            [root.value.nextToken, nextToken],
+          ] as const) {
+            const number = await readLegacyJsonNumber(
+              files.structure,
+              structure.value,
+              id,
+              options,
+            );
+            if (number._tag === "err")
+              return err({
+                _tag: "AnalysisShadowFailure",
+                reason: number.error.reason,
+              });
+            if (!v.safeParse(schema, number.value).success)
+              return err({
+                _tag: "AnalysisShadowFailure",
+                reason: "invalid_legacy",
+              });
+          }
           return ok({
-            state: "analysis_root_shape_checked",
-            pending: "schema_values_nested_conversion_equality",
+            state: "analysis_root_numbers_checked",
+            pending: "nested_schema_numeric_conversion_equality",
             spool,
             structure: structure.value,
             properties: properties.value,
