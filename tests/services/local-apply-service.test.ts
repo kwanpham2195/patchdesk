@@ -736,7 +736,7 @@ describe("LocalApplyService recovery in a linked worktree (#489)", () => {
 });
 
 describe("LocalApplyService after a move to another session (#484)", () => {
-  it("settles a CheckRequired Apply on Refresh, so a new Apply succeeds and the old session is pruned", async () => {
+  it("settles a CheckRequired Apply on Refresh, permits a new Apply and keeps legacy-protected session refs", async () => {
     let agentWrote = false;
     const harness = await localApplyHarness(async (argv, run) => {
       if (!isApplyWrite(argv) || agentWrote) return run();
@@ -789,8 +789,15 @@ describe("LocalApplyService after a move to another session (#484)", () => {
         "for-each-ref",
         "--format=%(refname)",
         "refs/patchdesk/local/",
-      ).trim(),
-    ).toBe(`refs/patchdesk/local/${profileId}/${refreshed.session.id}/head`);
+      )
+        .trim()
+        .split("\n"),
+    ).toEqual(
+      [
+        `refs/patchdesk/local/${profileId}/${workbench.session.id}/head`,
+        `refs/patchdesk/local/${profileId}/${refreshed.session.id}/head`,
+      ].sort(),
+    );
     const nextRun = await retainAnalysis(harness.insights, refreshed, [
       lastLineFix,
     ]);

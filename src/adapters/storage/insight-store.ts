@@ -1,5 +1,6 @@
 import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
 import { createHash } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import { parseRetainedGuide } from "#src/domain/guide";
 import {
   guideReadingStateSchema,
@@ -41,6 +42,7 @@ import {
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
 import {
+  isNotFound,
   readJsonFile,
   writeAtomicJson,
   type StorageFailure,
@@ -143,6 +145,27 @@ export class InsightStore {
   private readonly locks = new KeyedMutex();
 
   constructor(private readonly paths: PatchdeskPaths) {}
+
+  /** Any legacy slot protects the Review's dependencies without reading bodies or following its final symlink. */
+  async hasLegacySlots(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<boolean, StorageFailure>> {
+    for (const type of ["analysis", "walkthrough", "brief", "guide"] as const) {
+      try {
+        await lstat(this.paths.insightFile(profileId, reviewId, type));
+        return ok(true);
+      } catch (cause: unknown) {
+        if (!isNotFound(cause))
+          return err({
+            _tag: "StorageFailure",
+            operation: "read",
+            reason: "io",
+          });
+      }
+    }
+    return ok(false);
+  }
 
   /**
    * The record without its retained value. `parseRetainedInsight` has already

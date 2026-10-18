@@ -55,6 +55,8 @@ Preparation records each owned path before use. Recovery validates every deletio
 
 Active Reviews, active Insights (Analysis, Walkthrough, or Brief), locked pending or summary reviews, pending merges, and live preparation journals protect their sessions from cleanup. Cache and local-data operations serialize with profile preparation and recovery.
 
+An existing legacy Insight slot also protects every session of its Review from discard, Clear local review data, and session retention. Superseded-session pruning keeps those sessions' worktrees and managed refs, and abandoned local Review retention keeps the Review. This protection checks presence without reading the result. Malformed files, directories, and symlinks still protect; an uncertain presence check blocks removal. Clear cache remains a separate action and can remove rebuildable worktrees.
+
 ### Settle
 
 A successful write makes one complete parsed value authoritative. A failed write returns a storage failure; it never loads the partial temporary file as the target.
@@ -121,14 +123,15 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Clear cache keeps durable Review history. Clear local review data keeps active Reviews, running Insights, locked writes, pending merges, and diagnostics. [Data and recovery](../settings/data-and-recovery.md) owns their copy and what the screen does afterwards.
 - The retention sweep targets terminal or orphaned sessions older than 14 days and quarantine entries older than 30 days. Per-item failure does not fail startup.
 - For a terminal Review, the sweep removes the whole Review record, with its Insights and journals, before its session. Opening that pull request again starts a fresh Review. If the record has an unreconciled GitHub write operation, or its removal fails, the sweep keeps both and tries again next time. An orphaned session is removed on its own.
-- An Open Review is pruned: each move to a new session removes the sessions it moved past with their worktrees and managed refs, unless they have running state or the Review has a recorded Apply operation. A local Review moves on open and Refresh; a pull request Review moves on a Refresh after a push. A session a retained Analysis, Walkthrough, or Brief names keeps its record and patch and loses its worktree; when a local checkout returns to that snapshot, opening it checks the worktree out again. The background sweep prunes every Open Review the same way.
+- An Open Review is pruned: each move to a new session removes the sessions it moved past with their worktrees and managed refs, unless they have running state, the Review has a recorded Apply operation, or a legacy Insight slot protects it. A local Review moves on open and Refresh; a pull request Review moves on a Refresh after a push. The background sweep prunes every Open Review the same way.
 - A pull request Review keeps every session while it has a recorded GitHub write operation, or while one of its sessions holds an in-flight or outcome-unknown pending-review or summary write.
-- The background sweep removes a local Review, with its sessions and Insights, when its repository still reads but its branch, base branch, or commit is gone, it has no Local drafts, and it was last opened over 14 days ago. A shared Review on a detached `HEAD` has only its base branch to lose. A working-tree or branch Review stored before the shared Review (#555) counts as gone, so the same 14-day and no-drafts rules remove it.
+- The background sweep removes a local Review, with its sessions and Insights, when its repository still reads but its branch, base branch, or commit is gone, it has no Local drafts or legacy Insight slots, and it was last opened over 14 days ago. A shared Review on a detached `HEAD` has only its base branch to lose. A working-tree or branch Review stored before the shared Review (#555) counts as gone, subject to the same retention protections.
 - Removing a worktree through Git deletes the managed refs it checked out. Discard, Clear local review data, and the pull request sweep remove session folders directly, so their refs stay until the background sweep deletes every `refs/patchdesk/` ref of the profile that no stored session, worktree, or preparation names.
 
 ## Open questions and verification
 
 - Record removal and unreadable-record skipping still need a live check; the inspected workspace had no eligible old records.
+- Legacy-slot protection has source and existing-test evidence only; no live destructive cleanup pass has verified it.
 - Confirm startup presentation after an interrupted preparation, orphaned Insight run, uncertain GitHub write, corrupt session, and corrupt Review.
 - Confirm that cache clearing re-creates represented-review worktrees when an older Review opens again and clearly reports any missing local checkout.
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.

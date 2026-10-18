@@ -197,6 +197,13 @@ async function fixture(
       },
     },
     insights: {
+      async hasLegacySlots() {
+        return ok(
+          options.analysis !== undefined ||
+            options.walkthrough !== undefined ||
+            options.brief !== undefined,
+        );
+      },
       async load(
         _profile: WorkspaceProfileId,
         _review: ReviewId,

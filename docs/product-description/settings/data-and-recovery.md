@@ -45,6 +45,8 @@ Confirming sends the action for the active profile. The dialog becomes busy and 
 
 Patchdesk serializes cleanup for the profile. Clear cache removes the profile's rebuildable Cache children. Clear local review data checks preparation, Insight, Review, pending-review, direct-summary, and merge activity before removing a session; protected activity is left in place.
 
+Clear local review data also keeps every session of a Review with an existing legacy Insight slot, even when its result cannot be read. These sessions do not count toward the bytes this action frees. [Persistence and recovery](../foundations/persistence-and-recovery.md#while-the-action-runs) owns this presence-based protection and its retention limits. Clear cache can still remove rebuildable worktrees; it does not remove stored Insight slots.
+
 Cleanup does not ask GitHub to delete anything. It does not remove Diagnostic records, and it does not turn an active Review or write into a discardable item. A retention sweep records its own redacted milestone and continues past an individual failure.
 
 ### Settle
@@ -106,6 +108,7 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 ## Open questions and verification
 
 - The cleanup buttons are enabled with an active workspace. Confirmations, success, failure, and the no-active-workspace state still need live checks.
+- Legacy-slot protection has not had a live destructive cleanup check. It does not change result availability or generate a replacement Insight.
 - Confirm focus behavior for both cleanup confirmations and after Settings closes on success.
 - Confirm what the maintainer sees if a protected session becomes active after the confirmation opens.
 - Confirm the Review workbench a maintainer reaches after Clear cache when its represented-review worktree was removed. Opening a Review with a missing worktree re-creates it, so Context and Preview work again; they stay unavailable only when it cannot be re-created. See [B-13](../bug-triage.md#b-13-context-and-preview-stay-unavailable-when-the-review-worktree-is-missing).

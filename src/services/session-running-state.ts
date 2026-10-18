@@ -15,7 +15,7 @@ import {
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import { ReviewPreparationJournal } from "./review-preparation-journal";
 
-/** The running-state answer, carrying the Review record that decided it when the session is idle. */
+/** Cleanup protection, carrying the Review record when the session is discardable; protection does not imply a running provider. */
 export type SessionRunningState =
   | { readonly running: true }
   | {
@@ -26,7 +26,7 @@ export type SessionRunningState =
 export type SessionRunningStateDependencies = {
   readonly paths: PatchdeskPaths;
   readonly reviews: Pick<ReviewStore, "load">;
-  readonly insights: Pick<InsightStore, "load">;
+  readonly insights: Pick<InsightStore, "load" | "hasLegacySlots">;
   readonly mergeOperations: Pick<MergeOperationStore, "load">;
   readonly diagnostics?: Pick<ReviewDiagnosticService, "record">;
 };
@@ -36,7 +36,8 @@ export type SessionRunningStateDependencies = {
  * remove: an active preparation journal, the current session of an Open
  * Review or the one an agent's refresh prepared for it (ADR 0052), an active
  * Analysis, Walkthrough or Brief run, a locked GitHub write, or an unsettled
- * merge. A session that is not running carries out the Review
+ * merge. Legacy slots also protect every session of their Review without
+ * interpreting the stored result. A session that is not protected carries the Review
  * record this answer was decided from, so a caller does not read it again.
  */
 export async function readSessionRunningState(
@@ -55,6 +56,12 @@ export async function readSessionRunningState(
   if (preparation._tag === "err") return err({ _tag: "StorageUnavailable" });
   if (preparation.value !== undefined) return ok({ running: true });
   const reviewId = createReviewId(session.key);
+  const legacy = await dependencies.insights.hasLegacySlots(
+    profileId,
+    reviewId,
+  );
+  if (legacy._tag === "err") return err({ _tag: "StorageUnavailable" });
+  if (legacy.value) return ok({ running: true });
   const [review, analysis, walkthrough, brief, guide, merge] =
     await Promise.all([
       dependencies.reviews.load(profileId, reviewId),

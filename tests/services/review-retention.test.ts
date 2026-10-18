@@ -203,7 +203,7 @@ describe("ReviewRetention", () => {
     expect(sessionWorktrees(harness.repositoryPath)).toHaveLength(1);
   });
 
-  it("keeps the patch of a session a retained Insight names and removes its worktree and ref", async () => {
+  it("keeps the session, worktree and ref protected by a legacy Insight slot", async () => {
     const harness = await localApplyHarness();
     const probe = join(harness.repositoryPath, "probe.txt");
     await writeFile(probe, "edit 0\n");
@@ -220,11 +220,11 @@ describe("ReviewRetention", () => {
     ).toBe(true);
     expect(
       await present(harness.paths.worktreeDirectory(profileId, firstSession)),
-    ).toBe(false);
-    expect(localRefs(harness.repositoryPath)).not.toContain(
+    ).toBe(true);
+    expect(localRefs(harness.repositoryPath)).toContain(
       `refs/patchdesk/local/${profileId}/${firstSession}/head`,
     );
-    expect(sessionWorktrees(harness.repositoryPath)).toHaveLength(1);
+    expect(sessionWorktrees(harness.repositoryPath)).toHaveLength(2);
   });
 
   it("keeps every session of a Review while an Apply operation is recorded", async () => {
