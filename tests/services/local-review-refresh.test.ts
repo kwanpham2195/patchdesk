@@ -149,7 +149,7 @@ describe("LocalReviewOpening.refresh", () => {
     ]);
   });
 
-  it("removes the superseded worktree on Refresh and checks it out again when the checkout returns to it", async () => {
+  it("keeps a legacy-protected worktree on Refresh and reuses its session when the checkout returns", async () => {
     const { harness, workbench } = await draftedReview();
     const firstWorktree = harness.paths.worktreeDirectory(
       profileId,
@@ -157,15 +157,15 @@ describe("LocalReviewOpening.refresh", () => {
     );
     await writeFile(join(harness.repositoryPath, "probe.ts"), `${probe}//\n`);
     value(await harness.opening.refresh(profileId, workbench.review.id));
-    const prunedWorktree = await present(firstWorktree);
+    const protectedWorktree = await present(firstWorktree);
     await writeFile(join(harness.repositoryPath, "probe.ts"), probe);
 
     const reverted = value(
       await harness.opening.refresh(profileId, workbench.review.id),
     );
 
-    // The retained Analysis names the first session, so its patch stayed and only its worktree went.
-    expect(prunedWorktree).toBe(false);
+    // The legacy Insight slot protects the old session and its worktree.
+    expect(protectedWorktree).toBe(true);
     expect(reverted.session.id).toBe(workbench.session.id);
     expect(await present(join(firstWorktree, "probe.ts"))).toBe(true);
     expect(reverted.localDrafts).toEqual([

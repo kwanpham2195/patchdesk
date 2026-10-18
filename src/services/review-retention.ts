@@ -42,7 +42,7 @@ type Dependencies = SessionRunningStateDependencies & {
   readonly profiles: Pick<ProfileStore, "load">;
   readonly reviews: Pick<ReviewStore, "load" | "list" | "delete">;
   readonly sessions: Pick<ReviewSessionStore, "load" | "listSessions">;
-  readonly insights: Pick<InsightStore, "load">;
+  readonly insights: Pick<InsightStore, "load" | "hasLegacySlots">;
   readonly localApplyOperations: Pick<LocalApplyOperationStore, "load">;
   readonly writeOperations: Pick<ReviewWriteOperationStore, "load">;
   readonly refreshOperations: Pick<RefreshOperationStore, "load">;
@@ -72,7 +72,8 @@ export class ReviewRetention {
 
   /**
    * Removes every superseded session of one Open Review: its worktree, its
-   * managed refs, and its session directory. A session a retained Insight
+   * managed refs, and its session directory. Legacy slots protect every session,
+   * worktree and ref of their Review. A session a retained Insight
    * names keeps its directory, which holds everything that Insight reads, and
    * loses only its worktree and refs. A Terminal Review is left to ADR 0020's
    * 14-day rule. The caller holds the Review lock; the profile lock is taken
@@ -195,22 +196,29 @@ export class ReviewRetention {
     reviewId: ReviewId,
     localPath: string,
   ): Promise<"removed" | "kept" | "failed"> {
-    const [apply, sessions, insights] = await Promise.all([
+    const [apply, sessions] = await Promise.all([
       this.dependencies.localApplyOperations.load(profileId, reviewId),
       this.dependencies.sessions.listSessions(profileId),
-      Promise.all(
-        (["analysis", "walkthrough", "brief", "guide"] as const).map((type) =>
-          this.dependencies.insights.load(profileId, reviewId, type),
-        ),
-      ),
     ]);
     if (apply._tag === "err" || sessions._tag === "err") return "failed";
+    if (apply.value !== undefined) return "kept";
+    const legacy = await this.dependencies.insights.hasLegacySlots(
+      profileId,
+      reviewId,
+    );
+    if (legacy._tag === "err") return "failed";
+    if (legacy.value) return "kept";
+    const insights = await Promise.all(
+      (["analysis", "walkthrough", "brief", "guide"] as const).map((type) =>
+        this.dependencies.insights.load(profileId, reviewId, type),
+      ),
+    );
     const insightRunning = insights.some((record) =>
       record._tag === "ok"
         ? record.value.activeRun !== undefined
         : record.error.reason !== "not_found",
     );
-    if (apply.value !== undefined || insightRunning) return "kept";
+    if (insightRunning) return "kept";
     const owned = sessions.value.filter(
       (session) => createReviewId(session.key) === reviewId,
     );
@@ -331,6 +339,12 @@ export class ReviewRetention {
       return err({ _tag: "StorageUnavailable" });
     if (apply.value !== undefined || write.value !== undefined)
       return ok(undefined);
+    const legacy = await this.dependencies.insights.hasLegacySlots(
+      profileId,
+      reviewId,
+    );
+    if (legacy._tag === "err") return err({ _tag: "StorageUnavailable" });
+    if (legacy.value) return ok(undefined);
     const [review, profile, sessions, insightSessions] = await Promise.all([
       this.dependencies.reviews.load(profileId, reviewId),
       this.dependencies.profiles.load(profileId),

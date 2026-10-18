@@ -196,7 +196,7 @@ function present(path: string): Promise<boolean> {
 }
 
 describe("ReviewRetention of pull request Reviews", () => {
-  it("leaves only the current session after two pushes and keeps the patch a retained Insight reads", async () => {
+  it("keeps every session, worktree and ref protected by a legacy Insight slot after two pushes", async () => {
     const harness = await localApplyHarness();
     const pushed = await pushedPullRequest(harness, 2);
     const [opened, firstPush, current] = pushed.sessions;
@@ -216,24 +216,31 @@ describe("ReviewRetention of pull request Reviews", () => {
 
     const stored = value(await pushed.sessionStore.listSessions(profileId));
     expect(stored.map((session) => session.id).sort()).toEqual(
-      [opened.id, current.id].sort(),
+      [opened.id, firstPush.id, current.id].sort(),
     );
     expect(await present(harness.paths.patchFile(profileId, opened.id))).toBe(
       true,
     );
     expect(
       await present(harness.paths.worktreeDirectory(profileId, opened.id)),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       await present(harness.paths.patchFile(profileId, firstPush.id)),
-    ).toBe(false);
-    expect(pullRequestRefs(harness.repositoryPath)).toEqual([
-      `refs/patchdesk/reviews/${profileId}/${current.id}/base`,
-      `refs/patchdesk/reviews/${profileId}/${current.id}/head`,
-    ]);
-    expect(sessionWorktrees(harness.repositoryPath)).toEqual([
-      expect.stringContaining(current.id),
-    ]);
+    ).toBe(true);
+    expect(pullRequestRefs(harness.repositoryPath)).toEqual(
+      pushed.sessions
+        .flatMap((session) => [
+          `refs/patchdesk/reviews/${profileId}/${session.id}/base`,
+          `refs/patchdesk/reviews/${profileId}/${session.id}/head`,
+        ])
+        .sort(),
+    );
+    expect([...sessionWorktrees(harness.repositoryPath)].sort()).toEqual(
+      pushed.sessions
+        .map((session) => session.id)
+        .sort()
+        .map((id) => expect.stringContaining(id)),
+    );
   });
 
   it("removes the superseded metadata-only sessions of a Review whose profile names no checkout", async () => {
