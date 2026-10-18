@@ -8,6 +8,7 @@ import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import { err, ok, type Result } from "#src/domain/result";
 import { spoolLegacyJson } from "./insight-legacy-json-spool";
 import { LegacyJsonLexicalError } from "./insight-legacy-json-tokenizer";
+import { decodeLegacyJson } from "./insight-legacy-json-decoder";
 
 /** Explicit shadow preparation has no worker, provider, startup hook or slot publication. */
 export class InsightMigrationService {
@@ -17,7 +18,7 @@ export class InsightMigrationService {
     this.storage = new InsightStore(paths);
   }
 
-  /** Returns a partial lexical checkpoint, never a converted/equal historical result. */
+  /** Returns a structural checkpoint with duplicate resolution and semantic conversion still pending. */
   async prepareAnalysisShadow(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -26,9 +27,16 @@ export class InsightMigrationService {
     return this.storage.prepareAnalysisShadow(
       profileId,
       reviewId,
-      async (source, destination) => {
+      async (source, files) => {
         try {
-          return ok(await spoolLegacyJson(source, destination, options));
+          const spool = await spoolLegacyJson(source, files.tokens, options);
+          const structure = await decodeLegacyJson(files, options);
+          if (structure._tag === "err")
+            return err({
+              _tag: "AnalysisShadowFailure",
+              reason: structure.error.reason,
+            });
+          return ok({ spool, structure: structure.value });
         } catch (cause: unknown) {
           if (options.signal?.aborted)
             return err({ _tag: "AnalysisShadowFailure", reason: "cancelled" });

@@ -8,6 +8,7 @@ import {
   open,
   lstat,
   realpath,
+  stat,
   type FileHandle,
 } from "node:fs/promises";
 import filesystem from "node:fs/promises";
@@ -356,7 +357,7 @@ describe("InsightStore mutate over a stored record it cannot use", () => {
   });
 });
 
-describe("InsightStore lexical shadow preparation", () => {
+describe("InsightStore shadow preparation", () => {
   let root: string | undefined;
   afterEach(async () => {
     if (root !== undefined) await rm(root, { recursive: true, force: true });
@@ -366,13 +367,19 @@ describe("InsightStore lexical shadow preparation", () => {
   const review = parseReviewId(currentRecord.reviewId);
   if (profile._tag === "err" || review._tag === "err")
     throw new Error("invalid shadow fixture ids");
+  const shadowProfileId = profile.value;
+  const shadowReviewId = review.value;
 
   it("refuses a FIFO source without waiting for its writer after cancellation", async () => {
     root = await mkdtemp(
       join(await realpath(tmpdir()), "patchdesk-shadow-repair-fifo-"),
     );
     const paths = PatchdeskPaths.forTest(root);
-    const source = paths.insightFile(profile.value, review.value, "analysis");
+    const source = paths.insightFile(
+      shadowProfileId,
+      shadowReviewId,
+      "analysis",
+    );
     await mkdir(dirname(source), { recursive: true });
     execFileSync("mkfifo", [source]);
     const controller = new AbortController();
@@ -530,10 +537,10 @@ describe("InsightStore lexical shadow preparation", () => {
       await readFile(join(outcome.value.directory, "source.json")),
     ).toEqual(original);
     expect(outcome.value).toMatchObject({
-      state: "lexical_spooled",
+      state: "structure_spooled",
       sourceBytes: original.length,
       sourceHash: createHash("sha256").update(original).digest("hex"),
-      pending: "structure_duplicates_sensitive_scan_schema_conversion_equality",
+      pending: "duplicates_sensitive_scan_schema_conversion_equality",
     });
     expect(backupHandles).toHaveLength(2);
     expect(reads.every((read) => read.handle === backupHandles[1])).toBe(true);
@@ -583,6 +590,120 @@ describe("InsightStore lexical shadow preparation", () => {
     ]);
     expect(raw).toHaveLength(outcome.value.spool.tokens);
   });
+
+  it("preserves every nested structural edge and duplicate-key occurrence on disk", async () => {
+    const fixture = await structuralFixture(
+      "[".repeat(512) + '{"dup":1,"dup":2,"empty":[]}' + "]".repeat(512),
+    );
+    const result = await new InsightMigrationService(
+      fixture.paths,
+    ).prepareAnalysisShadow(profile.value, review.value);
+    expect(result._tag).toBe("ok");
+    if (result._tag === "err") throw new Error("structural fixture failed");
+    expect(result.value.state).toBe("structure_spooled");
+    expect(result.value.structure).toEqual({
+      root: 1,
+      values: 516,
+      keys: 3,
+      records: 1559,
+      maxDepth: 514,
+    });
+    expect(await readFile(fixture.source)).toEqual(fixture.original);
+    expect(await readFile(join(result.value.directory, "source.json"))).toEqual(
+      fixture.original,
+    );
+    expect((await stat(join(result.value.directory, "frames.bin"))).size).toBe(
+      514 * 512,
+    );
+    const rows: ReadonlyArray<{ readonly tag: string }> = (
+      await readFile(join(result.value.directory, "structure.ndjson"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line: string) => JSON.parse(line));
+    const children = rows.filter((row) => row.tag === "child");
+    expect(children).toHaveLength(515);
+    for (let parent = 1; parent <= 512; parent += 1)
+      expect(children[parent - 1]).toEqual({
+        tag: "child",
+        parent,
+        id: parent + 1,
+        ordinal: 0,
+        key: null,
+      });
+    expect(children.slice(512)).toEqual([
+      { tag: "child", parent: 513, id: 515, ordinal: 0, key: 514 },
+      { tag: "child", parent: 513, id: 517, ordinal: 1, key: 516 },
+      { tag: "child", parent: 513, id: 519, ordinal: 2, key: 518 },
+    ]);
+    expect(rows.filter((row) => row.tag === "fragment")).toEqual([
+      { tag: "fragment", id: 514, sequence: 0, text: "dup" },
+      { tag: "fragment", id: 515, sequence: 0, text: "1" },
+      { tag: "fragment", id: 516, sequence: 0, text: "dup" },
+      { tag: "fragment", id: 517, sequence: 0, text: "2" },
+      { tag: "fragment", id: 518, sequence: 0, text: "empty" },
+    ]);
+    expect(rows).toHaveLength(result.value.structure.records);
+  });
+
+  it("refuses a lexically valid trailing comma and preserves the original backup", async () => {
+    const fixture = await structuralFixture("[1,]");
+    const result = await new InsightMigrationService(
+      fixture.paths,
+    ).prepareAnalysisShadow(profile.value, review.value);
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
+    });
+    expect(await readFile(fixture.source)).toEqual(fixture.original);
+    expect(await failedStructuralBackup(fixture.paths)).toEqual(
+      fixture.original,
+    );
+  });
+
+  it("refuses a second root value and preserves the original backup", async () => {
+    const fixture = await structuralFixture("0 1");
+    const result = await new InsightMigrationService(
+      fixture.paths,
+    ).prepareAnalysisShadow(profile.value, review.value);
+    expect(result).toEqual({
+      _tag: "err",
+      error: { _tag: "AnalysisShadowFailure", reason: "invalid_legacy" },
+    });
+    expect(await readFile(fixture.source)).toEqual(fixture.original);
+    expect(await failedStructuralBackup(fixture.paths)).toEqual(
+      fixture.original,
+    );
+  });
+
+  async function structuralFixture(text: string) {
+    root = await mkdtemp(
+      join(await realpath(tmpdir()), "patchdesk-shadow-structure-"),
+    );
+    const paths = PatchdeskPaths.forTest(root);
+    const source = paths.insightFile(
+      shadowProfileId,
+      shadowReviewId,
+      "analysis",
+    );
+    const original = Buffer.from(text);
+    await mkdir(dirname(source), { recursive: true });
+    await writeFile(source, original);
+    return { paths, source, original };
+  }
+
+  async function failedStructuralBackup(paths: PatchdeskPaths) {
+    const directory = paths.insightMigrationDirectory(
+      shadowProfileId,
+      shadowReviewId,
+    );
+    const attempts = await readdir(directory);
+    expect(attempts).toHaveLength(1);
+    const attempt = attempts[0];
+    if (attempt === undefined)
+      throw new Error("structural fixture backup missing");
+    return readFile(join(directory, attempt, "source.json"));
+  }
 });
 
 async function withShadowFileOpens<T>(

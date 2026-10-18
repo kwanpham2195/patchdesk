@@ -10,7 +10,7 @@ import { isPathContained } from "./path-containment";
 
 /** This checkpoint has no migration authority and cannot be used as a retained result. */
 export type AnalysisShadowCheckpoint = {
-  readonly state: "lexical_spooled";
+  readonly state: "structure_spooled";
   readonly sourceHash: string;
   readonly sourceBytes: number;
   readonly directory: string;
@@ -20,7 +20,21 @@ export type AnalysisShadowCheckpoint = {
     readonly sourceHash: string;
     readonly sourceBytes: number;
   };
-  readonly pending: "structure_duplicates_sensitive_scan_schema_conversion_equality";
+  readonly structure: {
+    readonly root: number;
+    readonly values: number;
+    readonly keys: number;
+    readonly records: number;
+    readonly maxDepth: number;
+  };
+  readonly pending: "duplicates_sensitive_scan_schema_conversion_equality";
+};
+
+/** Fixed scratch descriptors remain storage-owned through lexical and structural processing. */
+export type AnalysisShadowFiles = {
+  readonly tokens: FileHandle;
+  readonly frames: FileHandle;
+  readonly structure: FileHandle;
 };
 
 /** Private preparation failures never substitute an empty or healed Insight. */
@@ -30,6 +44,7 @@ export type AnalysisShadowFailure = {
     | "source_changed"
     | "backup_mismatch"
     | "invalid_legacy"
+    | "invalid_spool"
     | "storage_unavailable"
     | "representation_exhausted"
     | "cancelled";
@@ -45,9 +60,12 @@ export class InsightMigrationStore {
     reviewId: ReviewId,
     spoolInput: (
       source: FileHandle,
-      destination: FileHandle,
+      files: AnalysisShadowFiles,
     ) => Promise<
-      Result<AnalysisShadowCheckpoint["spool"], AnalysisShadowFailure>
+      Result<
+        Pick<AnalysisShadowCheckpoint, "spool" | "structure">,
+        AnalysisShadowFailure
+      >
     >,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<AnalysisShadowCheckpoint, AnalysisShadowFailure>> {
@@ -122,7 +140,7 @@ export class InsightMigrationStore {
         return shadowFailure("backup_mismatch");
       const output = await open(
         join(attempt, "tokens.ndjson"),
-        constants.O_WRONLY |
+        constants.O_RDWR |
           constants.O_CREAT |
           constants.O_EXCL |
           constants.O_NOFOLLOW |
@@ -132,29 +150,63 @@ export class InsightMigrationStore {
       handles.push(output);
       if (!(await output.stat()).isFile())
         return shadowFailure("storage_unavailable");
+      const frames = await open(
+        join(attempt, "frames.bin"),
+        constants.O_RDWR |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW |
+          constants.O_NONBLOCK,
+        0o600,
+      );
+      handles.push(frames);
+      if (!(await frames.stat()).isFile())
+        return shadowFailure("storage_unavailable");
+      const structure = await open(
+        join(attempt, "structure.ndjson"),
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW |
+          constants.O_NONBLOCK,
+        0o600,
+      );
+      handles.push(structure);
+      if (!(await structure.stat()).isFile())
+        return shadowFailure("storage_unavailable");
       // Both passes use explicit offsets on this verified descriptor, never a pathname reopen.
-      const spool = await spoolInput(verified, output);
+      const spool = await spoolInput(verified, {
+        tokens: output,
+        frames,
+        structure,
+      });
       if (spool._tag === "err") return spool;
       const verifiedAfter = await verified.stat();
       if (
-        spool.value.sourceHash !== copied.hash ||
-        spool.value.sourceBytes !== copied.bytes ||
+        spool.value.spool.sourceHash !== copied.hash ||
+        spool.value.spool.sourceBytes !== copied.bytes ||
         verifiedBefore.size !== verifiedAfter.size ||
         verifiedBefore.mtimeMs !== verifiedAfter.mtimeMs ||
         verifiedBefore.ctimeMs !== verifiedAfter.ctimeMs
       )
         return shadowFailure("backup_mismatch");
-      await output.sync();
+      const synced = await Promise.allSettled([
+        output.sync(),
+        frames.sync(),
+        structure.sync(),
+      ]);
+      if (synced.some((result) => result.status === "rejected"))
+        return shadowFailure("storage_unavailable");
       await syncDirectory(attempt);
       options.signal?.throwIfAborted();
       return ok({
-        state: "lexical_spooled",
+        state: "structure_spooled",
         sourceHash: copied.hash,
         sourceBytes: copied.bytes,
         directory: attempt,
-        spool: spool.value,
-        pending:
-          "structure_duplicates_sensitive_scan_schema_conversion_equality",
+        spool: spool.value.spool,
+        structure: spool.value.structure,
+        pending: "duplicates_sensitive_scan_schema_conversion_equality",
       });
     } catch (cause: unknown) {
       if (options.signal?.aborted) return shadowFailure("cancelled");

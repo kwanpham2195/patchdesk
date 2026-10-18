@@ -50,6 +50,7 @@ import {
   InsightMigrationStore,
   type AnalysisShadowCheckpoint,
   type AnalysisShadowFailure,
+  type AnalysisShadowFiles,
 } from "./insight-migration-store";
 import type { FileHandle } from "node:fs/promises";
 
@@ -156,9 +157,12 @@ export class InsightStore {
     reviewId: ReviewId,
     spoolInput: (
       source: FileHandle,
-      destination: FileHandle,
+      files: AnalysisShadowFiles,
     ) => Promise<
-      Result<AnalysisShadowCheckpoint["spool"], AnalysisShadowFailure>
+      Result<
+        Pick<AnalysisShadowCheckpoint, "spool" | "structure">,
+        AnalysisShadowFailure
+      >
     >,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<AnalysisShadowCheckpoint, AnalysisShadowFailure>> {
