@@ -11,6 +11,10 @@ import {
   parseWrappedInsightSlotRecord3,
   type InsightSlotRecord3,
 } from "#src/domain/insight-slot-contract";
+import {
+  parseWrappedInsightSlotIdentityDescriptor,
+  type InsightSlotIdentityDescriptor,
+} from "#src/domain/insight-slot-identity-contract";
 import { err, ok, type Result } from "#src/domain/result";
 import {
   installImmutableInsightArtifactFile,
@@ -33,6 +37,33 @@ export class InsightArtifactStore {
     reviewId: ReviewId,
     reference: InsightArtifactReference,
   ): Promise<Result<InsightSlotRecord3, StorageFailure>> {
+    const bytes = await this.readVerifiedObject(profileId, reviewId, reference);
+    if (bytes._tag === "err") return bytes;
+    const parsed = parseWrappedInsightSlotRecord3(bytes.value);
+    return parsed._tag === "err"
+      ? artifactReadFailure("invalid_stored_value")
+      : parsed;
+  }
+
+  /** Verifies the SlotIdentity wrapper and descriptors, not referenced contents or decoded ID validity/equality. */
+  async readSlotIdentityDescriptor(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    reference: InsightArtifactReference,
+  ): Promise<Result<InsightSlotIdentityDescriptor, StorageFailure>> {
+    const bytes = await this.readVerifiedObject(profileId, reviewId, reference);
+    if (bytes._tag === "err") return bytes;
+    const parsed = parseWrappedInsightSlotIdentityDescriptor(bytes.value);
+    return parsed._tag === "err"
+      ? artifactReadFailure("invalid_stored_value")
+      : parsed;
+  }
+
+  private async readVerifiedObject(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    reference: InsightArtifactReference,
+  ): Promise<Result<Uint8Array, StorageFailure>> {
     const path = this.paths.insightArtifactObjectFile(
       profileId,
       reviewId,
@@ -52,10 +83,7 @@ export class InsightArtifactStore {
       createHash("sha256").update(bytes.value).digest("hex") !== reference.hash
     )
       return artifactReadFailure("invalid_stored_value");
-    const parsed = parseWrappedInsightSlotRecord3(bytes.value);
-    return parsed._tag === "err"
-      ? artifactReadFailure("invalid_stored_value")
-      : parsed;
+    return bytes;
   }
 
   /** Stages one durable immutable object, not a published slot or validated graph; I/O failure may leave it installed. */

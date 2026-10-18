@@ -1,5 +1,7 @@
 import * as v from "valibot";
 
+import { err, ok, type Result } from "./result";
+
 /** The format-2 identifier alphabet is narrower than legacy domain IDs. */
 export const insightArtifactIdSchema = v.pipe(
   v.string(),
@@ -17,7 +19,7 @@ export const insightArtifactUnsignedSchema = v.pipe(
 );
 
 /** Lowercase SHA-256, validated before digest-based path resolution. */
-const insightArtifactHashSchema = v.pipe(
+export const insightArtifactHashSchema = v.pipe(
   v.string(),
   v.length(64),
   v.regex(/^[a-f0-9]{64}$/),
@@ -60,12 +62,29 @@ export type InsightCanonicalValue =
   | ReadonlyArray<InsightCanonicalValue>
   | { readonly [key: string]: InsightCanonicalValue };
 
-/** Compares canonical JSON after closed-schema parsing, so duplicate keys cannot survive re-encoding. */
-export function insightArtifactJsonIsCanonical(
-  text: string,
-  value: InsightCanonicalValue,
-): boolean {
-  return encodeInsightArtifactCanonicalJson(value) === text;
+/** Decodes UTF-8 bytes through the selected closed schema; exact re-encoding rejects duplicate keys and noncanonical JSON. */
+export function parseInsightArtifactCanonicalJson<
+  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+>(
+  bytes: Uint8Array,
+  schema: TSchema,
+): Result<v.InferOutput<TSchema>, { readonly _tag: "InvalidInsightArtifact" }> {
+  try {
+    const text = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
+    const input: unknown = JSON.parse(text);
+    const parsed = v.safeParse(schema, input);
+    if (
+      parsed.success &&
+      encodeInsightArtifactCanonicalJson(parsed.output) === text
+    )
+      return ok(parsed.output);
+  } catch {
+    // Rejected bytes never become absence or permission to heal stored authority.
+  }
+  return err({ _tag: "InvalidInsightArtifact" });
 }
 
 /** Encodes closed-schema values with the same representation used by canonical reads. */

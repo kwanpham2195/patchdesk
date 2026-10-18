@@ -21,7 +21,7 @@ export class InsightSlotStore {
     this.artifacts = new InsightArtifactStore(paths, insightArtifactReader);
   }
 
-  /** Only definite pointer absence returns undefined; referenced-record failures remain errors. */
+  /** Only definite pointer absence returns undefined; referenced-record/identity failures remain errors, and text contents stay unvalidated. */
   async read(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -47,6 +47,13 @@ export class InsightSlotStore {
       record.value.type !== type
     )
       return invalidSlotRead();
+    const identity = await this.artifacts.readSlotIdentityDescriptor(
+      profileId,
+      reviewId,
+      record.value.identity,
+    );
+    if (identity._tag === "err") return identity;
+    if (identity.value.type !== record.value.type) return invalidSlotRead();
     return record;
   }
 }
