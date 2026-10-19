@@ -14,6 +14,7 @@ import type {
   LocalPatchView,
   StoredLocalPatchView,
 } from "#src/domain/local-patch-view";
+import { isPathContained } from "./path-containment";
 
 export type PatchdeskPathRoots = {
   readonly configDirectory: string;
@@ -31,6 +32,11 @@ const PATCHDESK_ROOTS_ENVIRONMENT = {
 /** Set to `1` to run an unpackaged build against the installed app's roots. */
 const DEV_SHARED_ENVIRONMENT = "PATCHDESK_DEV_SHARED";
 
+const JOURNAL_ID_SYNTAX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const JOURNAL_ENTRY_NAME_SYNTAX = new RegExp(
+  `${JOURNAL_ID_SYNTAX.source.slice(0, -1)}(?:\\.intent)?\\.json$`,
+);
 const INSTALLED_MCP_SOCKET = "patchdesk.sock";
 const INSTALLED_REF_NAMESPACE = "refs/patchdesk";
 const DEV_REF_NAMESPACE = "refs/patchdesk-dev";
@@ -353,6 +359,63 @@ export class PatchdeskPaths {
       "slots",
       `${type}.json`,
     );
+  }
+
+  /** Run journals live beside, never inside, the slot and object directories. */
+  insightJournalsDirectory(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "insight-artifacts-v2",
+      "journals",
+    );
+  }
+
+  insightJournalPointerFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    journalId: string,
+  ): Result<string, InvalidDomainValue> {
+    return this.journalFile(
+      profileId,
+      reviewId,
+      journalId,
+      `${journalId}.json`,
+    );
+  }
+
+  insightJournalIntentFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    journalId: string,
+  ): Result<string, InvalidDomainValue> {
+    return this.journalFile(
+      profileId,
+      reviewId,
+      journalId,
+      `${journalId}.intent.json`,
+    );
+  }
+
+  /** True for `<uuid>.json` and `<uuid>.intent.json`; temp files and strays are not journal entries. */
+  isInsightJournalEntryName(name: string): boolean {
+    return JOURNAL_ENTRY_NAME_SYNTAX.test(name);
+  }
+
+  /** Only a lowercase UUID names a journal, so no ID can carry a path separator or collide across suffixes. */
+  private journalFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    journalId: string,
+    fileName: string,
+  ): Result<string, InvalidDomainValue> {
+    const directory = this.insightJournalsDirectory(profileId, reviewId);
+    const path = join(directory, fileName);
+    return JOURNAL_ID_SYNTAX.test(journalId) && isPathContained(directory, path)
+      ? ok(path)
+      : err({ _tag: "InvalidDomainValue", field: "journalId" });
   }
 
   /** Object resolution accepts only a validated digest, never a provider filename. */

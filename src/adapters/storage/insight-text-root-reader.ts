@@ -10,9 +10,9 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { StorageFailure } from "./json-file";
 
 /** Identity strings are short IDs; these caps bound reads from stored data before any traversal trusts its counts. */
-const MAX_BLOCKS = 16;
+export const MAX_TEXT_ROOT_BLOCKS = 16;
 const MAX_INDEX_NODES = 32;
-const MAX_INDEX_DEPTH = MAX_BLOCKS;
+const MAX_INDEX_DEPTH = MAX_TEXT_ROOT_BLOCKS;
 
 type ReadObject = (
   reference: InsightArtifactReference,
@@ -39,7 +39,7 @@ export async function verifyTextRootEquals(
   if (
     root.data.bytes !== expectedBytes.length ||
     root.utf16Units !== expected.length ||
-    root.data.blocks.count > MAX_BLOCKS
+    root.data.blocks.count > MAX_TEXT_ROOT_BLOCKS
   )
     return invalidRead();
   const digest = createHash("sha256");
@@ -67,7 +67,7 @@ export async function verifyTextRootEquals(
       for (const child of children) {
         if (
           child.count < 1 ||
-          child.count > MAX_BLOCKS ||
+          child.count > MAX_TEXT_ROOT_BLOCKS ||
           child.first > child.last ||
           (previousLast !== undefined && child.first <= previousLast)
         )
@@ -102,7 +102,7 @@ export async function verifyTextRootEquals(
       // BlobBlock indexes use the contract default key: the zero-padded 16-digit block ordinal.
       if (entry.key !== String(blocks).padStart(16, "0")) return invalidRead();
       blocks += 1;
-      if (blocks > MAX_BLOCKS) return invalidRead();
+      if (blocks > MAX_TEXT_ROOT_BLOCKS) return invalidRead();
       const blockBytes = await readObject(entry.value);
       if (blockBytes._tag === "err") return blockBytes;
       const block = parseWrappedInsightBlobBlock(blockBytes.value);

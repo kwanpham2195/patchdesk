@@ -182,11 +182,58 @@ async function stageImmutableFile(
   bytes: Uint8Array,
   parents: ReadonlyArray<Stats>,
 ): Promise<Result<void, StorageFailure>> {
+  const staged = await stageOwnedTemporaryFile(ownedRoot, path, bytes, parents);
+  if (staged._tag === "err") return staged;
+  let outcome: Result<void, StorageFailure> = ok(undefined);
+  try {
+    const checked = await readOwnedParents(ownedRoot, path);
+    if (checked._tag === "err" || !sameParents(parents, checked.value))
+      outcome = artifactWriteFailure("io");
+    else {
+      try {
+        await link(staged.value.path, path);
+      } catch (cause: unknown) {
+        if (
+          !(
+            cause instanceof Error &&
+            "code" in cause &&
+            cause.code === "EEXIST"
+          )
+        )
+          outcome = artifactWriteFailure("io");
+      }
+    }
+  } catch {
+    outcome = artifactWriteFailure("io");
+  }
+  const removed = await removeStagedTemporaryFile(
+    ownedRoot,
+    path,
+    staged.value,
+    parents,
+    false,
+  );
+  return removed._tag === "err" ? removed : outcome;
+}
+
+/** A temporary file this process exclusively created, identified by inode so cleanup never removes a swapped-in file. */
+type StagedTemporaryFile = {
+  readonly path: string;
+  readonly identity: Stats;
+};
+
+/** Exclusively creates a sibling temporary file for `path`, writes and fsyncs `bytes`; a failure removes the file it created. */
+async function stageOwnedTemporaryFile(
+  ownedRoot: string,
+  path: string,
+  bytes: Uint8Array,
+  parents: ReadonlyArray<Stats>,
+): Promise<Result<StagedTemporaryFile, StorageFailure>> {
   const temporary = join(
     dirname(path),
     `.${basename(path)}.${randomUUID()}.tmp`,
   );
-  let ownedTemporary: Stats | undefined;
+  let identity: Stats | undefined;
   let outcome: Result<void, StorageFailure> = artifactWriteFailure("io");
   try {
     const file = await open(
@@ -199,15 +246,15 @@ async function stageImmutableFile(
       0o600,
     );
     try {
-      ownedTemporary = await file.stat();
-      if (isOwnedRegularFile(ownedTemporary)) {
+      identity = await file.stat();
+      if (isOwnedRegularFile(identity)) {
         await file.writeFile(bytes);
         await file.sync();
         const written = await file.stat();
         outcome =
           written.size === bytes.length &&
-          written.dev === ownedTemporary.dev &&
-          written.ino === ownedTemporary.ino &&
+          written.dev === identity.dev &&
+          written.ino === identity.ino &&
           sameFile(written, await lstat(temporary))
             ? ok(undefined)
             : artifactWriteFailure("invalid_stored_value");
@@ -215,42 +262,53 @@ async function stageImmutableFile(
     } finally {
       await file.close();
     }
-    if (outcome._tag === "ok") {
-      const checked = await readOwnedParents(ownedRoot, path);
-      if (checked._tag === "err" || !sameParents(parents, checked.value))
-        outcome = artifactWriteFailure("io");
-      else {
-        try {
-          await link(temporary, path);
-        } catch (cause: unknown) {
-          if (
-            !(
-              cause instanceof Error &&
-              "code" in cause &&
-              cause.code === "EEXIST"
-            )
-          )
-            outcome = artifactWriteFailure("io");
-        }
-      }
-    }
   } catch {
     outcome = artifactWriteFailure("io");
   }
-  if (ownedTemporary !== undefined) {
+  if (identity === undefined) return artifactWriteFailure("io");
+  const staged = { path: temporary, identity };
+  if (outcome._tag === "ok") return ok(staged);
+  const removed = await removeStagedTemporaryFile(
+    ownedRoot,
+    path,
+    staged,
+    parents,
+    false,
+  );
+  return removed._tag === "err" ? removed : outcome;
+}
+
+/** Unlinks the staged file only while the parent chain and the file's dev/ino are unchanged; `mayBeGone` accepts a rename that already consumed it. */
+async function removeStagedTemporaryFile(
+  ownedRoot: string,
+  path: string,
+  staged: StagedTemporaryFile,
+  parents: ReadonlyArray<Stats>,
+  mayBeGone: boolean,
+): Promise<Result<void, StorageFailure>> {
+  try {
     const checked = await readOwnedParents(ownedRoot, path);
-    const current = await lstat(temporary);
+    if (checked._tag === "err" || !sameParents(parents, checked.value))
+      return artifactWriteFailure("io");
+    let current: Stats;
+    try {
+      current = await lstat(staged.path);
+    } catch (cause: unknown) {
+      return mayBeGone && isNotFound(cause)
+        ? ok(undefined)
+        : artifactWriteFailure("io");
+    }
     if (
-      checked._tag === "err" ||
-      !sameParents(parents, checked.value) ||
       !isOwnedRegularFile(current) ||
-      current.dev !== ownedTemporary.dev ||
-      current.ino !== ownedTemporary.ino
+      current.dev !== staged.identity.dev ||
+      current.ino !== staged.identity.ino
     )
       return artifactWriteFailure("io");
-    await unlink(temporary);
+    await unlink(staged.path);
+    return ok(undefined);
+  } catch {
+    return artifactWriteFailure("io");
   }
-  return outcome;
 }
 
 async function syncOwnedDirectory(

@@ -1,9 +1,11 @@
 import * as v from "valibot";
 
 import {
+  encodeInsightArtifactCanonicalJson,
   insightArtifactReferenceSchema,
   insightArtifactUnsignedSchema,
   parseInsightArtifactCanonicalJson,
+  type InsightCanonicalValue,
 } from "./insight-artifact-scalars";
 import { err, ok, type Result } from "./result";
 
@@ -94,4 +96,44 @@ export function parseWrappedInsightBlobBlock(
   return parsed._tag === "err"
     ? err({ _tag: "InvalidInsightBlobObject" })
     : ok(parsed.value.value);
+}
+
+/** A closed object schema registered under its exact format-2 name; there is no arbitrary-name path to a wrapper. */
+export type InsightArtifactCodec<
+  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+> = {
+  readonly name: string;
+  readonly schema: TSchema;
+};
+
+type InvalidInsightArtifactValue = {
+  readonly _tag: "InvalidInsightArtifactValue";
+};
+
+export const insightBlobIndexNodeCodec: InsightArtifactCodec<
+  typeof blobIndexNodeSchema
+> = { name: "Index<BlobBlock>", schema: blobIndexNodeSchema };
+
+export const insightBlobBlockCodec: InsightArtifactCodec<
+  typeof blobBlockSchema
+> = { name: "BlobBlock", schema: blobBlockSchema };
+
+/** Parses `value` against the codec's closed schema before producing the exact canonical wrapper bytes. */
+export function encodeWrappedInsightArtifact<
+  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+>(
+  codec: InsightArtifactCodec<TSchema>,
+  value: v.InferInput<TSchema>,
+): Result<Uint8Array, InvalidInsightArtifactValue> {
+  const parsed = v.safeParse(codec.schema, value);
+  const text = parsed.success
+    ? encodeInsightArtifactCanonicalJson({
+        format: 2,
+        schema: codec.name,
+        value: parsed.output,
+      })
+    : undefined;
+  return text === undefined
+    ? err({ _tag: "InvalidInsightArtifactValue" })
+    : ok(new TextEncoder().encode(text));
 }

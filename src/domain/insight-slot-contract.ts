@@ -1,8 +1,8 @@
 import * as v from "valibot";
 
 import { parseInsightRunId, parseIsoTimestamp } from "./ids";
+import type { InsightArtifactCodec } from "./insight-artifact-index";
 import {
-  encodeInsightArtifactCanonicalJson,
   insightArtifactIdSchema,
   insightArtifactInteger1Schema,
   insightArtifactReferenceSchema,
@@ -99,18 +99,7 @@ export function parseWrappedInsightSlotRecord3(
     : ok(parsed.value.value);
 }
 
-/** Validates the complete closed wrapper before producing its exact canonical UTF-8 bytes. */
-export function encodeWrappedInsightSlotRecord3(
-  value: InsightSlotRecord3,
-): Result<Uint8Array, InvalidInsightSlot> {
-  const parsed = v.safeParse(wrappedSlotRecord3Schema, {
-    format: 2,
-    schema: "SlotRecord3",
-    value,
-  });
-  if (!parsed.success) return err({ _tag: "InvalidInsightSlot" });
-  const text = encodeInsightArtifactCanonicalJson(parsed.output);
-  return text === undefined
-    ? err({ _tag: "InvalidInsightSlot" })
-    : ok(new TextEncoder().encode(text));
-}
+/** The only registered SlotRecord3 wrapper; writers encode through `encodeWrappedInsightArtifact`. */
+export const insightSlotRecord3Codec: InsightArtifactCodec<
+  typeof slotRecord3Schema
+> = { name: "SlotRecord3", schema: slotRecord3Schema };
