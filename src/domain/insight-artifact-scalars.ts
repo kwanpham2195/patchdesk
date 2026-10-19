@@ -1,5 +1,6 @@
 import * as v from "valibot";
 
+import { parseGitSha, parseInsightRunId, parseIsoTimestamp } from "./ids";
 import { err, ok, type Result } from "./result";
 
 /** The format-2 identifier alphabet is narrower than legacy domain IDs. */
@@ -17,6 +18,35 @@ export const insightArtifactUnsignedSchema = v.pipe(
       Number.isSafeInteger(value) && value >= 0 && !Object.is(value, -0),
   ),
 );
+
+/** P: an unsigned integer of at least 1. */
+export const insightArtifactPositiveSchema = v.pipe(
+  insightArtifactUnsignedSchema,
+  v.minValue(1),
+);
+
+/** Time: the stored millisecond timestamp format. */
+export const insightArtifactTimeSchema = v.pipe(
+  v.string(),
+  v.check((value) => parseIsoTimestamp(value)._tag === "ok"),
+);
+
+/** GitSha: the lowercase SHA syntax Patchdesk accepts. */
+export const insightArtifactGitShaSchema = v.pipe(
+  v.string(),
+  v.check((value) => parseGitSha(value)._tag === "ok"),
+);
+
+/** A new run's Id must also be usable as a producer-facing run ID. */
+export const insightArtifactRunIdSchema = v.pipe(
+  insightArtifactIdSchema,
+  v.check((value) => parseInsightRunId(value)._tag === "ok"),
+);
+
+/** A run Id that passed the format-2 alphabet and `parseInsightRunId`. */
+export type InsightArtifactRunId = v.InferOutput<
+  typeof insightArtifactRunIdSchema
+>;
 
 /** Lowercase SHA-256, validated before digest-based path resolution. */
 export const insightArtifactHashSchema = v.pipe(
@@ -37,21 +67,33 @@ export type InsightArtifactReference = v.InferOutput<
   typeof insightArtifactReferenceSchema
 >;
 
-/** HInteger1 preserves binary64 integers beyond the safe-integer range. */
-export const insightArtifactInteger1Schema = v.strictObject({
-  binary64: v.pipe(
-    v.string(),
-    v.length(16),
-    v.regex(/^[a-f0-9]{16}$/),
-    v.check((hex) => {
-      const bytes = new Uint8Array(8);
-      for (let index = 0; index < bytes.length; index += 1)
-        bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
-      const value = new DataView(bytes.buffer).getFloat64(0, false);
-      return Number.isFinite(value) && Number.isInteger(value) && value >= 1;
-    }),
-  ),
+/** I<X>: the root of an Index<X> object and its entry count; both are checked while traversing. */
+export const insightArtifactIndexDescriptorSchema = v.strictObject({
+  root: insightArtifactReferenceSchema,
+  count: insightArtifactUnsignedSchema,
 });
+
+/** Index descriptor shape only. */
+export type InsightArtifactIndexDescriptor = v.InferOutput<
+  typeof insightArtifactIndexDescriptorSchema
+>;
+
+const bytesRootDescriptorSchema = v.strictObject({
+  blocks: insightArtifactIndexDescriptorSchema,
+  bytes: insightArtifactUnsignedSchema,
+  sha256: insightArtifactHashSchema,
+});
+
+/** TextRoot descriptor: a fixed record whose bytes live behind its block index. */
+export const insightTextRootDescriptorSchema = v.strictObject({
+  data: bytesRootDescriptorSchema,
+  utf16Units: insightArtifactUnsignedSchema,
+});
+
+/** Text descriptor shape only; its blocks and bytes are verified by the storage reader. */
+export type InsightTextRootDescriptor = v.InferOutput<
+  typeof insightTextRootDescriptorSchema
+>;
 
 /** JSON representation accepted only after the owning closed schema has parsed it. */
 export type InsightCanonicalValue =

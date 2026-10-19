@@ -42,6 +42,7 @@ import { CommandRunner } from "#src/adapters/github/command-runner";
 import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
 import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import type { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
 import { ReviewContextService } from "#src/services/review-context-service";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
@@ -247,6 +248,13 @@ export async function fixture(
   });
   await reviews.save(review);
   const contextPack = contextPackFixture(paths, github);
+  const slots = new InsightSlotAuthority(
+    paths,
+    readBoundedInsightArtifactFile,
+    insights,
+    operations,
+    () => now,
+  );
   const coordinator = new InsightRunCoordinator(
     reviews,
     sessions,
@@ -260,6 +268,7 @@ export async function fixture(
     { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     operations,
     contextPack.service,
+    slots,
     () => now,
     diagnostics,
     providerCatalog,
@@ -288,6 +297,7 @@ export async function fixture(
     session,
     paths,
     operations,
+    slots,
     contextPack: contextPack.counted,
     diagnostics,
   };

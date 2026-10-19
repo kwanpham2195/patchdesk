@@ -19,12 +19,14 @@ import type {
   InsightCoordinatorFailure,
   InsightRunResponse,
 } from "./insight-run-coordinator";
+import type { InsightSlotAuthority } from "./insight-slot-authority";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
 /**
  * Fails the Insight runs a crash left marked active, one Review at a time and
  * across every profile at startup, so a restart never leaves a run stuck.
+ * Types with a current-format slot belong to the slot authority instead.
  */
 export class InsightRecovery {
   constructor(
@@ -34,10 +36,24 @@ export class InsightRecovery {
     private readonly operations: ReviewOperationCoordinator,
     private readonly active: ReadonlyMap<string, Active>,
     private readonly now: () => IsoTimestamp,
+    private readonly slots: Pick<InsightSlotAuthority, "recover" | "hasSlot">,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
   ) {}
 
   async recover(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: InsightType;
+  }): Promise<
+    Result<InsightRunResponse | undefined, InsightCoordinatorFailure>
+  > {
+    const slot = await this.slots.recover(input, this.active);
+    return slot._tag === "err"
+      ? err("storage_unavailable")
+      : this.recoverLegacy(input);
+  }
+
+  private async recoverLegacy(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly type: InsightType;
@@ -153,8 +169,38 @@ export class InsightRecovery {
           )
         : [],
     );
+    const slotChecks = await mapConcurrent(
+      recoveryTargets,
+      8,
+      async (target) => ({
+        target,
+        present: await this.slots.hasSlot({
+          profileId: target.profileId,
+          reviewId: target.review.id,
+          type: target.type,
+        }),
+      }),
+    );
+    for (const { target, present } of slotChecks) {
+      if (present._tag === "ok" && !present.value) continue;
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- slot reads go through the artifact worker, which refuses more than four pending reads, so recovery runs one slot at a time
+      const recovered = await this.slots.recover(
+        {
+          profileId: target.profileId,
+          reviewId: target.review.id,
+          type: target.type,
+        },
+        this.active,
+      );
+      if (recovered._tag === "err")
+        await this.recordRecoveryDiagnostic(
+          target.profileId,
+          target.review.currentSessionId,
+          `${target.type}_slot_recovery_${recovered.error}`,
+        );
+    }
     await mapConcurrent(recoveryTargets, 8, async (target) => {
-      const recovered = await this.recover({
+      const recovered = await this.recoverLegacy({
         profileId: target.profileId,
         reviewId: target.review.id,
         type: target.type,

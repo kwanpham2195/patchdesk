@@ -6,6 +6,7 @@ import {
   encodeWrappedInsightArtifact,
   insightBlobBlockCodec,
   insightBlobIndexNodeCodec,
+  parseWrappedInsightArtifact,
   type InsightArtifactCodec,
 } from "#src/domain/insight-artifact-index";
 import {
@@ -13,6 +14,7 @@ import {
   insightArtifactReferenceSchema,
   type InsightArtifactReference,
   type InsightCanonicalValue,
+  type InsightTextRootDescriptor,
 } from "#src/domain/insight-artifact-scalars";
 import {
   insightSlotRecord3Codec,
@@ -22,7 +24,6 @@ import {
 import {
   parseWrappedInsightSlotIdentityDescriptor,
   type InsightSlotIdentityDescriptor,
-  type InsightTextRootDescriptor,
 } from "#src/domain/insight-slot-identity-contract";
 import { err, ok, type Result } from "#src/domain/result";
 import {
@@ -84,6 +85,23 @@ export class InsightArtifactStore {
       root,
       expected,
     );
+  }
+
+  /** Verifies the object's bytes against `reference`, then parses the exact wrapper registered under `codec`. */
+  async readObject<
+    TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+  >(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    codec: InsightArtifactCodec<TSchema>,
+    reference: InsightArtifactReference,
+  ): Promise<Result<v.InferOutput<TSchema>, StorageFailure>> {
+    const bytes = await this.readVerifiedObject(profileId, reviewId, reference);
+    if (bytes._tag === "err") return bytes;
+    const parsed = parseWrappedInsightArtifact(codec, bytes.value);
+    return parsed._tag === "err"
+      ? artifactReadFailure("invalid_stored_value")
+      : parsed;
   }
 
   private async readVerifiedObject(

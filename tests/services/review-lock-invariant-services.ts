@@ -398,6 +398,13 @@ export function insightRunCoordinator(
     // No row reaches the context pack: every row fails before the session
     // load that precedes it.
     { ensure: track.stub("contextPack.ensure", ok(undefined)) } as never,
+    // The real authority takes the Review lock itself before it reads anything.
+    {
+      recover: (input: { profileId: string; reviewId: string }) =>
+        coordinator.withReviewLock(input.profileId, input.reviewId, async () =>
+          ok(undefined),
+        ),
+    } as never,
     now,
   );
 }

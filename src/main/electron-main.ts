@@ -110,7 +110,9 @@ import {
   type AccountInsightRunner,
 } from "#src/services/account-insight-invoker";
 import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import {
+  currentIsoTimestamp as now,
   InsightRunCoordinator,
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
@@ -393,7 +395,7 @@ function createInsightCoordinator(
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
-  insightArtifactReader: typeof readBoundedInsightArtifactFile,
+  reader: typeof readBoundedInsightArtifactFile,
 ): InsightRunCoordinator {
   const runtime = resolveInsightRuntime(
     app.getAppPath(),
@@ -481,10 +483,12 @@ function createInsightCoordinator(
       return providerInvokers[input.provider].invoke(input, options);
     },
   };
+  const store = new InsightStore(paths, reader);
+  const slots = new InsightSlotAuthority(paths, reader, store, operations, now);
   return new InsightRunCoordinator(
     new ReviewStore(paths),
     new ReviewSessionStore(paths),
-    new InsightStore(paths, insightArtifactReader),
+    store,
     paths,
     modelCatalog,
     { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
@@ -498,7 +502,8 @@ function createInsightCoordinator(
         new CommandRunner(undefined, logUnclassifiedCommandFailure),
       ),
     }),
-    undefined,
+    slots,
+    now,
     diagnostics,
     providerCatalog,
     briefReachComputer(
