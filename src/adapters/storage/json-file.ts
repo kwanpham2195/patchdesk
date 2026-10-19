@@ -152,11 +152,20 @@ async function syncDirectoryBestEffort(path: string): Promise<void> {
 
 /** Detect credential-like values before any Patchdesk artifact is persisted. */
 export function containsSensitiveData(value: unknown): boolean {
+  return scanForSensitiveData(value, true);
+}
+
+/** Values-only scan for closed-schema artifacts, whose contract-fixed field names (such as `authorization`) are not secrets. */
+export function containsSensitiveValue(value: unknown): boolean {
+  return scanForSensitiveData(value, false);
+}
+
+function scanForSensitiveData(value: unknown, checkKeys: boolean): boolean {
   if (typeof value === "string") {
     return containsCredentialLikeValue(value);
   }
   if (Array.isArray(value)) {
-    return value.some(containsSensitiveData);
+    return value.some((entry) => scanForSensitiveData(entry, checkKeys));
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -166,8 +175,8 @@ export function containsSensitiveData(value: unknown): boolean {
     if (
       // Opaque, one-way finding tokens are deliberate persisted review evidence;
       // credential-shaped values are still rejected by the value scan below.
-      /(?:secret|authorization|cookie|password)/i.test(key) ||
-      containsSensitiveData(nestedValue)
+      (checkKeys && /(?:secret|authorization|cookie|password)/i.test(key)) ||
+      scanForSensitiveData(nestedValue, checkKeys)
     ) {
       return true;
     }

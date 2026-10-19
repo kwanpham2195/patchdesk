@@ -1,6 +1,6 @@
 import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
 import { createHash } from "node:crypto";
-import { lstat } from "node:fs/promises";
+import { lstat, opendir } from "node:fs/promises";
 import { parseRetainedGuide } from "#src/domain/guide";
 import {
   guideReadingStateSchema,
@@ -154,7 +154,7 @@ export class InsightStore {
     this.currentSlots = new InsightSlotStore(paths, insightArtifactReader);
   }
 
-  /** Legacy presence or any parsed current slot protects all Review dependencies, including empty slots. */
+  /** Legacy presence, any run journal entry or any parsed current slot protects all Review dependencies, including empty slots. */
   async hasProtectedSlots(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -172,6 +172,8 @@ export class InsightStore {
           });
       }
     }
+    const journals = await this.hasJournalEntries(profileId, reviewId);
+    if (journals._tag === "err" || journals.value) return journals;
     let protectedSlots = false;
     for (const type of ["analysis", "walkthrough", "brief", "guide"] as const) {
       const slot = await this.currentSlots.read(profileId, reviewId, type);
@@ -179,6 +181,31 @@ export class InsightStore {
       if (slot.value !== undefined) protectedSlots = true;
     }
     return ok(protectedSlots);
+  }
+
+  /** Names only: a journal's contents are never read, crash-left temp files do not count, and any error other than absence fails closed. */
+  private async hasJournalEntries(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+  ): Promise<Result<boolean, StorageFailure>> {
+    try {
+      const directory = await opendir(
+        this.paths.insightJournalsDirectory(profileId, reviewId),
+      );
+      try {
+        for (let entry = await directory.read(); entry !== null;) {
+          if (this.paths.isInsightJournalEntryName(entry.name)) return ok(true);
+          entry = await directory.read();
+        }
+        return ok(false);
+      } finally {
+        await directory.close();
+      }
+    } catch (cause: unknown) {
+      return isNotFound(cause)
+        ? ok(false)
+        : err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
   }
 
   /**

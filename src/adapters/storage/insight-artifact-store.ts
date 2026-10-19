@@ -3,11 +3,19 @@ import * as v from "valibot";
 
 import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import {
+  encodeWrappedInsightArtifact,
+  insightBlobBlockCodec,
+  insightBlobIndexNodeCodec,
+  type InsightArtifactCodec,
+} from "#src/domain/insight-artifact-index";
+import {
+  insightArtifactHashSchema,
   insightArtifactReferenceSchema,
   type InsightArtifactReference,
+  type InsightCanonicalValue,
 } from "#src/domain/insight-artifact-scalars";
 import {
-  encodeWrappedInsightSlotRecord3,
+  insightSlotRecord3Codec,
   parseWrappedInsightSlotRecord3,
   type InsightSlotRecord3,
 } from "#src/domain/insight-slot-contract";
@@ -22,9 +30,12 @@ import {
   MAX_INSIGHT_OBJECT_BYTES,
   type readBoundedInsightArtifactFile,
 } from "./insight-artifact-files";
-import { containsSensitiveData, type StorageFailure } from "./json-file";
+import { containsSensitiveValue, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
-import { verifyTextRootEquals } from "./insight-text-root-reader";
+import {
+  MAX_TEXT_ROOT_BLOCKS,
+  verifyTextRootEquals,
+} from "./insight-text-root-reader";
 
 /** Stateless current-format object storage, without slot or publication authority. */
 export class InsightArtifactStore {
@@ -102,57 +113,153 @@ export class InsightArtifactStore {
     return bytes;
   }
 
-  /** Stages one durable immutable object, not a published slot or validated graph; I/O failure may leave it installed. */
+  /** Stages one durable immutable SlotRecord3, not a published slot or validated graph; I/O failure may leave it installed. */
   async writeSlotRecord3(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     value: InsightSlotRecord3,
   ): Promise<Result<InsightArtifactReference, StorageFailure>> {
-    const encoded = encodeWrappedInsightSlotRecord3(value);
+    return this.writeObject(
+      profileId,
+      reviewId,
+      insightSlotRecord3Codec,
+      value,
+    );
+  }
+
+  /** Stages one wrapped canonical object after parsing `value` against the codec's closed schema; I/O failure may leave it installed. */
+  async writeObject<
+    TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+  >(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    codec: InsightArtifactCodec<TSchema>,
+    value: v.InferInput<TSchema>,
+  ): Promise<Result<InsightArtifactReference, StorageFailure>> {
+    const encoded = encodeWrappedInsightArtifact(codec, value);
     if (
       encoded._tag === "err" ||
       encoded.value.length > MAX_INSIGHT_OBJECT_BYTES
     )
-      return err({
-        _tag: "StorageFailure",
-        operation: "write",
-        reason: "invalid_stored_value",
+      return artifactWriteFailure("invalid_stored_value");
+    // Contract-fixed field names such as `authorization` are not secrets, so only values are scanned.
+    if (containsSensitiveValue(value))
+      return artifactWriteFailure("sensitive_value");
+    return this.installBytes(profileId, reviewId, encoded.value);
+  }
+
+  /** Stages one raw blob of at most 16 KiB, named R<Blob>. */
+  async writeBlob(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    bytes: Uint8Array,
+  ): Promise<Result<InsightArtifactReference, StorageFailure>> {
+    if (bytes.length > MAX_INSIGHT_OBJECT_BYTES)
+      return artifactWriteFailure("invalid_stored_value");
+    // Credential patterns are ASCII, so a lossy decode of arbitrary bytes still exposes them.
+    if (containsSensitiveValue(Buffer.from(bytes).toString("utf8")))
+      return artifactWriteFailure("sensitive_value");
+    return this.installBytes(profileId, reviewId, bytes);
+  }
+
+  /** Stages text that fits one Index<BlobBlock> leaf (at most 16 blocks of 16 KiB); larger or ill-formed text fails invalid_stored_value. */
+  async writeTextRoot(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    text: string,
+  ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
+    const data = Buffer.from(text, "utf8");
+    // A lone surrogate encodes as U+FFFD, so a lossy round trip proves the text is a Unicode scalar sequence.
+    if (data.toString("utf8") !== text)
+      return artifactWriteFailure("invalid_stored_value");
+    if (containsSensitiveValue(text))
+      return artifactWriteFailure("sensitive_value");
+    const blocks = splitAtCodePoints(data);
+    if (blocks.length > MAX_TEXT_ROOT_BLOCKS)
+      return artifactWriteFailure("invalid_stored_value");
+    const sha256 = v.safeParse(
+      insightArtifactHashSchema,
+      createHash("sha256").update(data).digest("hex"),
+    );
+    if (!sha256.success) return artifactWriteFailure("invalid_stored_value");
+    const entries: { key: string; value: InsightArtifactReference }[] = [];
+    let byteStart = 0;
+    for (const block of blocks) {
+      const blob = await this.writeBlob(profileId, reviewId, block);
+      if (blob._tag === "err") return blob;
+      const reference = await this.writeObject(
+        profileId,
+        reviewId,
+        insightBlobBlockCodec,
+        { byteStart, bytes: blob.value },
+      );
+      if (reference._tag === "err") return reference;
+      entries.push({
+        key: String(entries.length).padStart(16, "0"),
+        value: reference.value,
       });
-    if (containsSensitiveData(value))
-      return err({
-        _tag: "StorageFailure",
-        operation: "write",
-        reason: "sensitive_value",
-      });
-    const reference = v.safeParse(insightArtifactReferenceSchema, {
-      hash: createHash("sha256").update(encoded.value).digest("hex"),
-      bytes: encoded.value.length,
+      byteStart += block.length;
+    }
+    const root = await this.writeObject(
+      profileId,
+      reviewId,
+      insightBlobIndexNodeCodec,
+      { tag: "leaf", entries },
+    );
+    if (root._tag === "err") return root;
+    return ok({
+      data: {
+        blocks: { root: root.value, count: entries.length },
+        bytes: data.length,
+        sha256: sha256.output,
+      },
+      utf16Units: text.length,
     });
-    if (!reference.success)
-      return err({
-        _tag: "StorageFailure",
-        operation: "write",
-        reason: "invalid_stored_value",
-      });
+  }
+
+  private async installBytes(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    bytes: Uint8Array,
+  ): Promise<Result<InsightArtifactReference, StorageFailure>> {
+    const reference = v.safeParse(insightArtifactReferenceSchema, {
+      hash: createHash("sha256").update(bytes).digest("hex"),
+      bytes: bytes.length,
+    });
+    if (!reference.success) return artifactWriteFailure("invalid_stored_value");
     const path = this.paths.insightArtifactObjectFile(
       profileId,
       reviewId,
       reference.output.hash,
     );
     if (path._tag === "err")
-      return err({
-        _tag: "StorageFailure",
-        operation: "write",
-        reason: "invalid_stored_value",
-      });
+      return artifactWriteFailure("invalid_stored_value");
     const installed = await installImmutableInsightArtifactFile(
       this.paths.dataDirectory(),
       this.paths.reviewDirectory(profileId, reviewId),
       path.value,
-      encoded.value,
+      bytes,
     );
     return installed._tag === "err" ? installed : ok(reference.output);
   }
+}
+
+/** Slices at most 16 KiB per block and never inside a multi-byte UTF-8 sequence. */
+function splitAtCodePoints(data: Buffer): Buffer[] {
+  const blocks: Buffer[] = [];
+  for (let start = 0; start < data.length;) {
+    let end = Math.min(start + MAX_INSIGHT_OBJECT_BYTES, data.length);
+    while (end < data.length && ((data[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+    blocks.push(data.subarray(start, end));
+    start = end;
+  }
+  return blocks;
+}
+
+function artifactWriteFailure(
+  reason: StorageFailure["reason"],
+): Result<never, StorageFailure> {
+  return err({ _tag: "StorageFailure", operation: "write", reason });
 }
 
 function artifactReadFailure(
