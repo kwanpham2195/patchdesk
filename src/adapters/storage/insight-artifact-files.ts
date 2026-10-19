@@ -223,7 +223,7 @@ type StagedTemporaryFile = {
 };
 
 /** Exclusively creates a sibling temporary file for `path`, writes and fsyncs `bytes`; a failure removes the file it created. */
-async function stageOwnedTemporaryFile(
+export async function stageOwnedTemporaryFile(
   ownedRoot: string,
   path: string,
   bytes: Uint8Array,
@@ -279,7 +279,7 @@ async function stageOwnedTemporaryFile(
 }
 
 /** Unlinks the staged file only while the parent chain and the file's dev/ino are unchanged; `mayBeGone` accepts a rename that already consumed it. */
-async function removeStagedTemporaryFile(
+export async function removeStagedTemporaryFile(
   ownedRoot: string,
   path: string,
   staged: StagedTemporaryFile,
@@ -311,7 +311,7 @@ async function removeStagedTemporaryFile(
   }
 }
 
-async function syncOwnedDirectory(
+export async function syncOwnedDirectory(
   path: string,
 ): Promise<Result<void, StorageFailure>> {
   const before = await lstat(path);
@@ -339,7 +339,7 @@ async function syncOwnedDirectory(
   }
 }
 
-async function readOwnedParents(
+export async function readOwnedParents(
   root: string,
   path: string,
 ): Promise<Result<ReadonlyArray<Stats>, StorageFailure>> {
@@ -368,7 +368,7 @@ async function readOwnedParents(
   return ok(parents);
 }
 
-function sameParents(
+export function sameParents(
   left: ReadonlyArray<Stats>,
   right: ReadonlyArray<Stats>,
 ): boolean {

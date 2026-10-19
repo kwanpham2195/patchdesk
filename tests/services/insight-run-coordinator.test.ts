@@ -84,11 +84,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
           },
         },
         {
-          analysis: {
-            async invoke() {
-              return ok(analysisResult);
-            },
-          },
+          analysis: { invoke: async () => ok(analysisResult) },
           walkthrough: {
             async invoke() {
               return ok(analysisResult);
@@ -103,6 +99,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
         },
         value.operations,
         contextPackFixture(value.paths).service,
+        value.slots,
         () => now,
       );
       await recovered.recoverAll();

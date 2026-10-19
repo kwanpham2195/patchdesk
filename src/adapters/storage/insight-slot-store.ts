@@ -10,6 +10,12 @@ import { InsightArtifactStore } from "./insight-artifact-store";
 import type { StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
+/** One verified slot and the pointer bytes it was read from. */
+export type InsightSlotSnapshot = {
+  readonly record: InsightSlotRecord3;
+  readonly pointerBytes: Uint8Array;
+};
+
 /** Stateless pointer resolution for conservative protection, not result/publication authority. */
 export class InsightSlotStore {
   private readonly artifacts: InsightArtifactStore;
@@ -27,6 +33,16 @@ export class InsightSlotStore {
     reviewId: ReviewId,
     type: InsightType,
   ): Promise<Result<InsightSlotRecord3 | undefined, StorageFailure>> {
+    const current = await this.readCurrent(profileId, reviewId, type);
+    return current._tag === "err" ? current : ok(current.value?.record);
+  }
+
+  /** As `read`, plus the pointer's exact bytes, which a compare-and-replace of the pointer needs as its expected prior. */
+  async readCurrent(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): Promise<Result<InsightSlotSnapshot | undefined, StorageFailure>> {
     const bytes = await this.insightArtifactReader(
       this.paths.dataDirectory(),
       this.paths.insightSlotPointerFile(profileId, reviewId, type),
@@ -66,7 +82,7 @@ export class InsightSlotStore {
       );
       if (verified._tag === "err") return verified;
     }
-    return record;
+    return ok({ record: record.value, pointerBytes: bytes.value });
   }
 }
 

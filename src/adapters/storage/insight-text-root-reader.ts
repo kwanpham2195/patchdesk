@@ -4,8 +4,10 @@ import {
   parseWrappedInsightBlobBlock,
   parseWrappedInsightBlobIndexNode,
 } from "#src/domain/insight-artifact-index";
-import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
-import type { InsightTextRootDescriptor } from "#src/domain/insight-slot-identity-contract";
+import type {
+  InsightArtifactReference,
+  InsightTextRootDescriptor,
+} from "#src/domain/insight-artifact-scalars";
 import { err, ok, type Result } from "#src/domain/result";
 import type { StorageFailure } from "./json-file";
 

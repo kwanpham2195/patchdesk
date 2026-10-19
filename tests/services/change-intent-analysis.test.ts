@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CommandRunner } from "#src/adapters/github/command-runner";
 import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import type { ChangeIntent } from "#src/domain/change-intent";
@@ -18,6 +19,7 @@ import {
   InsightRunCoordinator,
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
+import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import { LocalChangeIntentService } from "#src/services/local-change-intent-service";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
 import { ReviewContextService } from "#src/services/review-context-service";
@@ -80,6 +82,13 @@ async function intentReview(
       paths: harness.paths,
       git: createReadOnlyGitExecutor(new CommandRunner()),
     }),
+    new InsightSlotAuthority(
+      harness.paths,
+      readBoundedInsightArtifactFile,
+      harness.insights,
+      harness.coordinator,
+      () => now,
+    ),
     () => now,
   );
   const intents = new LocalChangeIntentService({

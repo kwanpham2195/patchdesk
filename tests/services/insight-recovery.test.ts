@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
@@ -28,6 +29,7 @@ import type {
 import { createReview, type ReviewIdentity } from "#src/domain/review";
 import { err, ok, type Result } from "#src/domain/result";
 import { InsightRecovery } from "#src/services/insight-recovery";
+import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
@@ -114,6 +116,7 @@ async function fixture(listing: ListResult) {
       return err({ _tag: "ReviewDiagnosticStorageFailed" });
     },
   );
+  const operations = new ReviewOperationCoordinator();
   const recovery = new InsightRecovery(
     {
       async list(): Promise<ListResult> {
@@ -130,9 +133,16 @@ async function fixture(listing: ListResult) {
       },
     },
     paths,
-    new ReviewOperationCoordinator(),
+    operations,
     new Map(),
     () => now,
+    new InsightSlotAuthority(
+      paths,
+      readBoundedInsightArtifactFile,
+      { withLegacyLock: (_profileId, _reviewId, _type, run) => run() },
+      operations,
+      () => now,
+    ),
     { record },
   );
   return { recovery, mutated, recorded };

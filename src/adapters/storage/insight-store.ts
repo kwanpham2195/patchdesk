@@ -281,6 +281,16 @@ export class InsightStore {
     }
   }
 
+  /** Runs `operation` under the lock every legacy write of this key takes, so a slot pointer published inside it lands after any in-flight legacy write. */
+  withLegacyLock<T>(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.locks.run(lockKey(profileId, reviewId, type), operation);
+  }
+
   private async loadRecord(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

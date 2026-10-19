@@ -77,6 +77,7 @@ import { contentHash } from "./review-artifact-hash";
 import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
+import type { InsightSlotAuthority } from "./insight-slot-authority";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
@@ -225,6 +226,8 @@ export class InsightRunCoordinator {
     private readonly invokers: Readonly<Record<InsightType, InsightInvoker>>,
     private readonly operations: ReviewOperationCoordinator,
     private readonly contextPack: ReviewContextPackService,
+    /** Reconciles current-format slots at recovery. */
+    private readonly slots: Pick<InsightSlotAuthority, "recover" | "hasSlot">,
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     private readonly providerCatalog?: InsightProviderCatalog,
@@ -248,6 +251,7 @@ export class InsightRunCoordinator {
       this.operations,
       this.active,
       () => this.now(),
+      this.slots,
       this.diagnostics,
     );
     this.executor = new InsightRunExecutor(
@@ -777,7 +781,7 @@ function activityTraceKey(
   return `${profileId}:${reviewId}:${type}`;
 }
 
-function currentIsoTimestamp(): IsoTimestamp {
+export function currentIsoTimestamp(): IsoTimestamp {
   const parsed = parseIsoTimestamp(new Date().toISOString());
   if (parsed._tag === "err")
     throw new Error("system clock returned an invalid timestamp");

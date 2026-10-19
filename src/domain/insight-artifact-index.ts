@@ -110,9 +110,23 @@ type InvalidInsightArtifactValue = {
   readonly _tag: "InvalidInsightArtifactValue";
 };
 
-export const insightBlobIndexNodeCodec: InsightArtifactCodec<
-  typeof blobIndexNodeSchema
-> = { name: "Index<BlobBlock>", schema: blobIndexNodeSchema };
+/** Element schemas whose Index<X> nodes the app registers; each node is an exact `Index<X>` wrapper. */
+export type InsightIndexElement =
+  | "BlobBlock"
+  | "DispatchRecord"
+  | "ObjectDigest"
+  | "Receipt"
+  | "TransactionEntry"
+  | "UsageEntry";
+
+/** An Index<X> node shares one shape for every X; only the registered wrapper name differs. */
+export function insightIndexNodeCodec(
+  element: InsightIndexElement,
+): InsightArtifactCodec<typeof blobIndexNodeSchema> {
+  return { name: `Index<${element}>`, schema: blobIndexNodeSchema };
+}
+
+export const insightBlobIndexNodeCodec = insightIndexNodeCodec("BlobBlock");
 
 export const insightBlobBlockCodec: InsightArtifactCodec<
   typeof blobBlockSchema
@@ -132,6 +146,64 @@ export function encodeWrappedInsightArtifact<
         schema: codec.name,
         value: parsed.output,
       })
+    : undefined;
+  return text === undefined
+    ? err({ _tag: "InvalidInsightArtifactValue" })
+    : ok(new TextEncoder().encode(text));
+}
+
+type InvalidInsightArtifactBytes = {
+  readonly _tag: "InvalidInsightArtifactBytes";
+};
+
+/** Reads one exact canonical wrapper registered under `codec`; any other name, extra key or noncanonical byte fails. */
+export function parseWrappedInsightArtifact<
+  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+>(
+  codec: InsightArtifactCodec<TSchema>,
+  bytes: Uint8Array,
+): Result<v.InferOutput<TSchema>, InvalidInsightArtifactBytes> {
+  try {
+    const text = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: true,
+    }).decode(bytes);
+    const wrapper = v.safeParse(
+      v.strictObject({
+        format: v.literal(2),
+        schema: v.literal(codec.name),
+        value: v.unknown(),
+      }),
+      JSON.parse(text),
+    );
+    const value = wrapper.success
+      ? v.safeParse(codec.schema, wrapper.output.value)
+      : undefined;
+    if (
+      value?.success === true &&
+      encodeInsightArtifactCanonicalJson({
+        format: 2,
+        schema: codec.name,
+        value: value.output,
+      }) === text
+    )
+      return ok(value.output);
+  } catch {
+    // Rejected bytes never become absence.
+  }
+  return err({ _tag: "InvalidInsightArtifactBytes" });
+}
+
+/** Parses `value` against `schema` before producing its exact canonical bytes. */
+export function encodeInsightArtifactDirect<
+  TSchema extends v.GenericSchema<unknown, InsightCanonicalValue>,
+>(
+  schema: TSchema,
+  value: v.InferInput<TSchema>,
+): Result<Uint8Array, InvalidInsightArtifactValue> {
+  const parsed = v.safeParse(schema, value);
+  const text = parsed.success
+    ? encodeInsightArtifactCanonicalJson(parsed.output)
     : undefined;
   return text === undefined
     ? err({ _tag: "InvalidInsightArtifactValue" })

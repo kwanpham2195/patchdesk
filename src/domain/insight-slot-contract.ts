@@ -1,11 +1,15 @@
 import * as v from "valibot";
 
-import { parseInsightRunId, parseIsoTimestamp } from "./ids";
-import type { InsightArtifactCodec } from "./insight-artifact-index";
+import {
+  encodeInsightArtifactDirect,
+  type InsightArtifactCodec,
+} from "./insight-artifact-index";
 import {
   insightArtifactIdSchema,
-  insightArtifactInteger1Schema,
+  insightArtifactPositiveSchema,
   insightArtifactReferenceSchema,
+  insightArtifactRunIdSchema,
+  insightArtifactTimeSchema,
   insightArtifactUnsignedSchema,
   parseInsightArtifactCanonicalJson,
 } from "./insight-artifact-scalars";
@@ -21,10 +25,7 @@ const slotPointerSchema = v.strictObject({
 const activeRunRefSchema = v.variant("tag", [
   v.strictObject({
     tag: v.literal("current"),
-    runId: v.pipe(
-      insightArtifactIdSchema,
-      v.check((value) => parseInsightRunId(value)._tag === "ok"),
-    ),
+    runId: insightArtifactRunIdSchema,
     journalId: insightArtifactIdSchema,
   }),
   v.strictObject({
@@ -50,17 +51,14 @@ const slotRecord3Schema = v.strictObject({
   identity: insightArtifactReferenceSchema,
   type: v.picklist(["analysis", "walkthrough", "brief", "guide"]),
   version: insightArtifactUnsignedSchema,
-  nextToken: insightArtifactInteger1Schema,
+  nextToken: insightArtifactPositiveSchema,
   retained: v.nullable(retainedRefSchema),
   actions: v.nullable(insightArtifactReferenceSchema),
   activeRun: v.nullable(activeRunRefSchema),
   replacementFailure: v.nullable(insightArtifactReferenceSchema),
   migration: v.nullable(insightArtifactReferenceSchema),
   publication: v.nullable(insightArtifactReferenceSchema),
-  updatedAt: v.pipe(
-    v.string(),
-    v.check((value) => parseIsoTimestamp(value)._tag === "ok"),
-  ),
+  updatedAt: insightArtifactTimeSchema,
 });
 
 const wrappedSlotRecord3Schema = v.strictObject({
@@ -84,6 +82,13 @@ export function parseInsightSlotPointer(
 ): Result<InsightSlotPointer, InvalidInsightSlot> {
   const parsed = parseInsightArtifactCanonicalJson(bytes, slotPointerSchema);
   return parsed._tag === "err" ? err({ _tag: "InvalidInsightSlot" }) : parsed;
+}
+
+export function encodeInsightSlotPointer(
+  value: InsightSlotPointer,
+): Result<Uint8Array, InvalidInsightSlot> {
+  const encoded = encodeInsightArtifactDirect(slotPointerSchema, value);
+  return encoded._tag === "ok" ? encoded : err({ _tag: "InvalidInsightSlot" });
 }
 
 /** The wrapper participates in byte/hash validation at the storage boundary. */

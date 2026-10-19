@@ -1,35 +1,15 @@
 import * as v from "valibot";
 
+import type { InsightArtifactCodec } from "./insight-artifact-index";
 import {
-  insightArtifactHashSchema,
-  insightArtifactReferenceSchema,
-  insightArtifactUnsignedSchema,
+  insightTextRootDescriptorSchema,
   parseInsightArtifactCanonicalJson,
 } from "./insight-artifact-scalars";
 import { err, ok, type Result } from "./result";
 
-const bytesRootDescriptorSchema = v.strictObject({
-  blocks: v.strictObject({
-    root: insightArtifactReferenceSchema,
-    count: insightArtifactUnsignedSchema,
-  }),
-  bytes: insightArtifactUnsignedSchema,
-  sha256: insightArtifactHashSchema,
-});
-
-const textRootDescriptorSchema = v.strictObject({
-  data: bytesRootDescriptorSchema,
-  utf16Units: insightArtifactUnsignedSchema,
-});
-
-/** Text descriptor shape only; its blocks and bytes are verified by the storage reader. */
-export type InsightTextRootDescriptor = v.InferOutput<
-  typeof textRootDescriptorSchema
->;
-
 const slotIdentityDescriptorSchema = v.strictObject({
-  profileId: textRootDescriptorSchema,
-  reviewId: textRootDescriptorSchema,
+  profileId: insightTextRootDescriptorSchema,
+  reviewId: insightTextRootDescriptorSchema,
   type: v.picklist(["analysis", "walkthrough", "brief", "guide"]),
 });
 
@@ -59,3 +39,8 @@ export function parseWrappedInsightSlotIdentityDescriptor(
     ? err({ _tag: "InvalidInsightSlotIdentityDescriptor" })
     : ok(parsed.value.value);
 }
+
+/** The only registered SlotIdentity wrapper; writers encode through `encodeWrappedInsightArtifact`. */
+export const insightSlotIdentityCodec: InsightArtifactCodec<
+  typeof slotIdentityDescriptorSchema
+> = { name: "SlotIdentity", schema: slotIdentityDescriptorSchema };
