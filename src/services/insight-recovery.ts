@@ -91,7 +91,18 @@ export class InsightRecovery {
           timestamp.value,
         ),
     });
-    if (failed._tag === "err") return err("storage_unavailable");
+    if (failed._tag === "err") {
+      if (failed.error !== "superseded") return err("storage_unavailable");
+      const reloaded = await this.insights.load(
+        input.profileId,
+        input.reviewId,
+        input.type,
+      );
+      // A type fenced after the first load reads as not_found and belongs to current-format authority.
+      return reloaded._tag === "err" && reloaded.error.reason === "not_found"
+        ? ok(undefined)
+        : err("storage_unavailable");
+    }
     return ok({
       runId: active.id,
       type: input.type,

@@ -238,7 +238,39 @@ export class InsightStore {
       : ok({ ...loaded.value, retained: { ...stored, value: value.value } });
   }
 
+  /** A current slot pointer, whatever its contents, ends legacy authority for that type; the lstat reads no body. */
+  async isLegacyFenced(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): Promise<Result<boolean, StorageFailure>> {
+    try {
+      await lstat(this.paths.insightSlotPointerFile(profileId, reviewId, type));
+      return ok(true);
+    } catch (cause: unknown) {
+      return isNotFound(cause)
+        ? ok(false)
+        : err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+  }
+
   private async loadRecord(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+  ): Promise<Result<InsightRecord<RetainedInsight<unknown>>, StorageFailure>> {
+    const fenced = await this.isLegacyFenced(profileId, reviewId, type);
+    if (fenced._tag === "err") return fenced;
+    if (fenced.value)
+      return err({
+        _tag: "StorageFailure",
+        operation: "read",
+        reason: "not_found",
+      });
+    return this.readRecord(profileId, reviewId, type);
+  }
+
+  private async readRecord(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     type: InsightType,
@@ -257,10 +289,11 @@ export class InsightStore {
     return parsed;
   }
 
+  /** Production writes reach this through `mutate`'s legacy lock; a fenced type is refused as superseded without writing. */
   async save(
     profileId: WorkspaceProfileId,
     record: InsightRecord<unknown>,
-  ): Promise<Result<void, StorageFailure>> {
+  ): Promise<Result<void, InsightStoreFailure>> {
     const parsed = parseInsightRecord(record);
     if (
       parsed._tag === "err" ||
@@ -268,6 +301,13 @@ export class InsightStore {
       parsed.value.type !== record.type
     )
       return invalidWrite();
+    const fenced = await this.isLegacyFenced(
+      profileId,
+      parsed.value.reviewId,
+      parsed.value.type,
+    );
+    if (fenced._tag === "err") return fenced;
+    if (fenced.value) return err("superseded");
     return writeAtomicJson(
       this.paths.insightFile(
         profileId,
@@ -291,38 +331,55 @@ export class InsightStore {
   }): Promise<
     Result<InsightRecord<RetainedInsightEnvelope>, InsightStoreFailure>
   > {
-    const key = `${input.profileId}\n${input.reviewId}\n${input.type}`;
-    return this.locks.run(key, async () => {
-      const loaded = await this.loadRecord(
-        input.profileId,
-        input.reviewId,
-        input.type,
-      );
-      if (loaded._tag === "err" && input.corruptRecordPolicy === "reject")
-        return loaded;
-      // ADR 0019: lifecycle writes heal invalid records; reading-state writes above fail closed.
-      const current =
-        loaded._tag === "ok"
-          ? loaded.value
-          : loaded.error.reason === "not_found" ||
-              loaded.error.reason === "invalid_json" ||
-              loaded.error.reason === "invalid_stored_value"
-            ? {
-                schemaVersion: 2 as const,
-                reviewId: input.reviewId,
-                type: input.type,
-                nextToken: 1,
-                updatedAt: input.now,
-              }
-            : undefined;
-      if (current === undefined) return loaded;
-      const changed = input.operation(current);
-      if (changed._tag === "err") return changed;
-      const saved = await this.save(input.profileId, changed.value);
-      if (saved._tag === "err") return saved;
-      return this.loadRecord(input.profileId, input.reviewId, input.type);
-    });
+    return this.locks.run(
+      lockKey(input.profileId, input.reviewId, input.type),
+      async () => {
+        const fenced = await this.isLegacyFenced(
+          input.profileId,
+          input.reviewId,
+          input.type,
+        );
+        if (fenced._tag === "err") return fenced;
+        if (fenced.value) return err("superseded" as const);
+        const loaded = await this.readRecord(
+          input.profileId,
+          input.reviewId,
+          input.type,
+        );
+        if (loaded._tag === "err" && input.corruptRecordPolicy === "reject")
+          return loaded;
+        // ADR 0019: lifecycle writes heal invalid records; reading-state writes above fail closed.
+        const current =
+          loaded._tag === "ok"
+            ? loaded.value
+            : loaded.error.reason === "not_found" ||
+                loaded.error.reason === "invalid_json" ||
+                loaded.error.reason === "invalid_stored_value"
+              ? {
+                  schemaVersion: 2 as const,
+                  reviewId: input.reviewId,
+                  type: input.type,
+                  nextToken: 1,
+                  updatedAt: input.now,
+                }
+              : undefined;
+        if (current === undefined) return loaded;
+        const changed = input.operation(current);
+        if (changed._tag === "err") return changed;
+        const saved = await this.save(input.profileId, changed.value);
+        if (saved._tag === "err") return saved;
+        return this.readRecord(input.profileId, input.reviewId, input.type);
+      },
+    );
   }
+}
+
+function lockKey(
+  profileId: WorkspaceProfileId,
+  reviewId: ReviewId,
+  type: InsightType,
+): string {
+  return `${profileId}\n${reviewId}\n${type}`;
 }
 
 function parseV2Record(
