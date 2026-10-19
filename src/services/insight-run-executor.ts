@@ -136,8 +136,22 @@ export class InsightRunExecutor {
             input.reviewId,
             input.type,
           );
-          if (record._tag === "err")
-            return err("evidence_unavailable" as const);
+          if (record._tag === "err") {
+            // A current slot hides the legacy record, so the run was replaced rather than lost.
+            const fenced =
+              record.error.reason === "not_found"
+                ? await this.insights.isLegacyFenced(
+                    input.profileId,
+                    input.reviewId,
+                    input.type,
+                  )
+                : undefined;
+            return err(
+              fenced?._tag === "ok" && fenced.value
+                ? ("superseded" as const)
+                : ("evidence_unavailable" as const),
+            );
+          }
           if (record.value.activeRun?.id !== input.runId)
             return err("superseded" as const);
           if (record.value.activeRun.status === "cancelling")
