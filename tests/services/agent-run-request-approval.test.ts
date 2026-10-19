@@ -56,6 +56,7 @@ async function approvalFixture(
     new AgentRunRequestService({
       reviews: store,
       insights: value.insights,
+      slots: value.slots.status,
       profiles: { list: async () => ok([]) },
       coordinator: value.operations,
       logs: { write: (entry) => logs.push(entry) },

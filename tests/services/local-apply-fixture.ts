@@ -50,6 +50,7 @@ import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import { AgentExplanationService } from "#src/services/agent-explanation-service";
 import { AgentRunRequestService } from "#src/services/agent-run-request-service";
 import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import { LocalApplyService } from "#src/services/local-apply-service";
 import { LocalApplySettlement } from "#src/services/local-apply-settlement";
 import { LocalDraftService } from "#src/services/local-draft-service";
@@ -257,6 +258,7 @@ export async function localApplyHarness(
   const agentRunRequests = new AgentRunRequestService({
     reviews,
     insights,
+    slots: new InsightSlotStatus(paths, readBoundedInsightArtifactFile),
     profiles,
     coordinator,
     notifier: { notify: (event) => notifications.push(event) },

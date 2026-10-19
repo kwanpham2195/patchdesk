@@ -13,9 +13,11 @@ import {
   type ReviewId,
   type WorkspaceProfileId,
 } from "#src/domain/ids";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
+import type { InsightSlotStatus } from "./insight-slot-status";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 
 /** How many rows the sidebar shows; a repository's local row counts once. */
@@ -86,6 +88,8 @@ export type SidebarListingFailure = { readonly reason: "storage" };
 export type SidebarListingDependencies = {
   readonly reviews: Pick<ReviewStore, "list">;
   readonly insights: Pick<InsightStore, "load">;
+  /** Current-format slots answer for a type that has one; the legacy record is fenced off. */
+  readonly slots: Pick<InsightSlotStatus, "hasSlot" | "activeRun">;
   readonly diagnostics: Pick<ReviewDiagnosticService, "record">;
 };
 
@@ -99,6 +103,8 @@ export type SidebarListingDependencies = {
  * across every profile.
  */
 export class SidebarListingService {
+  private readonly slotReads = new KeyedMutex();
+
   constructor(private readonly dependencies: SidebarListingDependencies) {}
 
   async list(
@@ -124,27 +130,31 @@ export class SidebarListingService {
       const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
-    const localRows = await Promise.all(
-      [...localReviews.values()].map(async (group) => ({
-        ...localRepositoryRow(group),
-        ...definedProps({
-          agent: (await this.hasAgentActivity(profileId, group))
-            ? (true as const)
-            : undefined,
-        }),
-      })),
+    const groups = [...localReviews.values()];
+    const activity = await Promise.all(
+      groups.map((group) => this.hasAgentActivity(profileId, group)),
     );
+    const localRows: SidebarLocalRepositoryRow[] = [];
+    for (const [index, group] of groups.entries()) {
+      const agent = activity[index];
+      if (agent === undefined || agent._tag === "err")
+        return err({ reason: "storage" });
+      localRows.push({
+        ...localRepositoryRow(group),
+        ...definedProps({ agent: agent.value ? (true as const) : undefined }),
+      });
+    }
     const rows = [...pullRequestRows, ...localRows]
       .sort((left, right) => right.sortedAt.localeCompare(left.sortedAt))
       .slice(0, SIDEBAR_ROW_LIMIT);
     return ok({ rows, unreadable });
   }
 
-  /** Whether any of the Reviews has an agent run request awaiting approval, or an approved one whose run is still active. */
+  /** Whether any of the Reviews has an agent run request awaiting approval, or an approved one whose run is still active. A failed slot lookup or read fails the listing: it cannot say no run is active. */
   private async hasAgentActivity(
     profileId: WorkspaceProfileId,
     reviews: LocalReviewGroup,
-  ): Promise<boolean> {
+  ): Promise<Result<boolean, SidebarListingFailure>> {
     const approved: Array<{
       readonly reviewId: ReviewId;
       readonly request: Extract<AgentRunRequest, { status: "approved" }>;
@@ -152,22 +162,38 @@ export class SidebarListingService {
     for (const review of reviews)
       for (const request of review.agentRunRequests ?? []) {
         if (request.sessionId !== review.currentSessionId) continue;
-        if (request.status === "awaiting_approval") return true;
+        if (request.status === "awaiting_approval") return ok(true);
         if (request.status === "approved")
           approved.push({ reviewId: review.id, request });
       }
     const active = await Promise.all(
-      approved.map(({ reviewId, request }) =>
-        this.dependencies.insights
-          .load(profileId, reviewId, request.type)
-          .then(
-            (record) =>
-              record._tag === "ok" &&
-              record.value.activeRun?.id === request.runId,
-          ),
-      ),
+      approved.map(async ({ reviewId, request }) => {
+        const key = { profileId, reviewId, type: request.type };
+        const slotted = await this.dependencies.slots.hasSlot(key);
+        if (slotted._tag === "err") return err({ reason: "storage" as const });
+        if (slotted.value)
+          // One lane for every row: slot reads go through the artifact worker, which refuses more than four pending reads.
+          return this.slotReads.run("sidebar", async () => {
+            const run = await this.dependencies.slots.activeRun(key);
+            if (run._tag === "err") return err({ reason: "storage" as const });
+            const activeRunId: string | undefined = run.value?.runId;
+            return ok(
+              activeRunId !== undefined && activeRunId === request.runId,
+            );
+          });
+        const record = await this.dependencies.insights.load(
+          profileId,
+          reviewId,
+          request.type,
+        );
+        return ok(
+          record._tag === "ok" && record.value.activeRun?.id === request.runId,
+        );
+      }),
     );
-    return active.includes(true);
+    const failure = active.find((result) => result._tag === "err");
+    if (failure !== undefined) return err({ reason: "storage" });
+    return ok(active.some((result) => result._tag === "ok" && result.value));
   }
 
   private async recordUnreadable(

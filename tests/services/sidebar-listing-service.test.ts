@@ -32,6 +32,7 @@ import {
   type Review,
   type ReviewIdentity,
 } from "#src/domain/review";
+import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import {
   SidebarListingService,
@@ -156,8 +157,15 @@ function localReview(
 }
 
 /** An Insight store under a root nothing wrote to, so no Review has a run. */
+const noInsightsPaths = PatchdeskPaths.forTest(
+  join(tmpdir(), "patchdesk-sidebar-no-insights"),
+);
 const noInsights = new InsightStore(
-  PatchdeskPaths.forTest(join(tmpdir(), "patchdesk-sidebar-no-insights")),
+  noInsightsPaths,
+  readBoundedInsightArtifactFile,
+);
+const noSlots = new InsightSlotStatus(
+  noInsightsPaths,
   readBoundedInsightArtifactFile,
 );
 
@@ -187,6 +195,7 @@ function service(
       },
     },
     insights,
+    slots: noSlots,
     diagnostics: { record },
   });
   return { listed, recorded };
@@ -489,6 +498,7 @@ describe("SidebarListingService.list", () => {
         },
       },
       insights: noInsights,
+      slots: noSlots,
       diagnostics: {
         record: async (): Promise<DiagnosticResult> => {
           throw new Error("diagnostics unavailable");

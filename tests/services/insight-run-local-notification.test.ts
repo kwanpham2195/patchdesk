@@ -116,6 +116,7 @@ describe("InsightRunCoordinator settled notification for a local Review (#496)",
     const requests = new AgentRunRequestService({
       reviews: value.reviews,
       insights: value.insights,
+      slots: value.slots.status,
       profiles: { list: async () => ok(profiles) },
       coordinator: value.operations,
       now: () => now,

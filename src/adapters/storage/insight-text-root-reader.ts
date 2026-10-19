@@ -37,13 +37,30 @@ export async function verifyTextRootEquals(
   root: InsightTextRootDescriptor,
   expected: string,
 ): Promise<Result<void, StorageFailure>> {
-  const expectedBytes = Buffer.from(expected, "utf8");
   if (
-    root.data.bytes !== expectedBytes.length ||
-    root.utf16Units !== expected.length ||
-    root.data.blocks.count > MAX_TEXT_ROOT_BLOCKS
+    root.data.bytes !== Buffer.byteLength(expected, "utf8") ||
+    root.utf16Units !== expected.length
   )
     return invalidRead();
+  const compared = await compareTextRoot(readObject, root, expected);
+  if (compared._tag === "err") return compared;
+  return compared.value ? ok(undefined) : invalidRead();
+}
+
+/**
+ * Applies the same structural checks as `verifyTextRootEquals` to the whole stored text, then reports whether it
+ * equals `expected`. Only a fully verified TextRoot can be unequal; any read or structural failure is an error.
+ */
+export async function compareTextRoot(
+  readObject: ReadObject,
+  root: InsightTextRootDescriptor,
+  expected: string,
+): Promise<Result<boolean, StorageFailure>> {
+  const expectedBytes = Buffer.from(expected, "utf8");
+  if (root.data.blocks.count > MAX_TEXT_ROOT_BLOCKS) return invalidRead();
+  let equal =
+    root.data.bytes === expectedBytes.length &&
+    root.utf16Units === expected.length;
   const digest = createHash("sha256");
   const stack: PendingNode[] = [{ reference: root.data.blocks.root, depth: 0 }];
   let visitedNodes = 0;
@@ -114,15 +131,15 @@ export async function verifyTextRootEquals(
       if (blob._tag === "err") return blob;
       const end = offset + blob.value.length;
       if (!expectedBytes.subarray(offset, end).equals(blob.value))
-        return invalidRead();
+        equal = false;
       digest.update(blob.value);
       offset = end;
     }
   }
   return blocks === root.data.blocks.count &&
-    offset === expectedBytes.length &&
+    offset === root.data.bytes &&
     digest.digest("hex") === root.data.sha256
-    ? ok(undefined)
+    ? ok(equal && offset === expectedBytes.length)
     : invalidRead();
 }
 

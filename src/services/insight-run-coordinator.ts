@@ -226,8 +226,11 @@ export class InsightRunCoordinator {
     private readonly invokers: Readonly<Record<InsightType, InsightInvoker>>,
     private readonly operations: ReviewOperationCoordinator,
     private readonly contextPack: ReviewContextPackService,
-    /** Reconciles current-format slots at recovery. */
-    private readonly slots: Pick<InsightSlotAuthority, "recover" | "hasSlot">,
+    /** Current-format slots: recovery, status reads and cancel. */
+    private readonly slots: Pick<
+      InsightSlotAuthority,
+      "recover" | "hasSlot" | "cancelRun" | "status"
+    >,
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
     private readonly providerCatalog?: InsightProviderCatalog,
@@ -354,6 +357,16 @@ export class InsightRunCoordinator {
       );
     const hash = parseContentHash(await contentHash(session.value.patchPath));
     if (hash._tag === "err") return err("storage_unavailable");
+    // A current slot owns this type: a legacy run cannot begin, whatever the legacy file holds.
+    const slotted = await this.slots.hasSlot(input);
+    if (slotted._tag === "err") return err("storage_unavailable");
+    if (slotted.value) {
+      const current = await this.slots.status.activeRun(input);
+      if (current._tag === "err") return err("storage_unavailable");
+      return err(
+        current.value === undefined ? "not_available" : "already_running",
+      );
+    }
     const record = await this.insights.load(
       input.profileId,
       input.reviewId,
@@ -410,7 +423,9 @@ export class InsightRunCoordinator {
     if (started._tag === "err")
       return started.error === "already_running"
         ? err("already_running")
-        : err("storage_unavailable");
+        : started.error === "superseded"
+          ? err("not_available")
+          : err("storage_unavailable");
     const controller = new AbortController();
     this.active.set(runId.value, {
       runId: runId.value,
@@ -501,6 +516,11 @@ export class InsightRunCoordinator {
     readonly type: InsightType;
     readonly runId: InsightRunId;
   }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    // The authority takes the Review lock itself, so a current slot's cancel runs outside it.
+    const slotted = await this.slots.hasSlot(input);
+    if (slotted._tag === "err") return err("storage_unavailable");
+    if (slotted.value) return this.cancelCurrent(input);
+    // Only after definite slot absence: a current run is never aborted before its cancellation is durable.
     const active = this.active.get(input.runId);
     if (
       active?.preparing === true &&
@@ -542,6 +562,40 @@ export class InsightRunCoordinator {
     }
     this.active.get(input.runId)?.controller.abort();
     return ok({ runId: input.runId, type: input.type, status: "cancelling" });
+  }
+
+  /** Fences on the slot's active (runId, journalId) and records the cancel epoch durably before any signal reaches a process. */
+  private async cancelCurrent(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: InsightType;
+    readonly runId: InsightRunId;
+  }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const ownership = await this.ensureMutableOwned(
+      input.profileId,
+      input.reviewId,
+    );
+    if (ownership._tag === "err") return ownership;
+    const active = await this.slots.status.activeRun(input);
+    if (active._tag === "err") return err("storage_unavailable");
+    const activeRunId: string | undefined = active.value?.runId;
+    // Generation comparison arrives with the generation-changing operations.
+    if (active.value === undefined || activeRunId !== input.runId)
+      return this.observeCurrent(input);
+    const cancelled = await this.slots.cancelRun(active.value, () =>
+      this.ensureMutableOwned(input.profileId, input.reviewId),
+    );
+    if (cancelled._tag === "err") {
+      const reason = cancelled.error;
+      if (reason === "not_active") return this.observeCurrent(input);
+      return err(
+        reason === "outcome_unknown" || reason === "already_running"
+          ? "storage_unavailable"
+          : reason,
+      );
+    }
+    this.active.get(input.runId)?.controller.abort();
+    return this.observeCurrent(input);
   }
 
   async dismissFinding(
@@ -696,6 +750,9 @@ export class InsightRunCoordinator {
   }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const ownership = await this.ensureOwned(input.profileId, input.reviewId);
     if (ownership._tag === "err") return ownership;
+    const slotted = await this.slots.hasSlot(input);
+    if (slotted._tag === "err") return err("storage_unavailable");
+    if (slotted.value) return this.observeCurrent(input);
     const record = await this.insights.load(
       input.profileId,
       input.reviewId,
@@ -707,11 +764,7 @@ export class InsightRunCoordinator {
           ? "not_found"
           : "storage_unavailable",
       );
-    const trace = this.traces.get(
-      activityTraceKey(input.profileId, input.reviewId, input.type),
-    );
-    const activity =
-      trace?.runId === input.runId ? trace.activity.snapshot() : undefined;
+    const activity = this.activityOf(input);
     if (record.value.activeRun?.id === input.runId)
       return ok({
         runId: input.runId,
@@ -742,6 +795,36 @@ export class InsightRunCoordinator {
         }),
       });
     return err("not_active");
+  }
+
+  /** Answers from the slot and run journal, which replace the legacy record for a type with a current slot. */
+  private async observeCurrent(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: InsightType;
+    readonly runId: InsightRunId;
+  }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const observed = await this.slots.status.observeRun(input);
+    if (observed._tag === "err") return err("storage_unavailable");
+    if (observed.value === undefined) return err("not_active");
+    return ok({
+      runId: input.runId,
+      type: input.type,
+      activity: this.activityOf(input),
+      ...observed.value,
+    });
+  }
+
+  private activityOf(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: InsightType;
+    readonly runId: InsightRunId;
+  }): InsightActivitySnapshot | undefined {
+    const trace = this.traces.get(
+      activityTraceKey(input.profileId, input.reviewId, input.type),
+    );
+    return trace?.runId === input.runId ? trace.activity.snapshot() : undefined;
   }
 
   private async ensureMutableOwned(
