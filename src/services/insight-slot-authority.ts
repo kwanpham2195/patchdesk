@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { lstat } from "node:fs/promises";
 import * as v from "valibot";
 
 import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
@@ -14,7 +13,6 @@ import {
   type InsightSlotSnapshot,
 } from "#src/adapters/storage/insight-slot-store";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
-import { isNotFound } from "#src/adapters/storage/json-file";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { IsoTimestamp } from "#src/domain/ids";
 import {
@@ -39,6 +37,7 @@ import {
   type InsightSlotFailure,
   type InsightSlotKey,
 } from "./insight-slot-records";
+import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
@@ -75,14 +74,17 @@ export class InsightSlotAuthority {
   private readonly journals: InsightRunJournalStore;
   private readonly artifacts: InsightArtifactStore;
   private readonly writer: InsightSlotWriter;
+  /** Lock-free reads of the same state, for status, cancel lookup and listings. */
+  readonly status: InsightSlotStatus;
 
   constructor(
-    private readonly paths: PatchdeskPaths,
+    paths: PatchdeskPaths,
     insightArtifactReader: typeof readBoundedInsightArtifactFile,
     legacy: Pick<InsightStore, "withLegacyLock">,
     private readonly operations: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
   ) {
+    this.status = new InsightSlotStatus(paths, insightArtifactReader);
     this.slots = new InsightSlotStore(paths, insightArtifactReader);
     this.artifacts = new InsightArtifactStore(paths, insightArtifactReader);
     this.journals = new InsightRunJournalStore(paths, insightArtifactReader);
@@ -181,11 +183,16 @@ export class InsightSlotAuthority {
     });
   }
 
-  /** Records the cancel request durably (epoch + 1) before the caller signals anything; with no dispatch intent the run settles at once. */
-  async cancelRun(
+  /**
+   * Records the cancel request durably (epoch + 1) before the caller signals anything; with no dispatch intent the run
+   * settles at once. `mutable` runs under the Review lock before anything is read, so the caller's Review check cannot go
+   * stale between its own check and the cancel.
+   */
+  async cancelRun<E>(
     input: InsightRunRef,
-  ): Promise<Result<Outcome, InsightSlotFailure>> {
-    return this.advanceActive(input, ({ state }): Decision => {
+    mutable: () => Promise<Result<void, E>>,
+  ): Promise<Result<Outcome, InsightSlotFailure | E>> {
+    return this.advanceActive(input, mutable, ({ state }): Decision => {
       if (state.status === "cancelling" || isTerminalStatus(state.status))
         return ok(undefined);
       if (state.status === "complete") return err("not_active");
@@ -209,27 +216,16 @@ export class InsightSlotAuthority {
   async settleRun(
     input: InsightRunRef & Pick<InsightFailureRecord, "code" | "phase">,
   ): Promise<Result<Outcome, InsightSlotFailure>> {
-    return this.advanceActive(input, (snapshot) =>
-      settleDecision(snapshot, input.code, input.phase),
+    return this.advanceActive(
+      input,
+      async () => ok(undefined),
+      (snapshot) => settleDecision(snapshot, input.code, input.phase),
     );
   }
 
-  /** Whether a slot pointer exists; the lstat reads no body, so a sweep can run it for every Review at once. */
-  async hasSlot(
-    input: InsightSlotKey,
-  ): Promise<Result<boolean, InsightSlotFailure>> {
-    try {
-      await lstat(
-        this.paths.insightSlotPointerFile(
-          input.profileId,
-          input.reviewId,
-          input.type,
-        ),
-      );
-      return ok(true);
-    } catch (cause: unknown) {
-      return isNotFound(cause) ? ok(false) : failed();
-    }
+  /** Whether a slot pointer exists, without reading a body. */
+  hasSlot(input: InsightSlotKey): Promise<Result<boolean, InsightSlotFailure>> {
+    return this.status.hasSlot(input);
   }
 
   /**
@@ -299,11 +295,14 @@ export class InsightSlotAuthority {
   }
 
   /** For a run the slot still names: one journal transaction, then a slot release if that made the journal terminal. */
-  private async advanceActive(
+  private async advanceActive<E>(
     run: InsightRunRef,
+    guard: () => Promise<Result<void, E>>,
     decide: (snapshot: InsightJournalSnapshot) => Decision,
-  ): Promise<Result<Outcome, InsightSlotFailure>> {
+  ): Promise<Result<Outcome, InsightSlotFailure | E>> {
     return this.locked(run, async () => {
+      const allowed = await guard();
+      if (allowed._tag === "err") return allowed;
       const current = await this.slots.readCurrent(
         run.profileId,
         run.reviewId,

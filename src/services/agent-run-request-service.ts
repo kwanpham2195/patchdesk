@@ -10,13 +10,14 @@ import {
 } from "#src/domain/agent-run-request";
 import { definedProps } from "#src/domain/defined-props";
 import type { FailureKinds } from "#src/domain/failure-kind";
-import type {
-  AgentRunRequestId,
-  InsightRunId,
-  IsoTimestamp,
-  ReviewId,
-  ReviewSessionId,
-  WorkspaceProfileId,
+import {
+  parseInsightRunId,
+  type AgentRunRequestId,
+  type InsightRunId,
+  type IsoTimestamp,
+  type ReviewId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
 } from "#src/domain/ids";
 import type { AgentInsightType, InsightType } from "#src/domain/insight-record";
 import { err, ok, type Result } from "#src/domain/result";
@@ -27,6 +28,7 @@ import {
   type Review,
 } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
+import type { InsightSlotStatus } from "./insight-slot-status";
 import type { AppLogService } from "./app-log-service";
 import {
   postDesktopNotification,
@@ -90,6 +92,8 @@ export type AgentRunRequestReply = {
 type AgentRunRequestDependencies = {
   readonly reviews: Pick<ReviewStore, "load" | "save">;
   readonly insights: Pick<InsightStore, "load">;
+  /** Current-format slots answer for a type that has one; the legacy record is fenced off. */
+  readonly slots: Pick<InsightSlotStatus, "hasSlot" | "activeRunOn">;
   readonly profiles: Pick<ProfileStore, "list">;
   readonly coordinator: Pick<
     ReviewOperationCoordinator,
@@ -311,6 +315,15 @@ export class AgentRunRequestService {
     readonly sessionId: ReviewSessionId;
     readonly type: AgentInsightType;
   }): Promise<Result<InsightRunId | undefined, AgentRunRequestFailure>> {
+    const slotted = await this.dependencies.slots.hasSlot(input);
+    if (slotted._tag === "err") return err({ reason: "storage" });
+    if (slotted.value) {
+      const current = await this.dependencies.slots.activeRunOn(input);
+      if (current._tag === "err") return err({ reason: "storage" });
+      if (current.value === undefined) return ok(undefined);
+      const runId = parseInsightRunId(current.value.runId);
+      return runId._tag === "ok" ? ok(runId.value) : err({ reason: "storage" });
+    }
     const record = await this.dependencies.insights.load(
       input.profileId,
       input.reviewId,

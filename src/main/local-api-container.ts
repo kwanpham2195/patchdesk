@@ -71,6 +71,7 @@ import { AgentRunRequestService } from "#src/services/agent-run-request-service"
 import { ReviewRetention } from "#src/services/review-retention";
 import { LocalReviewSessionPreparation } from "#src/services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "#src/services/review-diff-source-service";
+import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import { SidebarListingService } from "#src/services/sidebar-listing-service";
 import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
 import type { AppLogService } from "#src/services/app-log-service";
@@ -494,9 +495,14 @@ export async function buildLocalApiContainer(
     profiles,
     paths,
   );
+  const slotStatus = new InsightSlotStatus(
+    paths,
+    configuration.insightArtifactReader,
+  );
   const sidebarListing = new SidebarListingService({
     reviews,
     insights,
+    slots: slotStatus,
     diagnostics,
   });
   const reviewDiffSources = new ReviewDiffSourceService(
@@ -508,6 +514,7 @@ export async function buildLocalApiContainer(
   const agentRunRequests = new AgentRunRequestService({
     reviews,
     insights,
+    slots: slotStatus,
     profiles,
     coordinator: reviewOperations,
     now: systemNow,

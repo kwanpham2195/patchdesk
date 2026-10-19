@@ -34,6 +34,7 @@ import {
 import { containsSensitiveValue, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
+  compareTextRoot,
   MAX_TEXT_ROOT_BLOCKS,
   verifyTextRootEquals,
 } from "./insight-text-root-reader";
@@ -81,6 +82,20 @@ export class InsightArtifactStore {
     expected: string,
   ): Promise<Result<void, StorageFailure>> {
     return verifyTextRootEquals(
+      (reference) => this.readVerifiedObject(profileId, reviewId, reference),
+      root,
+      expected,
+    );
+  }
+
+  /** As `verifyTextRootEquals`, but a fully verified TextRoot with other text is `false`; every read or structural failure is an error. */
+  async textRootEquals(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    root: InsightTextRootDescriptor,
+    expected: string,
+  ): Promise<Result<boolean, StorageFailure>> {
+    return compareTextRoot(
       (reference) => this.readVerifiedObject(profileId, reviewId, reference),
       root,
       expected,

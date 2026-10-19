@@ -26,6 +26,7 @@ import type { LocalReviewSource } from "#src/domain/review-source";
 import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { AgentRunRequestService } from "#src/services/agent-run-request-service";
 import type { DesktopNotificationEvent } from "#src/services/desktop-notifier";
+import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 
 function must<T>(result: Result<T, unknown>): T {
@@ -91,6 +92,7 @@ beforeEach(async () => {
   service = new AgentRunRequestService({
     reviews: new ReviewStore(paths),
     insights: new InsightStore(paths, readBoundedInsightArtifactFile),
+    slots: new InsightSlotStatus(paths, readBoundedInsightArtifactFile),
     profiles: { list: async () => ok([profile]) },
     coordinator: new ReviewOperationCoordinator(),
     notifier: { notify: (event) => events.push(event) },

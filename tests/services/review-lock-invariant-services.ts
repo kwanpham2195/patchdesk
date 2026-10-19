@@ -404,6 +404,8 @@ export function insightRunCoordinator(
         coordinator.withReviewLock(input.profileId, input.reviewId, async () =>
           ok(undefined),
         ),
+      // No row has a current slot, so every entry point takes its legacy path.
+      hasSlot: async () => ok(false),
     } as never,
     now,
   );
