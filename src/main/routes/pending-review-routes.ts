@@ -22,7 +22,7 @@ import {
   type DirectSummaryReviewFailure,
   type DirectSummaryReviewService,
 } from "#src/services/direct-summary-review-service";
-import type { FindingSuggestionCommand } from "#src/services/insight-run-coordinator";
+import type { FindingSuggestionCommand } from "#src/services/insight-finding-commands";
 import type { InsightCoordinatorSeam } from "#src/main/local-api-configuration";
 import type { LocalApiContainer } from "#src/main/local-api-container";
 import {
