@@ -22,6 +22,11 @@ const textRootDescriptorSchema = v.strictObject({
   utf16Units: insightArtifactUnsignedSchema,
 });
 
+/** Text descriptor shape only; its blocks and bytes are verified by the storage reader. */
+export type InsightTextRootDescriptor = v.InferOutput<
+  typeof textRootDescriptorSchema
+>;
+
 const slotIdentityDescriptorSchema = v.strictObject({
   profileId: textRootDescriptorSchema,
   reviewId: textRootDescriptorSchema,
@@ -34,7 +39,7 @@ const wrappedSlotIdentityDescriptorSchema = v.strictObject({
   value: slotIdentityDescriptorSchema,
 });
 
-/** Descriptor metadata only; referenced text, decoded domain IDs and their equality remain unvalidated. */
+/** Parsed descriptors only; the storage reader verifies the profileId and reviewId text bytes against the slot's own IDs. */
 export type InsightSlotIdentityDescriptor = v.InferOutput<
   typeof slotIdentityDescriptorSchema
 >;
