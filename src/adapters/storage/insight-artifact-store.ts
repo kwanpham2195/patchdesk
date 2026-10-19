@@ -14,6 +14,7 @@ import {
 import {
   parseWrappedInsightSlotIdentityDescriptor,
   type InsightSlotIdentityDescriptor,
+  type InsightTextRootDescriptor,
 } from "#src/domain/insight-slot-identity-contract";
 import { err, ok, type Result } from "#src/domain/result";
 import {
@@ -23,6 +24,7 @@ import {
 } from "./insight-artifact-files";
 import { containsSensitiveData, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
+import { verifyTextRootEquals } from "./insight-text-root-reader";
 
 /** Stateless current-format object storage, without slot or publication authority. */
 export class InsightArtifactStore {
@@ -45,7 +47,7 @@ export class InsightArtifactStore {
       : parsed;
   }
 
-  /** Verifies the SlotIdentity wrapper and descriptors, not referenced contents or decoded ID validity/equality. */
+  /** Verifies the SlotIdentity wrapper and descriptors, not referenced text contents. */
   async readSlotIdentityDescriptor(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
@@ -57,6 +59,20 @@ export class InsightArtifactStore {
     return parsed._tag === "err"
       ? artifactReadFailure("invalid_stored_value")
       : parsed;
+  }
+
+  /** Verifies the TextRoot's index, blocks, digest and counts, and that its UTF-8 bytes equal `expected`. */
+  async verifyTextRootEquals(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    root: InsightTextRootDescriptor,
+    expected: string,
+  ): Promise<Result<void, StorageFailure>> {
+    return verifyTextRootEquals(
+      (reference) => this.readVerifiedObject(profileId, reviewId, reference),
+      root,
+      expected,
+    );
   }
 
   private async readVerifiedObject(
