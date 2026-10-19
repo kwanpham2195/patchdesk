@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { err, ok, type Result } from "#src/domain/result";
 import { registerPendingReviewRoutes } from "#src/main/routes/pending-review-routes";
-import type { FindingSuggestionCommand } from "#src/services/insight-run-coordinator";
+import type { FindingSuggestionCommand } from "#src/services/insight-finding-commands";
 import type { PendingReviewServiceFailure } from "#src/services/pending-review-service";
 
 const PATH = "/v1/reviews/pending-review/finding-suggestion";
