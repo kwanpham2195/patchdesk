@@ -27,6 +27,7 @@ import {
 } from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
 import { createDesktopInsightArtifactLifecycle } from "./desktop-insight-artifact-lifecycle";
+import { insightCoordinatorFactory } from "./insight-coordinator-composition";
 import {
   answerWindowFullScreenReads,
   sendWindowFullScreen,
@@ -65,32 +66,13 @@ import {
   startLocalApiServer,
   type LocalApiServer,
 } from "./local-api";
-import { CommandRunner } from "#src/adapters/github/command-runner";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { desktopMcpSocketPath } from "./mcp/mcp-socket-listener";
-import { ProfileStore } from "#src/adapters/storage/profile-store";
-import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
-import { ReviewStore } from "#src/adapters/storage/review-store";
-import { InsightStore } from "#src/adapters/storage/insight-store";
 import type { InsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import type { GitHubFetch } from "#src/adapters/github/github-http-client";
-import { ReviewContextPackService } from "#src/services/review-context-pack-service";
-import { ReviewContextService } from "#src/services/review-context-service";
 import type { Appearance } from "#src/domain/contracts";
-import { parseGitSha } from "#src/domain/ids";
-import type {
-  AccountInsightProvider,
-  InsightProvider,
-} from "#src/domain/insight-provider";
 import { loggableMetaValue } from "#src/domain/log-entry";
-import { err } from "#src/domain/result";
-import {
-  PiInsightChildInvoker,
-  unavailablePiInsightInvoker,
-} from "#src/services/pi-insight-child-invoker";
-import { resolveInsightRuntime } from "./insight-runtime";
-import { createReadOnlyGitExecutor } from "./local-api-stores";
 import { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import { AppLogService } from "#src/services/app-log-service";
 import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
@@ -104,18 +86,8 @@ import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
 import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
 import { importLoginShellEnvironment } from "#src/adapters/process/login-shell-environment";
 import { startLoginShellEnvironmentImport } from "#src/adapters/process/login-shell-import";
-import { briefReachComputer } from "#src/services/brief-reach-service";
-import {
-  AccountInsightInvoker,
-  type AccountInsightRunner,
-} from "#src/services/account-insight-invoker";
 import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
-import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
-import {
-  currentIsoTimestamp as now,
-  InsightRunCoordinator,
-  type InsightInvoker,
-} from "#src/services/insight-run-coordinator";
+import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
 
 const renderer = rendererSource(process.env, app.isPackaged);
 const rendererOrigin = renderer.origin;
@@ -390,129 +362,13 @@ function createInsightProviderCatalog(
   );
 }
 
-function createInsightCoordinator(
-  modelCatalog: LocalPiRuntimeModelCatalog,
-  providerCatalog: InsightProviderCatalog,
-  operations: ReviewOperationCoordinator,
-  github: GitHubReader,
-  { authorityReader: reader }: InsightResourceBundle,
-): InsightRunCoordinator {
-  const runtime = resolveInsightRuntime(
-    app.getAppPath(),
-    process.cwd(),
-    app.isPackaged,
-  );
-  logs.write({
-    process: "main",
-    level: runtime === undefined ? "warn" : "info",
-    topic: "insight-runtime",
-    message:
-      runtime === undefined
-        ? "no verified Insight runtime resolved"
-        : `Insight runtime resolved from the ${runtime.kind} build`,
-    meta: runtime === undefined ? {} : { runnerPath: runtime.runnerPath },
-  });
-  const readHead = async (
-    worktreePath: string,
-  ): Promise<string | undefined> => {
-    const output = await new CommandRunner(
-      undefined,
-      logUnclassifiedCommandFailure,
-    ).runText({
-      argv: ["git", "-C", worktreePath, "rev-parse", "HEAD"],
-      cwd: worktreePath,
-      timeoutMs: 10_000,
-    });
-    if (output._tag === "err") return undefined;
-    const parsed = parseGitSha(output.value.trim());
-    return parsed._tag === "ok" ? parsed.value : undefined;
-  };
-  /**
-   * An account provider's CLI is discovered per run rather than once here: the
-   * executable can appear or move between runs, and a PATH lookup is cheaper
-   * than a run.
-   */
-  const accountInvoker = (
-    provider: AccountInsightProvider,
-    executable: string,
-    clientFactory: (executablePath: string) => AccountInsightRunner,
-  ): InsightInvoker => ({
-    async invoke(input, options) {
-      const executablePath = await discoverPathOnlyExecutable(executable);
-      if (executablePath === undefined)
-        return err({ reason: "runtime_unavailable" as const });
-      return new AccountInsightInvoker(
-        provider,
-        paths,
-        clientFactory,
-        executablePath,
-        readHead,
-      ).invoke(input, options);
-    },
-  });
-  const providerInvokers = {
-    pi:
-      runtime === undefined
-        ? unavailablePiInsightInvoker
-        : new PiInsightChildInvoker(
-            new CommandRunner(undefined, logUnclassifiedCommandFailure),
-            runtime.root,
-            process.execPath,
-            runtime.runnerPath,
-            undefined,
-            paths.rootsEnvironment(),
-          ),
-    "codex-cli-account": accountInvoker(
-      "codex-cli-account",
-      "codex",
-      (path) => new CodexAppServerClient(path),
-    ),
-    "pi-cli-account": accountInvoker(
-      "pi-cli-account",
-      "pi",
-      (path) => new PiRpcClient(path),
-    ),
-  } satisfies Readonly<Record<InsightProvider, InsightInvoker>>;
-  /**
-   * The one place a provider is chosen. Each run carries the provider it was
-   * started with, so the same dispatch serves every Insight type instead of
-   * three hand-built objects repeating the same branch.
-   */
-  const invoker: InsightInvoker = {
-    async invoke(input, options) {
-      return providerInvokers[input.provider].invoke(input, options);
-    },
-  };
-  const store = new InsightStore(paths, reader);
-  const slots = new InsightSlotAuthority(paths, reader, store, operations, now);
-  return new InsightRunCoordinator(
-    new ReviewStore(paths),
-    new ReviewSessionStore(paths),
-    store,
-    paths,
-    modelCatalog,
-    { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
-    operations,
-    new ReviewContextPackService({
-      profiles: new ProfileStore(paths),
-      github,
-      context: new ReviewContextService(),
-      paths,
-      git: createReadOnlyGitExecutor(
-        new CommandRunner(undefined, logUnclassifiedCommandFailure),
-      ),
-    }),
-    slots,
-    now,
-    diagnostics,
-    providerCatalog,
-    briefReachComputer(
-      paths,
-      new CommandRunner(undefined, logUnclassifiedCommandFailure),
-    ),
-    { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
-  );
-}
+const createInsightCoordinator = insightCoordinatorFactory({
+  paths,
+  logs,
+  logUnclassifiedCommandFailure,
+  diagnostics,
+  desktopNotifier,
+});
 
 async function recoverInsights(
   modelCatalog: LocalPiRuntimeModelCatalog,

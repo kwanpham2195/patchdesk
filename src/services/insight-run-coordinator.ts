@@ -229,7 +229,7 @@ export class InsightRunCoordinator {
     /** Current-format slots: recovery, status reads and cancel. */
     private readonly slots: Pick<
       InsightSlotAuthority,
-      "recover" | "hasSlot" | "cancelRun" | "status"
+      "recover" | "recoverHeld" | "hasSlot" | "cancelRun" | "status"
     >,
     private readonly now: () => IsoTimestamp = currentIsoTimestamp,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
@@ -361,6 +361,9 @@ export class InsightRunCoordinator {
     const slotted = await this.slots.hasSlot(input);
     if (slotted._tag === "err") return err("storage_unavailable");
     if (slotted.value) {
+      // A current run this process does not own is settled here instead of blocking the start as live.
+      const reconciled = await this.slots.recoverHeld(input, this.active);
+      if (reconciled._tag === "err") return err("storage_unavailable");
       const current = await this.slots.status.activeRun(input);
       if (current._tag === "err") return err("storage_unavailable");
       return err(
@@ -752,7 +755,11 @@ export class InsightRunCoordinator {
     if (ownership._tag === "err") return ownership;
     const slotted = await this.slots.hasSlot(input);
     if (slotted._tag === "err") return err("storage_unavailable");
-    if (slotted.value) return this.observeCurrent(input);
+    if (slotted.value) {
+      const reconciled = await this.slots.recover(input, this.active);
+      if (reconciled._tag === "err") return err("storage_unavailable");
+      return this.observeCurrent(input);
+    }
     const record = await this.insights.load(
       input.profileId,
       input.reviewId,

@@ -22,6 +22,7 @@ import {
 } from "#src/domain/insight-artifact-scalars";
 import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
 import type { InsightJournalState } from "#src/domain/insight-run-journal-contract";
+import type { InsightSlotRecord3 } from "#src/domain/insight-slot-contract";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
 import {
@@ -57,6 +58,14 @@ type InsightAdmissionInput = InsightSlotKey &
     | "possibleSpendAcknowledged"
   > & { readonly inProcess: InsightProcessRuns };
 
+/** An admission built outside the locks for the slot version it saw. */
+type StagedAdmission = {
+  readonly runId: InsightArtifactRunId;
+  readonly journalId: string;
+  readonly captureId: string;
+  readonly record: InsightSlotRecord3;
+};
+
 type Decision = Result<InsightJournalChange | undefined, InsightSlotFailure>;
 type Outcome = {
   readonly status: InsightJournalStatus;
@@ -81,7 +90,7 @@ export class InsightSlotAuthority {
   constructor(
     paths: PatchdeskPaths,
     insightArtifactReader: typeof readBoundedInsightArtifactFile,
-    legacy: Pick<InsightStore, "withLegacyLock">,
+    private readonly legacy: Pick<InsightStore, "load" | "withLegacyLock">,
     private readonly operations: ReviewOperationCoordinator,
     private readonly now: () => IsoTimestamp,
   ) {
@@ -98,10 +107,7 @@ export class InsightSlotAuthority {
     );
   }
 
-  /**
-   * Creates the queued journal, then points the slot at it. A crash between the two leaves a journal no slot names,
-   * which recovery ignores and retention protects.
-   */
+  /** Stages before Review/slot locks; a changed version refuses publication and leaves unnamed immutable orphans. */
   async admitRun(input: InsightAdmissionInput): Promise<
     Result<
       {
@@ -112,6 +118,17 @@ export class InsightSlotAuthority {
       InsightSlotFailure
     >
   > {
+    const seen = await this.slots.readCurrent(
+      input.profileId,
+      input.reviewId,
+      input.type,
+    );
+    if (seen._tag === "err") return failed();
+    const early = await this.admissionRefusal(input, seen.value);
+    if (early._tag === "err") return early;
+    const staged = await this.stageAdmission(input, seen.value);
+    if (staged._tag === "err") return staged;
+    const { runId, journalId, captureId, record } = staged.value;
     return this.locked(input, async () => {
       const current = await this.slots.readCurrent(
         input.profileId,
@@ -119,68 +136,100 @@ export class InsightSlotAuthority {
         input.type,
       );
       if (current._tag === "err") return failed();
-      const slot = current.value;
-      const legacyActive = [...input.inProcess.values()].some(
-        (run) =>
-          run.profileId === input.profileId &&
-          run.reviewId === input.reviewId &&
-          run.type === input.type,
-      );
-      if (legacyActive || (slot?.record.activeRun ?? null) !== null)
+      if (current.value?.record.version !== seen.value?.record.version)
         return err("already_running");
-      const token = slot?.record.nextToken ?? 1;
-      const runId = v.safeParse(
-        insightArtifactRunIdSchema,
-        currentRunId(input, input.headSha, token),
+      const refused = await this.admissionRefusal(input, current.value);
+      if (refused._tag === "err") return refused;
+      const replaced = await this.writer.replaceSlot(
+        input,
+        current.value?.pointerBytes ?? null,
+        record,
       );
-      if (!runId.success) return failed();
-      if (input.inProcess.has(runId.output)) return err("already_running");
-      const journal: InsightJournalKey = {
-        profileId: input.profileId,
-        reviewId: input.reviewId,
-        journalId: randomUUID(),
-        runId: runId.output,
-      };
-      const captureId = randomUUID();
-      const createdAt = this.now();
-      const objects = await stageAdmissionObjects(this.artifacts, {
+      if (replaced._tag === "err") return replaced;
+      return ok({ runId, journalId, captureId });
+    });
+  }
+
+  /** Refuses while this process runs, or storage records, an active run of this type in either format. */
+  private async admissionRefusal(
+    input: InsightAdmissionInput,
+    slot: InsightSlotSnapshot | undefined,
+  ): Promise<Result<void, InsightSlotFailure>> {
+    const processRun = [...input.inProcess.values()].some(
+      (run) =>
+        run.profileId === input.profileId &&
+        run.reviewId === input.reviewId &&
+        run.type === input.type,
+    );
+    if (processRun || (slot?.record.activeRun ?? null) !== null)
+      return err("already_running");
+    // A current slot hides the legacy record, so only a type without one can hold a persisted legacy run.
+    if (slot !== undefined) return ok(undefined);
+    const legacy = await this.legacy.load(
+      input.profileId,
+      input.reviewId,
+      input.type,
+    );
+    if (legacy._tag === "err")
+      return legacy.error.reason === "not_found" ? ok(undefined) : failed();
+    return legacy.value.activeRun === undefined
+      ? ok(undefined)
+      : err("already_running");
+  }
+
+  /** Builds the journal, the admission objects and the next slot record from the slot as read, taking no Review or slot lock. */
+  private async stageAdmission(
+    input: InsightAdmissionInput,
+    seen: InsightSlotSnapshot | undefined,
+  ): Promise<Result<StagedAdmission, InsightSlotFailure>> {
+    const token = seen?.record.nextToken ?? 1;
+    const runId = v.safeParse(
+      insightArtifactRunIdSchema,
+      currentRunId(input, input.headSha, token),
+    );
+    if (!runId.success) return failed();
+    if (input.inProcess.has(runId.output)) return err("already_running");
+    const journal: InsightJournalKey = {
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      journalId: randomUUID(),
+      runId: runId.output,
+    };
+    const captureId = randomUUID();
+    const createdAt = this.now();
+    const [objects, base] = await Promise.all([
+      stageAdmissionObjects(this.artifacts, {
         ...input,
         runId: runId.output,
         captureId,
         authorizedAt: createdAt,
-      });
-      if (objects._tag === "err") return failed();
-      const created = await this.withJournal(journal, () =>
-        this.journals.create(journal, { ...objects.value, createdAt }),
-      );
-      // Nothing names this journal yet, so any non-committed outcome leaves only an orphan.
-      if (created._tag === "err" || created.value._tag !== "committed")
-        return failed();
-      const base =
-        slot === undefined ? await this.writer.newSlot(input) : ok(slot.record);
-      if (base._tag === "err") return base;
-      const replaced = await this.writer.replaceSlot(
-        input,
-        slot?.pointerBytes ?? null,
-        {
-          ...base.value,
-          version: base.value.version + 1,
-          nextToken: token + 1,
-          activeRun: {
-            tag: "current",
-            runId: runId.output,
-            journalId: v.parse(insightArtifactIdSchema, journal.journalId),
-          },
-          replacementFailure: null,
-          updatedAt: createdAt,
+      }),
+      seen === undefined ? this.writer.newSlot(input) : ok(seen.record),
+    ]);
+    if (objects._tag === "err") return failed();
+    if (base._tag === "err") return base;
+    const created = await this.withJournal(journal, () =>
+      this.journals.create(journal, { ...objects.value, createdAt }),
+    );
+    // Nothing names this journal yet, so any non-committed outcome leaves only an orphan.
+    if (created._tag === "err" || created.value._tag !== "committed")
+      return failed();
+    return ok({
+      runId: runId.output,
+      journalId: journal.journalId,
+      captureId,
+      record: {
+        ...base.value,
+        version: base.value.version + 1,
+        nextToken: token + 1,
+        activeRun: {
+          tag: "current",
+          runId: runId.output,
+          journalId: v.parse(insightArtifactIdSchema, journal.journalId),
         },
-      );
-      if (replaced._tag === "err") return replaced;
-      return ok({
-        runId: runId.output,
-        journalId: journal.journalId,
-        captureId,
-      });
+        replacementFailure: null,
+        updatedAt: createdAt,
+      },
     });
   }
 
@@ -227,29 +276,51 @@ export class InsightSlotAuthority {
    * Reconciles a current run this process does not own: a terminal journal only releases the slot, a cancelling run
    * settles cancelled, a run without dispatch intent settles failed (cancelled when paused), and a dispatched run pauses
    * for an explicit Resume. It never dispatches and never writes legacy files; an unknown outcome stays unknown for the
-   * next pass.
+   * next pass. A lock-free read comes first, so a slot with no run, or one this process owns, never waits for the Review lock.
    */
-  async recover(
+  recover(
     input: InsightSlotKey,
     inProcess: InsightProcessRuns,
+  ): Promise<Result<void, InsightSlotFailure>> {
+    return this.reconcile(input, inProcess, (operation) =>
+      this.locked(input, operation),
+    );
+  }
+
+  /** `recover` for a caller that already holds the Review lock and takes only the slot lock. */
+  recoverHeld(
+    input: InsightSlotKey,
+    inProcess: InsightProcessRuns,
+  ): Promise<Result<void, InsightSlotFailure>> {
+    return this.reconcile(input, inProcess, (operation) =>
+      this.slotLocks.run(slotLockKey(input), operation),
+    );
+  }
+
+  private async reconcile(
+    input: InsightSlotKey,
+    inProcess: InsightProcessRuns,
+    lock: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<Result<void, InsightSlotFailure>> {
     const present = await this.hasSlot(input);
     if (present._tag === "err") return present;
     if (!present.value) return ok(undefined);
-    return this.locked(input, async () => {
+    const seen = await this.slots.readCurrent(
+      input.profileId,
+      input.reviewId,
+      input.type,
+    );
+    if (seen._tag === "err") return failed();
+    if (unownedRun(seen.value, inProcess) === undefined) return ok(undefined);
+    return lock(async () => {
       const slot = await this.slots.readCurrent(
         input.profileId,
         input.reviewId,
         input.type,
       );
       if (slot._tag === "err") return failed();
-      const active = slot.value?.record.activeRun;
-      if (
-        slot.value === undefined ||
-        active == null ||
-        active.tag !== "current" ||
-        inProcess.has(active.runId)
-      )
+      const active = unownedRun(slot.value, inProcess);
+      if (slot.value === undefined || active === undefined)
         return ok(undefined);
       const run: InsightRunRef = {
         ...input,
@@ -354,10 +425,7 @@ export class InsightSlotAuthority {
   /** Review lock, then slot lock; the journal lock is taken inside. */
   private locked<T>(key: InsightSlotKey, operation: () => Promise<T>) {
     return this.operations.withReviewLock(key.profileId, key.reviewId, () =>
-      this.slotLocks.run(
-        `${key.profileId}\n${key.reviewId}\n${key.type}`,
-        operation,
-      ),
+      this.slotLocks.run(slotLockKey(key), operation),
     );
   }
 
@@ -370,6 +438,21 @@ export class InsightSlotAuthority {
       operation,
     );
   }
+}
+
+function slotLockKey(key: InsightSlotKey): string {
+  return `${key.profileId}\n${key.reviewId}\n${key.type}`;
+}
+
+/** The slot's current run when this process does not own it. */
+function unownedRun(
+  slot: InsightSlotSnapshot | undefined,
+  inProcess: InsightProcessRuns,
+) {
+  const active = slot?.record.activeRun;
+  return active?.tag === "current" && !inProcess.has(active.runId)
+    ? active
+    : undefined;
 }
 
 /**
