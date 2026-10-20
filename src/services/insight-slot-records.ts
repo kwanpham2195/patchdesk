@@ -64,11 +64,15 @@ export type InsightRunRef = InsightSlotKey & {
 
 export type InsightJournalStatus = InsightJournalState["status"];
 
-/** One internal journal transaction; a failure record is staged and referenced only when given. */
+/**
+ * One internal journal transaction; a failure record is staged and referenced only when given. `usageUnknown` re-roots
+ * the UsageRoot with hasUnknownUsage set and leaves its entries and every dispatch record untouched.
+ */
 export type InsightJournalChange = {
   readonly status: InsightJournalStatus;
   readonly cancelEpoch?: number;
   readonly failure?: Pick<InsightFailureRecord, "code" | "phase" | "recovery">;
+  readonly usageUnknown?: true;
 };
 
 export function failed(): Result<never, InsightSlotFailure> {

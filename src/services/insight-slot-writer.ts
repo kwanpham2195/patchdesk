@@ -22,6 +22,7 @@ import {
   insightFailureRecordCodec,
   insightLegacyFailureCodec,
   insightProvenanceCodec,
+  insightUsageRootCodec,
 } from "#src/domain/insight-run-binding-contract";
 import {
   encodeInsightSlotPointer,
@@ -52,7 +53,7 @@ export class InsightSlotWriter {
     private readonly now: () => IsoTimestamp,
   ) {}
 
-  /** Commits one internal transaction on `snapshot`, staging a FailureRecord when the change carries one. */
+  /** Commits one internal transaction on `snapshot`, staging a FailureRecord and an unknown-usage UsageRoot when the change carries them. */
   async commitChange(
     journal: InsightJournalKey,
     snapshot: InsightJournalSnapshot,
@@ -63,7 +64,28 @@ export class InsightSlotWriter {
       readonly root: InsightArtifactReference;
     }> = [];
     let failure = snapshot.state.failure;
+    let usage = snapshot.state.usage;
     const at = this.now();
+    if (change.usageUnknown === true) {
+      const prior = await this.artifacts.readObject(
+        journal.profileId,
+        journal.reviewId,
+        insightUsageRootCodec,
+        snapshot.state.usage,
+      );
+      if (prior._tag === "err") return failed();
+      if (!prior.value.hasUnknownUsage) {
+        const marked = await this.artifacts.writeObject(
+          journal.profileId,
+          journal.reviewId,
+          insightUsageRootCodec,
+          { ...prior.value, hasUnknownUsage: true },
+        );
+        if (marked._tag === "err") return failed();
+        usage = marked.value;
+        staged.push({ schema: "UsageRoot", root: marked.value });
+      }
+    }
     if (change.failure !== undefined) {
       const record = await this.artifacts.writeObject(
         journal.profileId,
@@ -87,6 +109,7 @@ export class InsightSlotWriter {
         status: change.status,
         cancelEpoch: change.cancelEpoch ?? snapshot.state.cancelEpoch,
         failure,
+        usage,
       },
       { createdAt: at, staged },
     );
