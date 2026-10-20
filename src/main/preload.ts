@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { exposeInsightCaptureDiagnostics } from "./insight-capture-diagnostics-preload";
 
 import {
   readWindowAppearance,
@@ -99,3 +100,9 @@ const desktopApi: PatchdeskDesktopApi = Object.freeze({
 });
 
 contextBridge.exposeInMainWorld("patchdesk", desktopApi);
+if (
+  __PATCHDESK_CAPTURE_DIAGNOSTICS__ &&
+  process.argv.includes("--patchdesk-insight-patch-capture=1")
+) {
+  exposeInsightCaptureDiagnostics();
+}

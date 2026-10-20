@@ -4,8 +4,15 @@ import { open, type FileHandle } from "node:fs/promises";
 import * as v from "valibot";
 
 import { err, type Result } from "#src/domain/result";
-import { parseContentHash, type ContentHash } from "#src/domain/ids";
+import {
+  parseContentHash,
+  parseReviewId,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+  type ContentHash,
+} from "#src/domain/ids";
 import { isNotFound, type StorageFailure } from "./json-file";
+import { insightTextRootDescriptorSchema } from "#src/domain/insight-artifact-scalars";
 
 const requestId = v.pipe(
   v.number(),
@@ -17,11 +24,92 @@ const requestId = v.pipe(
 const boundedPath = v.pipe(v.string(), v.minLength(1), v.maxLength(4_096));
 
 /** Private job-worker request; the first job hashes one file the caller already trusts. */
-export const insightArtifactJobRequestSchema = v.strictObject({
+const hashRequest = v.strictObject({
   kind: v.literal("hash_file"),
   id: requestId,
   path: boundedPath,
 });
+
+/** Main-derived locations only; no source content or renderer-supplied path crosses this channel. */
+const insightPatchCaptureInputSchema = v.strictObject({
+  sourceRoot: boundedPath,
+  sourcePath: boundedPath,
+  destinationRoot: boundedPath,
+  destinationReview: boundedPath,
+  profileId: v.pipe(
+    v.string(),
+    v.check((value) => parseWorkspaceProfileId(value)._tag === "ok"),
+  ),
+  reviewId: v.pipe(
+    v.string(),
+    v.check((value) => parseReviewId(value)._tag === "ok"),
+  ),
+  sessionId: v.pipe(
+    v.string(),
+    v.check((value) => parseReviewSessionId(value)._tag === "ok"),
+  ),
+  expectedHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+});
+
+/** Parsed, bounded arguments for the physical patch operation. */
+export type InsightPatchCaptureInput = v.InferOutput<
+  typeof insightPatchCaptureInputSchema
+>;
+
+const patchFailureSchema = v.strictObject({
+  _tag: v.literal("InsightPatchFailure"),
+  reason: v.picklist([
+    "aborted",
+    "invalid_source",
+    "stale_source",
+    "sensitive_value",
+    "io",
+    "transport",
+    "busy",
+  ]),
+});
+
+/** Safe failure categories carry no source paths, prose or caught exception messages. */
+export type InsightPatchFailure = v.InferOutput<typeof patchFailureSchema>;
+
+/** A verified patch descriptor, not a CaptureRoot or publication receipt. */
+export type InsightPatchCaptureResult = Result<
+  v.InferOutput<typeof insightTextRootDescriptorSchema>,
+  InsightPatchFailure
+>;
+
+/** Constructs a prose-free patch failure. */
+export function patchCaptureFailure(
+  reason: InsightPatchFailure["reason"],
+): Result<never, InsightPatchFailure> {
+  return err({ _tag: "InsightPatchFailure", reason });
+}
+
+/** Correlated operation and cancellation messages; cancellation grants no new filesystem authority. */
+export const insightArtifactJobRequestSchema = v.pipe(
+  v.variant("kind", [
+    hashRequest,
+    v.strictObject({
+      kind: v.literal("capture_patch"),
+      id: requestId,
+      input: insightPatchCaptureInputSchema,
+    }),
+    v.strictObject({ kind: v.literal("cancel"), id: requestId }),
+  ]),
+  v.check((request) => {
+    const strings =
+      request.kind === "capture_patch"
+        ? Object.values(request.input)
+        : request.kind === "hash_file"
+          ? [request.path]
+          : [];
+    // The code-unit lower bound avoids allocating an oversized JSON string before checking actual encoded bytes.
+    return (
+      strings.reduce((sum, value) => sum + value.length, 0) <= 32 * 1024 &&
+      Buffer.byteLength(JSON.stringify(request), "utf8") <= 32 * 1024
+    );
+  }),
+);
 
 /** Correlation and bounded path after private transport validation. */
 export type InsightArtifactJobRequest = v.InferOutput<
@@ -50,6 +138,17 @@ export const insightArtifactJobReplySchema = v.union([
     kind: v.literal("hash_file"),
     id: requestId,
     result: hashResult,
+  }),
+  v.strictObject({
+    kind: v.literal("capture_patch"),
+    id: requestId,
+    result: v.variant("_tag", [
+      v.strictObject({
+        _tag: v.literal("ok"),
+        value: insightTextRootDescriptorSchema,
+      }),
+      v.strictObject({ _tag: v.literal("err"), error: patchFailureSchema }),
+    ]),
   }),
 ]);
 
