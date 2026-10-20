@@ -1,4 +1,4 @@
-import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -32,7 +32,7 @@ it("activates each account provider on its own route and names the pi version an
   root = await mkdtemp(join(tmpdir(), "patchdesk-provider-routes-"));
   const activated: Array<AccountInsightProvider> = [];
   const started = await startLocalApiServer({
-    insightArtifactReader: readBoundedInsightArtifactFile,
+    insightResources: createInProcessInsightResourceBundle(),
     allowedOrigin: origin,
     capability,
     paths: PatchdeskPaths.forTest(root),

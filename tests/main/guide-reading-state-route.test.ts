@@ -1,4 +1,4 @@
-import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,7 +70,7 @@ async function setup(
     },
   };
   const started = await startLocalApiServer({
-    insightArtifactReader: readBoundedInsightArtifactFile,
+    insightResources: createInProcessInsightResourceBundle(),
     allowedOrigin: origin,
     capability,
     paths,

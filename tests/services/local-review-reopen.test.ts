@@ -7,6 +7,7 @@ import { ViewedFilesStore } from "#src/adapters/storage/viewed-files-store";
 import { ok } from "#src/domain/result";
 import { ReviewWorkbenchController } from "#src/services/review-workbench-controller";
 import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import {
   cleanupLocalApplyRoots,
   git,
@@ -32,6 +33,7 @@ function workbenchController(
     new ReviewWriteOperationStore(harness.paths),
     new ViewedFilesStore(harness.paths, { write: () => undefined }),
     harness.operations,
+    createInProcessInsightResourceBundle().jobs,
   );
   return new ReviewWorkbenchController(
     // SAFETY: loading a stored local Review never prepares a pull request session.

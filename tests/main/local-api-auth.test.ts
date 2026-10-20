@@ -1,4 +1,4 @@
-import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -69,7 +69,7 @@ async function start(
 ): Promise<LocalApiServer> {
   root = await mkdtemp(join(tmpdir(), "patchdesk-api-auth-"));
   const value = await startLocalApiServer({
-    insightArtifactReader: readBoundedInsightArtifactFile,
+    insightResources: createInProcessInsightResourceBundle(),
     capability,
     allowedOrigin: origin,
     paths: PatchdeskPaths.forTest(root),

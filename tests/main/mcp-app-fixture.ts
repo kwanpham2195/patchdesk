@@ -1,4 +1,4 @@
-import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
@@ -118,7 +118,7 @@ export async function startAppWithLinkedWorktree(
     });
   const socketPath = join(root, "app", "mcp", "patchdesk.sock");
   const started = await startLocalApiServer({
-    insightArtifactReader: readBoundedInsightArtifactFile,
+    insightResources: createInProcessInsightResourceBundle(),
     capability,
     allowedOrigin: origin,
     paths,

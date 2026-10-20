@@ -1,6 +1,5 @@
 import type { RetainedGuide } from "#src/domain/guide";
 import type { AgentRunRequest } from "#src/domain/agent-run-request";
-import { createHash } from "node:crypto";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import type { GitHubReadFailure } from "#src/adapters/github/gh-request-runner";
 import { readFile, stat } from "node:fs/promises";
@@ -10,6 +9,7 @@ import {
   hashAvatarUrl,
 } from "#src/adapters/storage/avatar-cache-store";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
+import type { InsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
@@ -222,14 +222,11 @@ export type ReviewWorkbenchProjection = {
 /** A patch file's contents plus the identity a cached hash of them is keyed on. */
 type ReadPatchFile = {
   readonly contents: string;
-  /** Absent when the file was readable but could not be stat'd, so its hash cannot be cached. */
-  readonly identity?: { readonly size: number; readonly modifiedAtMs: number };
+  readonly identity: { readonly size: number; readonly modifiedAtMs: number };
 };
 
-type CachedPatchHash = {
+type CachedPatchHash = ReadPatchFile["identity"] & {
   readonly hash: ContentHash;
-  readonly size: number;
-  readonly modifiedAtMs: number;
 };
 
 const maxCachedPatchHashes = 32;
@@ -244,15 +241,10 @@ async function readPatchFile(path: string): Promise<ReadPatchFile | undefined> {
   const stats = await stat(path).catch(() => undefined);
   // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the ordering is the point: awaiting these together lets a concurrent write pair a newer identity with older bytes, which would cache a hash that never matches the file again
   const contents = await readFile(path, "utf8").catch(() => undefined);
-  if (contents === undefined) return undefined;
+  if (stats === undefined || contents === undefined) return undefined;
   return {
     contents,
-    ...definedProps({
-      identity:
-        stats === undefined
-          ? undefined
-          : { size: stats.size, modifiedAtMs: stats.mtimeMs },
-    }),
+    identity: { size: stats.size, modifiedAtMs: stats.mtimeMs },
   };
 }
 
@@ -300,6 +292,7 @@ export class ReviewWorkbenchProjectionService {
       LocalApplyOperationStore,
       "load"
     >,
+    private readonly jobs: InsightResourceBundle["jobs"],
   ) {
     this.retainedInsights = new RetainedInsightReader(
       this.sessions,
@@ -468,42 +461,51 @@ export class ReviewWorkbenchProjectionService {
   }
 
   /**
-   * Hashes the patch at most once per `(path, size, mtimeMs)` identity, the
-   * same cache key `ReviewDiffSourceService.loadPatchIndex` uses. The hash
-   * decides whether a retained Insight still describes the bytes on disk, so
-   * it stays derived from the file rather than read off the Session record: a
-   * patch replaced under a live Session must still project a different hash.
+   * Hashes the patch at most once per `(path, size, mtimeMs)` identity, the key
+   * `ReviewDiffSourceService.loadPatchIndex` uses. The hash stays derived from
+   * the file, not the Session record, so a replaced patch projects a new hash.
+   * The identity is taken before the read and after the hash; a write between
+   * them retries once, then fails, so contents and hash describe one state.
    */
-  private patchHashOf(patchPath: string, patch: ReadPatchFile): ContentHash {
-    const identity = patch.identity;
-    const cached = this.patchHashes.get(patchPath);
-    if (
-      identity !== undefined &&
-      cached !== undefined &&
-      cached.size === identity.size &&
-      cached.modifiedAtMs === identity.modifiedAtMs
-    ) {
+  private async readHashedPatch(
+    patchPath: string,
+  ): Promise<
+    Result<
+      (ReadPatchFile & { readonly hash: ContentHash }) | undefined,
+      WorkbenchProjectionFailure
+    >
+  > {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the retry must observe the file after the previous attempt
+      const patch = await readPatchFile(patchPath);
+      if (patch === undefined) return ok(undefined);
+      const identity = patch.identity;
+      const cached = this.patchHashes.get(patchPath);
+      const reused =
+        cached?.size === identity.size &&
+        cached.modifiedAtMs === identity.modifiedAtMs
+          ? cached.hash
+          : undefined;
+      const hashed =
+        reused === undefined ? await this.jobs.hashFile(patchPath) : ok(reused);
+      if (hashed._tag === "err")
+        return err({ _tag: "SessionStorageUnavailable" });
+      const after = await stat(patchPath).catch(() => undefined);
+      if (
+        after?.size !== identity.size ||
+        after.mtimeMs !== identity.modifiedAtMs
+      )
+        continue;
       this.patchHashes.delete(patchPath);
-      this.patchHashes.set(patchPath, cached);
-      return cached.hash;
+      this.patchHashes.set(patchPath, { hash: hashed.value, ...identity });
+      if (this.patchHashes.size > maxCachedPatchHashes) {
+        // SAFETY: the size check guarantees a nonempty map.
+        const oldest = this.patchHashes.keys().next().value as string;
+        this.patchHashes.delete(oldest);
+      }
+      return ok({ ...patch, hash: hashed.value });
     }
-    // SAFETY: `createHash("sha256").digest("hex")` always yields a
-    // 64-character lowercase hex string, which already satisfies
-    // ContentHash's runtime shape (`parseContentHash` checks exactly
-    // `/^[a-f0-9]{64}$/`).
-    const hash = createHash("sha256")
-      .update(patch.contents)
-      .digest("hex") as ContentHash;
-    if (identity === undefined) return hash;
-    this.patchHashes.delete(patchPath);
-    this.patchHashes.set(patchPath, { hash, ...identity });
-    while (this.patchHashes.size > maxCachedPatchHashes) {
-      // SAFETY: the loop condition guarantees a nonempty map, so the iterator
-      // yields a key.
-      const oldest = this.patchHashes.keys().next().value as string;
-      this.patchHashes.delete(oldest);
-    }
-    return hash;
+    return err({ _tag: "SessionStorageUnavailable" });
   }
 
   private async project(
@@ -520,17 +522,15 @@ export class ReviewWorkbenchProjectionService {
     const viewerLogin = parseGitHubLogin(profile.ghAccount);
     if (viewerLogin._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
-    const [patch, storedInsights, viewed] = await Promise.all([
-      readPatchFile(session.patchPath),
+    const [hashedPatch, storedInsights, viewed] = await Promise.all([
+      this.readHashedPatch(session.patchPath),
       this.retainedInsights.loadStoredInsights(session),
       this.viewedFiles.load(session.key.profileId, session.id, "combined"),
     ]);
     if (storedInsights._tag === "err") return storedInsights;
-    const fullPatch = patch?.contents;
-    const patchHash =
-      patch === undefined
-        ? undefined
-        : this.patchHashOf(session.patchPath, patch);
+    if (hashedPatch._tag === "err") return hashedPatch;
+    const fullPatch = hashedPatch.value?.contents;
+    const patchHash = hashedPatch.value?.hash;
 
     const pullRequestSession = isPullRequestReviewSession(session)
       ? session

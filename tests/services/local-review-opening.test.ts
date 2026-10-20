@@ -51,6 +51,7 @@ import { LocalReviewSessionPreparation } from "#src/services/local-review-sessio
 import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type {
   UntrackedFileSize,
   UntrackedLimits,
@@ -181,6 +182,7 @@ async function opening(
     new ReviewWriteOperationStore(paths),
     viewedFiles,
     new LocalApplyOperationStore(paths),
+    createInProcessInsightResourceBundle().jobs,
   );
   return new LocalReviewOpening(
     {
