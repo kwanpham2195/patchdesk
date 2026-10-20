@@ -139,7 +139,15 @@ async function fixture(listing: ListResult) {
     new InsightSlotAuthority(
       paths,
       readBoundedInsightArtifactFile,
-      { withLegacyLock: (_profileId, _reviewId, _type, run) => run() },
+      {
+        load: async () =>
+          err({
+            _tag: "StorageFailure",
+            operation: "read",
+            reason: "not_found",
+          }),
+        withLegacyLock: (_profileId, _reviewId, _type, run) => run(),
+      },
       operations,
       () => now,
     ),
