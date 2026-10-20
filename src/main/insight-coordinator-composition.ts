@@ -52,6 +52,23 @@ type InsightCoordinatorHost = {
   readonly desktopNotifier: DesktopNotifier;
 };
 
+/** The one wiring of the context pack over the app's GitHub reader, shared by the coordinator and the Guide preparation diagnostic. */
+export function insightContextPackFactory({
+  paths,
+  logUnclassifiedCommandFailure,
+}: Pick<InsightCoordinatorHost, "paths" | "logUnclassifiedCommandFailure">) {
+  return (github: GitHubReader): ReviewContextPackService =>
+    new ReviewContextPackService({
+      profiles: new ProfileStore(paths),
+      github,
+      context: new ReviewContextService(),
+      paths,
+      git: createReadOnlyGitExecutor(
+        new CommandRunner(undefined, logUnclassifiedCommandFailure),
+      ),
+    });
+}
+
 /** Binds the host objects once; each call builds one coordinator with the same wiring as before the move. */
 export function insightCoordinatorFactory({
   paths,
@@ -60,12 +77,16 @@ export function insightCoordinatorFactory({
   diagnostics,
   desktopNotifier,
 }: InsightCoordinatorHost) {
+  const contextPack = insightContextPackFactory({
+    paths,
+    logUnclassifiedCommandFailure,
+  });
   return (
     modelCatalog: LocalPiRuntimeModelCatalog,
     providerCatalog: InsightProviderCatalog,
     operations: ReviewOperationCoordinator,
     github: GitHubReader,
-    { authorityReader: reader }: InsightResourceBundle,
+    resources: InsightResourceBundle,
   ): InsightRunCoordinator => {
     const runtime = resolveInsightRuntime(
       app.getAppPath(),
@@ -153,6 +174,7 @@ export function insightCoordinatorFactory({
         return providerInvokers[input.provider].invoke(input, options);
       },
     };
+    const reader = resources.authorityReader;
     const store = new InsightStore(paths, reader);
     const slots = new InsightSlotAuthority(
       paths,
@@ -174,15 +196,7 @@ export function insightCoordinatorFactory({
         guide: invoker,
       },
       operations,
-      new ReviewContextPackService({
-        profiles: new ProfileStore(paths),
-        github,
-        context: new ReviewContextService(),
-        paths,
-        git: createReadOnlyGitExecutor(
-          new CommandRunner(undefined, logUnclassifiedCommandFailure),
-        ),
-      }),
+      contextPack(github),
       slots,
       now,
       diagnostics,
@@ -192,6 +206,7 @@ export function insightCoordinatorFactory({
         new CommandRunner(undefined, logUnclassifiedCommandFailure),
       ),
       { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
+      resources.ownership.forScope(paths.dataDirectory()),
     );
   };
 }

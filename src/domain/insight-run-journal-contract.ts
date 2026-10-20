@@ -60,7 +60,17 @@ const journalStateSchema = v.pipe(
     cancelEpoch: insightArtifactUnsignedSchema,
     failure: nullableReference,
     publication: nullableReference,
+    /** R<GuidePreparedInput1>; present only after Guide preparation verified its inputs, before any generation. */
+    guidePreparation: v.exactOptional(reference),
   }),
+  v.check(
+    (state) =>
+      state.guidePreparation === undefined ||
+      (state.candidate === null &&
+        state.dispatches.count === 0 &&
+        state.publication === null),
+    "A prepared Guide input belongs to a journal that has not generated, dispatched or published.",
+  ),
   v.check(
     (state) =>
       state.candidate !== null ||

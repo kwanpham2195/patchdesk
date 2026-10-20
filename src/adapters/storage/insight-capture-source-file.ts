@@ -34,7 +34,7 @@ export class InsightCaptureSourceFile {
   /** Copies and scans the real source before any immutable install; the snapshot has no reopenable pathname. */
   static async capture(
     input: InsightPatchCaptureInput,
-    options: { readonly signal?: AbortSignal },
+    options: { readonly signal?: AbortSignal; readonly maxBytes?: number },
   ): Promise<Result<InsightCaptureSourceFile, InsightPatchFailure>> {
     let source: FileHandle | undefined;
     let snapshot: FileHandle | undefined;
@@ -75,6 +75,9 @@ export class InsightCaptureSourceFile {
       const opened = await source.stat();
       if (!ownedFile(before) || !sameFile(before, opened))
         return patchCaptureFailure("invalid_source");
+      // Refuse before copying; the loop below still bounds a source that grows while it is read.
+      if (options.maxBytes !== undefined && opened.size > options.maxBytes)
+        return patchCaptureFailure("too_large");
       temporary = join(
         input.destinationReview,
         `.patch-snapshot-${randomUUID()}.tmp`,
@@ -116,6 +119,8 @@ export class InsightCaptureSourceFile {
         if (scan.push(text)) return patchCaptureFailure("sensitive_value");
         const nextBytes = bytes + raw.length;
         const nextUnits = utf16Units + text.length;
+        if (options.maxBytes !== undefined && nextBytes > options.maxBytes)
+          return patchCaptureFailure("too_large");
         if (
           !Number.isSafeInteger(nextBytes) ||
           !Number.isSafeInteger(nextUnits)
@@ -185,6 +190,36 @@ export class InsightCaptureSourceFile {
       this.offset += read.bytesRead;
       return ok(
         read.bytesRead === 0 ? undefined : buffer.subarray(0, read.bytesRead),
+      );
+    } catch {
+      return err({ _tag: "StorageFailure", operation: "read", reason: "io" });
+    }
+  }
+
+  /** The whole scanned snapshot as text; the caller bounds `bytes` through `capture`'s `maxBytes` before holding it. */
+  async readAll(): Promise<Result<string, StorageFailure>> {
+    try {
+      const buffer = Buffer.alloc(this.bytes);
+      let filled = 0;
+      while (filled < buffer.length) {
+        const read = await this.file.read(
+          buffer,
+          filled,
+          buffer.length - filled,
+          filled,
+        );
+        if (read.bytesRead === 0)
+          return err({
+            _tag: "StorageFailure",
+            operation: "read",
+            reason: "invalid_stored_value",
+          });
+        filled += read.bytesRead;
+      }
+      return ok(
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+          buffer,
+        ),
       );
     } catch {
       return err({ _tag: "StorageFailure", operation: "read", reason: "io" });

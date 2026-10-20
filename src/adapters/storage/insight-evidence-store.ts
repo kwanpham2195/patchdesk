@@ -29,6 +29,7 @@ export class InsightEvidenceStore {
   /** Interrupted temporary directories cannot be selected by a run descriptor. */
   async publish(
     bundle: InsightEvidenceBundle,
+    options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<void, InsightEvidenceFailure>> {
     if (
       !this.owns(bundle) ||
@@ -45,10 +46,16 @@ export class InsightEvidenceStore {
         join(dirname(bundle.directory), ".unpublished-"),
       );
       const directory = temporary;
-      const written = await mapConcurrent(files(bundle), 4, (file) =>
-        writeAtomicFile(join(directory, file.name), file.text),
+      // Files already begun finish; an abort stops the rest and the unpublished directory is removed below.
+      const written = await mapConcurrent(files(bundle), 4, async (file) =>
+        options.signal?.aborted
+          ? undefined
+          : writeAtomicFile(join(directory, file.name), file.text),
       );
-      if (written.some((result) => result._tag === "err"))
+      if (
+        options.signal?.aborted ||
+        written.some((result) => result?._tag === "err")
+      )
         return err({
           _tag: "InsightEvidenceFailure",
           reason: "evidence_unavailable",
@@ -65,10 +72,10 @@ export class InsightEvidenceStore {
         });
       await rename(temporary, bundle.directory);
       temporary = undefined;
-      return await this.validate(bundle);
+      return await this.validate(bundle, options);
     } catch {
       // A crash can publish this run directory before its Insight record commits.
-      return this.validate(bundle);
+      return this.validate(bundle, options);
     } finally {
       if (
         temporary !== undefined &&
@@ -81,6 +88,7 @@ export class InsightEvidenceStore {
   /** Validates the entire required set even when the agent never read a damaged page. */
   async validate(
     bundle: InsightEvidenceBundle,
+    options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<void, InsightEvidenceFailure>> {
     if (!this.owns(bundle))
       return err({
@@ -110,12 +118,19 @@ export class InsightEvidenceStore {
           reason: "evidence_mismatch",
         });
       const checked = await mapConcurrent(expected, 4, (file) =>
-        validateEvidenceFile({
-          root: this.paths.dataDirectory(),
-          path: join(bundle.directory, file.name),
-          sha256: file.sha256,
-          bytes: Buffer.byteLength(file.text),
-        }),
+        options.signal?.aborted
+          ? Promise.resolve(
+              err({
+                _tag: "InsightEvidenceFailure",
+                reason: "evidence_unavailable",
+              } as const),
+            )
+          : validateEvidenceFile({
+              root: this.paths.dataDirectory(),
+              path: join(bundle.directory, file.name),
+              sha256: file.sha256,
+              bytes: Buffer.byteLength(file.text),
+            }),
       );
       const failed = checked.find((result) => result._tag === "err");
       return failed?._tag === "err" ? failed : ok(undefined);

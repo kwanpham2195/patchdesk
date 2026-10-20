@@ -7,6 +7,7 @@ import {
   insightArtifactJobRequestSchema,
   type InsightArtifactJobRequest,
 } from "./insight-artifact-job-protocol";
+import { prepareGuideInputs } from "./guide-preparation-job";
 import { captureInsightPatch } from "./insight-patch-capture-job";
 
 if (parentPort === null)
@@ -34,9 +35,13 @@ async function runJob(
     const result =
       request.kind === "hash_file"
         ? await hashUtf8FileSha256(request.path)
-        : await captureInsightPatch(request.input, {
-            signal: controller.signal,
-          });
+        : request.kind === "prepare_guide"
+          ? await prepareGuideInputs(request.input, {
+              signal: controller.signal,
+            })
+          : await captureInsightPatch(request.input, {
+              signal: controller.signal,
+            });
     const reply = v.safeParse(insightArtifactJobReplySchema, {
       kind: request.kind,
       id: request.id,

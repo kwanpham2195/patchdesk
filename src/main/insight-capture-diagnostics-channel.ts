@@ -1,5 +1,10 @@
 import * as v from "valibot";
+import { guidePreparationResultSchema } from "#src/domain/guide-preparation";
 import { insightTextRootDescriptorSchema } from "#src/domain/insight-artifact-scalars";
+import {
+  INSIGHT_LANGUAGES,
+  INSIGHT_PROVIDERS,
+} from "#src/domain/insight-provider";
 import {
   parseReviewId,
   parseReviewSessionId,
@@ -13,7 +18,7 @@ export const INSIGHT_CAPTURE_DIAGNOSTIC_CHANNEL =
 /** Requests name the startup-selected Review and exact revision, never filesystem locations. */
 export const insightCaptureDiagnosticRequestSchema = v.pipe(
   v.strictObject({
-    action: v.picklist(["stage", "status", "cancel"]),
+    action: v.picklist(["stage", "prepare_guide", "status", "cancel"]),
     profileId: v.pipe(
       v.string(),
       v.check((value) => parseWorkspaceProfileId(value)._tag === "ok"),
@@ -28,19 +33,29 @@ export const insightCaptureDiagnosticRequestSchema = v.pipe(
     ),
     revision: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
     patchHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+    /** Names the run's provenance for admission; it never authorizes a provider dispatch. */
+    selection: v.exactOptional(
+      v.strictObject({
+        provider: v.picklist(INSIGHT_PROVIDERS),
+        model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+        reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
+        language: v.picklist(INSIGHT_LANGUAGES),
+      }),
+    ),
   }),
+  v.check(
+    (request) =>
+      (request.action === "prepare_guide") ===
+      (request.selection !== undefined),
+    "Only a Guide preparation names a selection, and it must.",
+  ),
   v.check((request) => {
     // Include the channel and complete invoke argument, not only selected identity fields.
     return (
-      Object.values(request).reduce(
-        (sum, value) => sum + value.length,
-        INSIGHT_CAPTURE_DIAGNOSTIC_CHANNEL.length,
-      ) <=
-        32 * 1024 &&
       new TextEncoder().encode(
         JSON.stringify([INSIGHT_CAPTURE_DIAGNOSTIC_CHANNEL, request]),
       ).length <=
-        32 * 1024
+      32 * 1024
     );
   }),
 );
@@ -60,6 +75,7 @@ export const insightCaptureDiagnosticReplySchema = v.variant("status", [
       "invalid_request",
       "already_started",
       "transport",
+      "cancel_failed",
     ]),
   }),
   v.strictObject({
@@ -78,6 +94,7 @@ export const insightCaptureDiagnosticReplySchema = v.variant("status", [
             "invalid_source",
             "stale_source",
             "sensitive_value",
+            "too_large",
             "io",
             "transport",
             "busy",
@@ -85,6 +102,12 @@ export const insightCaptureDiagnosticReplySchema = v.variant("status", [
         }),
       }),
     ]),
+  }),
+  v.strictObject({
+    status: v.literal("guide_settled"),
+    /** True while the prepared run is still active and owned by this process, until cancel or disposal. */
+    owned: v.boolean(),
+    result: guidePreparationResultSchema,
   }),
 ]);
 

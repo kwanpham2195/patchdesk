@@ -28,10 +28,13 @@ export async function writeInsightTextRoot(
   reviewId: ReviewId,
   text: string,
   installBlob: InstallTextBlob,
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
   const sensitive = new InsightSensitiveStream();
   let pendingHighSurrogate = false;
   for (let start = 0; start < text.length; start += scanUnits) {
+    // The scan is synchronous CPU; checking each chunk lets an abort win before any block is installed.
+    if (options.signal?.aborted) return writeFailure("io");
     const chunk = text.slice(start, start + scanUnits);
     for (let offset = 0; offset < chunk.length; offset += 1) {
       const unit = chunk.charCodeAt(offset);
@@ -63,7 +66,7 @@ export async function writeInsightTextRoot(
       offset = end;
       return ok(chunk);
     },
-    {},
+    options,
   );
 }
 

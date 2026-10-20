@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import * as v from "valibot";
 
 import { definedProps } from "#src/domain/defined-props";
+import { tokenizeUnifiedPatch } from "#src/domain/unified-patch";
 import { err, ok, type Result } from "#src/domain/result";
 import {
   renderStatedGoalSection,
@@ -96,6 +97,23 @@ type ContextInput = {
   readonly statedGoal?: StatedGoal;
 };
 
+/**
+ * The aggregate byte limits of the shared Brief, Walkthrough and Analysis pack. A Guide preparation keeps every
+ * per-rule and per-list budget but applies no aggregate limit, so it fails on a lost rule instead of dropping one.
+ */
+export type ContextAggregateLimits = "legacy" | "none";
+
+/** The patch-independent context a run captured; the patch supplies the changed files when it is rendered. */
+export type ReviewContextMaterial = {
+  readonly pr: ContextInput["pr"];
+  readonly comments?: ContextComments;
+  readonly checks?: ContextChecks;
+  readonly criteria: ReadonlyArray<ProjectReviewCriterion>;
+  readonly packageSummary: PackageSummary;
+  /** Items the byte budgets already dropped from the advisory lists. */
+  readonly omitted: { readonly checks: number; readonly threads: number };
+};
+
 /** Keeps the longest prefix of items whose compact JSON fits one byte budget. */
 function fitPrefix<T>(items: ReadonlyArray<T>, maxBytes: number) {
   let bytes = 0;
@@ -139,62 +157,14 @@ export class ReviewContextService {
       return err({ _tag: "ReviewContextFailed" });
     try {
       await mkdir(input.preparedDirectory, { recursive: true });
-      const projectReviewCriteria = await this.loadProjectReviewCriteria(
-        input.worktreePath,
-        input.rulePaths,
+      const material = await this.acquire(input);
+      const context = renderReviewContext(
+        material,
+        input.changedFiles,
+        input.patch,
       );
-      const packageSummary = await this.packageSummary(input.worktreePath);
-      const truncated = { checks: 0, threads: 0, files: 0, rules: 0 };
-      let checks = input.checks;
-      let comments = input.comments;
-      let changedFiles = input.changedFiles;
-      let criteria = projectReviewCriteria.criteria;
-      const checksTrim = fitPrefix(
-        checks?.checks ?? [],
-        MAX_CONTEXT_CHECKS_BYTES,
-      );
-      if (checks !== undefined && checksTrim.dropped > 0) {
-        checks = { ...checks, checks: checksTrim.kept };
-        truncated.checks = checksTrim.dropped;
-      }
-      const threadsTrim = fitPrefix(
-        comments?.threads ?? [],
-        MAX_CONTEXT_THREADS_BYTES,
-      );
-      if (comments !== undefined && threadsTrim.dropped > 0) {
-        comments = { ...comments, threads: threadsTrim.kept };
-        truncated.threads = threadsTrim.dropped;
-      }
-      const filesTrim = fitPrefix(changedFiles, MAX_CONTEXT_FILES_BYTES);
-      if (filesTrim.dropped > 0) {
-        changedFiles = filesTrim.kept;
-        truncated.files = filesTrim.dropped;
-      }
-      const render = (): string =>
-        JSON.stringify(
-          {
-            pr: input.pr,
-            ...definedProps({ comments, checks }),
-            changedFiles,
-            patch: input.patch,
-            projectReviewCriteria: criteria,
-            packageSummary,
-            truncated,
-          },
-          null,
-          2,
-        );
-      let rendered = render();
-      while (
-        Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES &&
-        criteria.length > 0
-      ) {
-        criteria = criteria.slice(0, -1);
-        truncated.rules += 1;
-        rendered = render();
-      }
-      if (Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES)
-        return err({ _tag: "ReviewContextFailed" });
+      if (context === undefined) return err({ _tag: "ReviewContextFailed" });
+      const rendered = context.text;
       const contextPath = join(input.preparedDirectory, "context.json");
       const reviewInputPath = join(input.preparedDirectory, "review-input.md");
       const debugPath = join(input.preparedDirectory, "debug.json");
@@ -219,7 +189,7 @@ export class ReviewContextService {
             inspectedFileCount: 0,
             searchCount: 0,
             gitShowCount: 0,
-            profileRuleLoadFailureCount: projectReviewCriteria.failureCount,
+            profileRuleLoadFailureCount: material.ruleLoadFailureCount,
           },
           null,
           2,
@@ -236,9 +206,63 @@ export class ReviewContextService {
     }
   }
 
+  /** Reads the worktree's rule files and package summary and fits the advisory lists to their byte budgets; writes nothing. */
+  async acquire(
+    input: Pick<
+      ContextInput,
+      "worktreePath" | "pr" | "comments" | "checks" | "rulePaths"
+    >,
+    options: {
+      readonly aggregate?: ContextAggregateLimits;
+      readonly signal?: AbortSignal;
+    } = {},
+  ): Promise<
+    ReviewContextMaterial & { readonly ruleLoadFailureCount: number }
+  > {
+    const [loaded, packageSummary] = await Promise.all([
+      this.loadProjectReviewCriteria(
+        input.worktreePath,
+        input.rulePaths,
+        options,
+      ),
+      this.packageSummary(input.worktreePath),
+    ]);
+    let checks = input.checks;
+    let comments = input.comments;
+    const omitted = { checks: 0, threads: 0 };
+    const checksTrim = fitPrefix(
+      checks?.checks ?? [],
+      MAX_CONTEXT_CHECKS_BYTES,
+    );
+    if (checks !== undefined && checksTrim.dropped > 0) {
+      checks = { ...checks, checks: checksTrim.kept };
+      omitted.checks = checksTrim.dropped;
+    }
+    const threadsTrim = fitPrefix(
+      comments?.threads ?? [],
+      MAX_CONTEXT_THREADS_BYTES,
+    );
+    if (comments !== undefined && threadsTrim.dropped > 0) {
+      comments = { ...comments, threads: threadsTrim.kept };
+      omitted.threads = threadsTrim.dropped;
+    }
+    return {
+      pr: input.pr,
+      ...definedProps({ comments, checks }),
+      criteria: loaded.criteria,
+      packageSummary,
+      omitted,
+      ruleLoadFailureCount: loaded.failureCount,
+    };
+  }
+
   private async loadProjectReviewCriteria(
     worktreePath: string,
     rulePaths: ReadonlyArray<string>,
+    options: {
+      readonly aggregate?: ContextAggregateLimits;
+      readonly signal?: AbortSignal;
+    },
   ): Promise<LoadedProjectReviewCriteria> {
     const candidates = [
       {
@@ -262,10 +286,12 @@ export class ReviewContextService {
     let failureCount = 0;
 
     for (const candidate of candidates) {
+      // Reads are bounded and sequential, so this is the cooperative stop between files.
+      if (options.signal?.aborted) break;
       const rule = await readRuleFile(
         candidate.path,
         candidate.label,
-        totalBytes,
+        options.aggregate === "none" ? 0 : totalBytes,
       );
       if (rule.criterion === undefined) {
         if (!candidate.optional || !rule.missing) failureCount += 1;
@@ -292,6 +318,71 @@ export class ReviewContextService {
       return {};
     }
   }
+}
+
+/**
+ * Renders `context.json` for a patch from captured material, dropping trailing rules until it fits its budget.
+ * Returns undefined when the context still exceeds the budget with no rules left; otherwise the text and what was omitted.
+ */
+export function renderReviewContext(
+  material: ReviewContextMaterial,
+  changedFiles: ReadonlyArray<string>,
+  patch: ContextInput["patch"],
+  aggregate: ContextAggregateLimits = "legacy",
+):
+  | {
+      readonly text: string;
+      readonly truncated: {
+        readonly checks: number;
+        readonly threads: number;
+        readonly files: number;
+        readonly rules: number;
+      };
+    }
+  | undefined {
+  const truncated = {
+    checks: material.omitted.checks,
+    threads: material.omitted.threads,
+    files: 0,
+    rules: 0,
+  };
+  let files = changedFiles;
+  const filesTrim = fitPrefix(files, MAX_CONTEXT_FILES_BYTES);
+  if (filesTrim.dropped > 0) {
+    files = filesTrim.kept;
+    truncated.files = filesTrim.dropped;
+  }
+  let criteria = material.criteria;
+  const render = (): string =>
+    JSON.stringify(
+      {
+        pr: material.pr,
+        ...definedProps({
+          comments: material.comments,
+          checks: material.checks,
+        }),
+        changedFiles: files,
+        patch,
+        projectReviewCriteria: criteria,
+        packageSummary: material.packageSummary,
+        truncated,
+      },
+      null,
+      2,
+    );
+  let rendered = render();
+  if (aggregate === "none") return { text: rendered, truncated };
+  while (
+    Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES &&
+    criteria.length > 0
+  ) {
+    criteria = criteria.slice(0, -1);
+    truncated.rules += 1;
+    rendered = render();
+  }
+  return Buffer.byteLength(rendered, "utf8") > MAX_CONTEXT_JSON_BYTES
+    ? undefined
+    : { text: rendered, truncated };
 }
 
 async function readRuleFile(
@@ -330,4 +421,18 @@ async function readRuleFile(
   } catch (cause: unknown) {
     return { criterion: undefined, missing: isNotFound(cause) };
   }
+}
+
+/**
+ * Reads the new-side paths through the shared tokenizer rather than a `+++ b/`
+ * prefix test, which silently dropped every git-quoted path (a space, a quote,
+ * or a non-ASCII byte is enough) and would have read a hunk body line beginning
+ * with `+++ b/` as a file.
+ */
+export function changedPatchFiles(diff: string): ReadonlyArray<string> {
+  return tokenizeUnifiedPatch(diff).flatMap((token) =>
+    token.kind === "new_file_path" && token.path !== "/dev/null"
+      ? [token.path]
+      : [],
+  );
 }
