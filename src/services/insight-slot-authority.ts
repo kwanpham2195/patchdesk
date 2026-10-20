@@ -21,6 +21,7 @@ import {
   type InsightArtifactRunId,
 } from "#src/domain/insight-artifact-scalars";
 import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
+import type { InsightJournalState } from "#src/domain/insight-run-journal-contract";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
 import {
@@ -184,9 +185,10 @@ export class InsightSlotAuthority {
   }
 
   /**
-   * Records the cancel request durably (epoch + 1) before the caller signals anything; with no dispatch intent the run
-   * settles at once. `mutable` runs under the Review lock before anything is read, so the caller's Review check cannot go
-   * stale between its own check and the cancel.
+   * Records the cancel request durably (epoch + 1) before the caller signals anything. A run with no dispatch intent, or
+   * a paused run no process owns, settles cancelled at once; a dispatched run stays cancelling until its owner settles it.
+   * `mutable` runs under the Review lock before anything is read, so the caller's Review check cannot go stale between
+   * its own check and the cancel.
    */
   async cancelRun<E>(
     input: InsightRunRef,
@@ -196,18 +198,11 @@ export class InsightSlotAuthority {
       if (state.status === "cancelling" || isTerminalStatus(state.status))
         return ok(undefined);
       if (state.status === "complete") return err("not_active");
+      const cancelEpoch = state.cancelEpoch + 1;
       return ok(
-        state.dispatches.count === 0
-          ? {
-              status: "cancelled",
-              cancelEpoch: state.cancelEpoch + 1,
-              failure: {
-                code: "cancelled",
-                phase: phaseOf(state),
-                recovery: "terminal",
-              },
-            }
-          : { status: "cancelling", cancelEpoch: state.cancelEpoch + 1 },
+        state.status === "paused" || state.dispatches.count === 0
+          ? settleUnowned(state, cancelEpoch)
+          : { status: "cancelling", cancelEpoch },
       );
     });
   }
@@ -229,9 +224,10 @@ export class InsightSlotAuthority {
   }
 
   /**
-   * Reconciles a current run this process does not own: a terminal journal only releases the slot, a run without
-   * dispatch intent settles failed, and a dispatched run pauses for an explicit Resume. It never dispatches and never
-   * writes legacy files; an unknown outcome stays unknown for the next pass.
+   * Reconciles a current run this process does not own: a terminal journal only releases the slot, a cancelling run
+   * settles cancelled, a run without dispatch intent settles failed (cancelled when paused), and a dispatched run pauses
+   * for an explicit Resume. It never dispatches and never writes legacy files; an unknown outcome stays unknown for the
+   * next pass.
    */
   async recover(
     input: InsightSlotKey,
@@ -260,34 +256,37 @@ export class InsightSlotAuthority {
         runId: active.runId,
         journalId: active.journalId,
       };
-      const pending = await this.journals.pendingIntent(journalKey(run));
-      if (pending._tag === "err") return failed();
-      // An intent the journal moved past without recording stays for reconciliation.
-      if (pending.value._tag === "conflict") return err("outcome_unknown");
-      const advanced = await this.advanceJournal(run, (snapshot): Decision => {
-        const { status, dispatches } = snapshot.state;
-        if (
-          isTerminalStatus(status) ||
-          status === "paused" ||
-          status === "cancelling"
-        )
-          return ok(undefined);
-        if (dispatches.count === 0)
-          return settleDecision(
-            snapshot,
-            "producer_unsettled",
-            phaseOf(snapshot.state),
+      const advanced = await this.advanceJournal(run, ({ state }): Decision => {
+        const { status, dispatches } = state;
+        if (isTerminalStatus(status)) return ok(undefined);
+        if (status === "complete") return err("not_active");
+        if (status === "cancelling") return ok(settleUnowned(state));
+        // A dispatched pause waits for an explicit Resume; only a pause with nothing to resume is released.
+        if (status === "paused")
+          return ok(
+            dispatches.count === 0
+              ? settleUnowned(state, state.cancelEpoch + 1)
+              : undefined,
           );
-        return status === "complete"
-          ? err("not_active")
-          : ok({
-              status: "paused",
-              failure: {
-                code: "paid_dispatch_unknown",
-                phase: "generation",
-                recovery: "resume_required",
+        return ok(
+          dispatches.count === 0
+            ? {
+                status: "failed",
+                failure: {
+                  code: "producer_unsettled",
+                  phase: phaseOf(state),
+                  recovery: "terminal",
+                },
+              }
+            : {
+                status: "paused",
+                failure: {
+                  code: "paid_dispatch_unknown",
+                  phase: "generation",
+                  recovery: "resume_required",
+                },
               },
-            });
+        );
       });
       if (advanced._tag === "err") return advanced;
       return this.writer.releaseRun(run, slot.value, advanced.value);
@@ -329,13 +328,19 @@ export class InsightSlotAuthority {
     });
   }
 
-  /** Rereads the journal under its lock, lets `decide` pick at most one transaction, and commits it. */
+  /**
+   * Under the journal lock: refuses while a pending intent the journal moved past is unreconciled, rereads the journal,
+   * lets `decide` pick at most one transaction, and commits it.
+   */
   private advanceJournal(
     run: InsightRunRef,
     decide: (snapshot: InsightJournalSnapshot) => Decision,
   ): Promise<Result<InsightJournalSnapshot, InsightSlotFailure>> {
     const journal = journalKey(run);
     return this.withJournal(journal, async () => {
+      const pending = await this.journals.pendingIntent(journal);
+      if (pending._tag === "err") return failed();
+      if (pending.value._tag === "conflict") return err("outcome_unknown");
       const read = await this.journals.read(journal);
       if (read._tag === "err") return failed();
       const change = decide(read.value);
@@ -365,6 +370,29 @@ export class InsightSlotAuthority {
       operation,
     );
   }
+}
+
+/**
+ * No process in this app owns the run, and the absence proves nothing about a provider request that may still be
+ * running. With dispatch records the run still settles cancelled, but the records stay as they are and usage is marked
+ * unknown instead of zero.
+ */
+function settleUnowned(
+  state: InsightJournalState,
+  cancelEpoch = state.cancelEpoch,
+): InsightJournalChange {
+  const change: InsightJournalChange = {
+    status: "cancelled",
+    cancelEpoch,
+    failure: {
+      code: "cancelled",
+      phase: phaseOf(state),
+      recovery: "terminal",
+    },
+  };
+  return state.dispatches.count > 0
+    ? { ...change, usageUnknown: true }
+    : change;
 }
 
 function settleDecision(
