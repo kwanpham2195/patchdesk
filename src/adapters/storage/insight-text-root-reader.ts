@@ -12,7 +12,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { StorageFailure } from "./json-file";
 
 /** Identity strings are short IDs; these caps bound reads from stored data before any traversal trusts its counts. */
-export const MAX_TEXT_ROOT_BLOCKS = 16;
+const MAX_TEXT_ROOT_BLOCKS = 16;
 const MAX_INDEX_NODES = 32;
 const MAX_INDEX_DEPTH = MAX_TEXT_ROOT_BLOCKS;
 

@@ -7,6 +7,7 @@ import {
   insightArtifactJobRequestSchema,
   type InsightArtifactJobRequest,
 } from "./insight-artifact-job-protocol";
+import { captureInsightPatch } from "./insight-patch-capture-job";
 
 if (parentPort === null)
   throw new Error("Insight artifact job worker needs a parent port");
@@ -14,6 +15,9 @@ const port = parentPort;
 let closed = false;
 let busy = false;
 let lastId = 0;
+let active:
+  | { readonly id: number; readonly controller: AbortController }
+  | undefined;
 
 function closeTransport(): void {
   closed = true;
@@ -21,11 +25,20 @@ function closeTransport(): void {
   process.exitCode = 1;
 }
 
-async function hashFile(request: InsightArtifactJobRequest): Promise<void> {
+async function runJob(
+  request: Exclude<InsightArtifactJobRequest, { kind: "cancel" }>,
+): Promise<void> {
+  const controller = new AbortController();
+  active = { id: request.id, controller };
   try {
-    const result = await hashUtf8FileSha256(request.path);
+    const result =
+      request.kind === "hash_file"
+        ? await hashUtf8FileSha256(request.path)
+        : await captureInsightPatch(request.input, {
+            signal: controller.signal,
+          });
     const reply = v.safeParse(insightArtifactJobReplySchema, {
-      kind: "hash_file",
+      kind: request.kind,
       id: request.id,
       result,
     });
@@ -35,6 +48,7 @@ async function hashFile(request: InsightArtifactJobRequest): Promise<void> {
     closeTransport();
   } finally {
     busy = false;
+    active = undefined;
   }
 }
 
@@ -42,13 +56,25 @@ async function hashFile(request: InsightArtifactJobRequest): Promise<void> {
 port.on("message", (input: unknown) => {
   if (closed) return;
   const request = v.safeParse(insightArtifactJobRequestSchema, input);
-  if (!request.success || busy || request.output.id <= lastId) {
+  if (!request.success) {
+    closeTransport();
+    return;
+  }
+  if (request.output.kind === "cancel") {
+    if (request.output.id !== lastId) {
+      closeTransport();
+      return;
+    }
+    active?.controller.abort();
+    return;
+  }
+  if (busy || request.output.id <= lastId) {
     closeTransport();
     return;
   }
   busy = true;
   lastId = request.output.id;
-  void hashFile(request.output);
+  void runJob(request.output);
 });
 port.on("messageerror", closeTransport);
 try {

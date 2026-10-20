@@ -4,13 +4,10 @@ import * as v from "valibot";
 import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import {
   encodeWrappedInsightArtifact,
-  insightBlobBlockCodec,
-  insightBlobIndexNodeCodec,
   parseWrappedInsightArtifact,
   type InsightArtifactCodec,
 } from "#src/domain/insight-artifact-index";
 import {
-  insightArtifactHashSchema,
   insightArtifactReferenceSchema,
   type InsightArtifactReference,
   type InsightCanonicalValue,
@@ -35,9 +32,13 @@ import { containsSensitiveValue, type StorageFailure } from "./json-file";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 import {
   compareTextRoot,
-  MAX_TEXT_ROOT_BLOCKS,
   verifyTextRootEquals,
 } from "./insight-text-root-reader";
+import {
+  writeInsightTextRoot,
+  writeInsightSnapshotTextRoot,
+} from "./insight-stream-root-writer";
+import type { InsightCaptureSourceFile } from "./insight-capture-source-file";
 
 /** Stateless current-format object storage, without slot or publication authority. */
 export class InsightArtifactStore {
@@ -195,59 +196,32 @@ export class InsightArtifactStore {
     return this.installBytes(profileId, reviewId, bytes);
   }
 
-  /** Stages text that fits one Index<BlobBlock> leaf (at most 16 blocks of 16 KiB); larger or ill-formed text fails invalid_stored_value. */
+  /** Fully scans immutable metadata, then stages bounded text blocks and their multi-level index. */
   async writeTextRoot(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     text: string,
   ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
-    const data = Buffer.from(text, "utf8");
-    // A lone surrogate encodes as U+FFFD, so a lossy round trip proves the text is a Unicode scalar sequence.
-    if (data.toString("utf8") !== text)
-      return artifactWriteFailure("invalid_stored_value");
-    if (containsSensitiveValue(text))
-      return artifactWriteFailure("sensitive_value");
-    const blocks = splitAtCodePoints(data);
-    if (blocks.length > MAX_TEXT_ROOT_BLOCKS)
-      return artifactWriteFailure("invalid_stored_value");
-    const sha256 = v.safeParse(
-      insightArtifactHashSchema,
-      createHash("sha256").update(data).digest("hex"),
+    return writeInsightTextRoot(this, profileId, reviewId, text, (bytes) =>
+      this.installBytes(profileId, reviewId, bytes),
     );
-    if (!sha256.success) return artifactWriteFailure("invalid_stored_value");
-    const entries: { key: string; value: InsightArtifactReference }[] = [];
-    let byteStart = 0;
-    for (const block of blocks) {
-      const blob = await this.writeBlob(profileId, reviewId, block);
-      if (blob._tag === "err") return blob;
-      const reference = await this.writeObject(
-        profileId,
-        reviewId,
-        insightBlobBlockCodec,
-        { byteStart, bytes: blob.value },
-      );
-      if (reference._tag === "err") return reference;
-      entries.push({
-        key: String(entries.length).padStart(16, "0"),
-        value: reference.value,
-      });
-      byteStart += block.length;
-    }
-    const root = await this.writeObject(
+  }
+
+  /** Only a privately constructed, completely scanned snapshot can reach the text blob installation sink. */
+  async writeSnapshotTextRoot(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    snapshot: InsightCaptureSourceFile,
+    options: { readonly signal?: AbortSignal },
+  ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
+    return writeInsightSnapshotTextRoot(
+      this,
       profileId,
       reviewId,
-      insightBlobIndexNodeCodec,
-      { tag: "leaf", entries },
+      snapshot,
+      (bytes) => this.installBytes(profileId, reviewId, bytes),
+      options,
     );
-    if (root._tag === "err") return root;
-    return ok({
-      data: {
-        blocks: { root: root.value, count: entries.length },
-        bytes: data.length,
-        sha256: sha256.output,
-      },
-      utf16Units: text.length,
-    });
   }
 
   private async installBytes(
@@ -275,18 +249,6 @@ export class InsightArtifactStore {
     );
     return installed._tag === "err" ? installed : ok(reference.output);
   }
-}
-
-/** Slices at most 16 KiB per block and never inside a multi-byte UTF-8 sequence. */
-function splitAtCodePoints(data: Buffer): Buffer[] {
-  const blocks: Buffer[] = [];
-  for (let start = 0; start < data.length;) {
-    let end = Math.min(start + MAX_INSIGHT_OBJECT_BYTES, data.length);
-    while (end < data.length && ((data[end] ?? 0) & 0xc0) === 0x80) end -= 1;
-    blocks.push(data.subarray(start, end));
-    start = end;
-  }
-  return blocks;
 }
 
 function artifactWriteFailure(

@@ -88,11 +88,16 @@ import { importLoginShellEnvironment } from "#src/adapters/process/login-shell-e
 import { startLoginShellEnvironmentImport } from "#src/adapters/process/login-shell-import";
 import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
 import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
+import type { InsightCaptureDiagnostics } from "./desktop-insight-capture-diagnostics";
 
 const renderer = rendererSource(process.env, app.isPackaged);
 const rendererOrigin = renderer.origin;
 const runtimeModelCatalog = new LocalPiRuntimeModelCatalog();
 let runningLocalApi: LocalApiServer | undefined;
+let captureDiagnostics: InsightCaptureDiagnostics | undefined;
+let captureDiagnosticsStarting: Promise<void> | undefined;
+let captureDiagnosticsClosed = false;
+let captureDiagnosticsDisposal: Promise<void> | undefined;
 let mainWindow: BrowserWindow | undefined;
 let openingWindow: Promise<BrowserWindow> | undefined;
 let stopping = false;
@@ -264,6 +269,26 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
   new URL("./", import.meta.url),
   async (insightResources) => {
     const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
+    if (__PATCHDESK_CAPTURE_DIAGNOSTICS__ && !app.isPackaged) {
+      if (captureDiagnosticsClosed || stopping)
+        return { _tag: "recovery-failed" };
+      captureDiagnosticsStarting = (async () => {
+        const { createInsightCaptureDiagnostics } =
+          await import("./desktop-insight-capture-diagnostics");
+        if (!captureDiagnosticsClosed && !stopping) {
+          captureDiagnostics = createInsightCaptureDiagnostics(
+            paths,
+            insightResources,
+            reviewOperations,
+            app.isPackaged,
+            process.env,
+          );
+        }
+      })();
+      await captureDiagnosticsStarting;
+      if (captureDiagnosticsClosed || stopping)
+        return { _tag: "recovery-failed" };
+    }
     // Never trust the development server origin from a packaged application.
     const developmentOriginField = app.isPackaged
       ? {}
@@ -327,7 +352,16 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
           }
         },
       },
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Startup promise rejection is an untyped boundary, rethrown after consumer cleanup.
+    }).catch(async (cause: unknown) => {
+      if (__PATCHDESK_CAPTURE_DIAGNOSTICS__) await disposeCaptureDiagnostics();
+      throw cause;
     });
+    if (
+      __PATCHDESK_CAPTURE_DIAGNOSTICS__ &&
+      (stopping || startup._tag !== "started")
+    )
+      await disposeCaptureDiagnostics();
     if (!stopping && startup._tag === "started") {
       runningLocalApi = startup.server;
     }
@@ -343,13 +377,39 @@ const desktopLifecycle = createDesktopLifecycle({
     },
     async stop() {
       runningLocalApi = undefined;
-      await artifactApiLifecycle.stop();
+      await stopArtifactApi();
     },
   },
   async showWorkbench(server) {
     if (!stopping) await ensureWorkbenchWindow(server);
   },
 });
+
+function disposeCaptureDiagnostics(): Promise<void> {
+  if (captureDiagnosticsDisposal !== undefined)
+    return captureDiagnosticsDisposal;
+  captureDiagnosticsClosed = true;
+  const owned = captureDiagnostics;
+  captureDiagnostics = undefined;
+  const finishing = owned?.dispose();
+  // Closing publication before joining startup prevents a late owner after an initially empty cleanup.
+  captureDiagnosticsDisposal = (async () => {
+    try {
+      await captureDiagnosticsStarting;
+    } finally {
+      await finishing;
+    }
+  })();
+  return captureDiagnosticsDisposal;
+}
+
+async function stopArtifactApi(): Promise<void> {
+  try {
+    if (__PATCHDESK_CAPTURE_DIAGNOSTICS__) await disposeCaptureDiagnostics();
+  } finally {
+    await artifactApiLifecycle.stop();
+  }
+}
 
 function createInsightProviderCatalog(
   modelCatalog: LocalPiRuntimeModelCatalog,
@@ -556,6 +616,10 @@ async function createWorkbenchWindow(
     minHeight: 640,
     webPreferences: {
       additionalArguments: [
+        ...(__PATCHDESK_CAPTURE_DIAGNOSTICS__ &&
+        captureDiagnostics !== undefined
+          ? ["--patchdesk-insight-patch-capture=1"]
+          : []),
         `--patchdesk-qa-scroll-diagnostics=${
           !app.isPackaged ||
           process.argv.includes("--patchdesk-qa-scroll-diagnostics")
@@ -637,6 +701,8 @@ async function createWorkbenchWindow(
       },
     },
   );
+  if (__PATCHDESK_CAPTURE_DIAGNOSTICS__)
+    captureDiagnostics?.install(window, rendererOrigin);
   // macOS hides the traffic lights in native full screen, and the renderer
   // cannot see that state for itself, so the main process tells it.
   answerWindowFullScreenReads(ipcMain, window.webContents.id, () =>
@@ -836,8 +902,7 @@ function terminateAfterServerStops(): void {
   if (stopping) return;
   stopping = true;
   runningLocalApi = undefined;
-  void artifactApiLifecycle
-    .stop()
+  void stopArtifactApi()
     .finally(() => desktopLifecycle.stop())
     .catch((cause: unknown) => {
       logs.write({

@@ -3,6 +3,7 @@ import {
   type InsightArtifactJobWorker,
 } from "#src/adapters/storage/insight-artifact-job-worker";
 import { hashUtf8FileSha256 } from "#src/adapters/storage/insight-artifact-job-protocol";
+import { captureInsightPatch } from "#src/adapters/storage/insight-patch-capture-job";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import {
   acquireInsightArtifactWorker,
@@ -36,7 +37,7 @@ export type InsightResourceBundle = {
   readonly authorityReader: Reader;
   /** Reads for one run, at most 2 in flight per run id; all callers share 16. */
   runReader(runId: string): Reader;
-  readonly jobs: Pick<InsightArtifactJobWorker, "hashFile">;
+  readonly jobs: Pick<InsightArtifactJobWorker, "hashFile" | "capturePatch">;
   /**
    * Abortable FIFO permits keyed by holder. A holder that already holds or
    * waits for any permit gets `nested`, so nobody holds one while waiting for
@@ -58,7 +59,10 @@ export type InsightResourceBundle = {
 
 type Workers = {
   readonly reader: Pick<InsightArtifactWorker, "read" | "dispose">;
-  readonly jobs: Pick<InsightArtifactJobWorker, "hashFile" | "dispose">;
+  readonly jobs: Pick<
+    InsightArtifactJobWorker,
+    "hashFile" | "capturePatch" | "dispose"
+  >;
 };
 
 /** Acquires both workers at startup; one failing disposes the other and no in-process fallback exists. */
@@ -90,7 +94,11 @@ export function createInProcessInsightResourceBundle(): InsightResourceBundle {
   const disposed = () => Promise.resolve(ok(undefined));
   return createBundle({
     reader: { read: readBoundedInsightArtifactFile, dispose: disposed },
-    jobs: { hashFile: hashUtf8FileSha256, dispose: disposed },
+    jobs: {
+      hashFile: hashUtf8FileSha256,
+      capturePatch: captureInsightPatch,
+      dispose: disposed,
+    },
   });
 }
 
@@ -164,7 +172,11 @@ function createBundle(workers: Workers): InsightResourceBundle {
         if (runs.get(runId)?.count === 0) runs.delete(runId);
       });
     },
-    jobs: { hashFile: (path) => workers.jobs.hashFile(path) },
+    jobs: {
+      hashFile: (path) => workers.jobs.hashFile(path),
+      capturePatch: (input, options) =>
+        workers.jobs.capturePatch(input, options),
+    },
     permits: {
       capture: (holder, signal) => capture.acquire(holder, signal),
       generation: (holder, signal) => generation.acquire(holder, signal),

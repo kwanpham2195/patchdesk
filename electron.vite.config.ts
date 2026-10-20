@@ -99,8 +99,11 @@ function mcpShimBundle(): Plugin {
 }
 
 /** Builds Electron's privileged processes separately from the isolated React renderer. */
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
+    define: {
+      __PATCHDESK_CAPTURE_DIAGNOSTICS__: JSON.stringify(command === "serve"),
+    },
     plugins: [externalizeDepsPlugin(), mcpShimBundle()],
     resolve: {
       alias: {
@@ -122,6 +125,9 @@ export default defineConfig({
     },
   },
   preload: {
+    define: {
+      __PATCHDESK_CAPTURE_DIAGNOSTICS__: JSON.stringify(command === "serve"),
+    },
     resolve: {
       alias: { "#src": fileURLToPath(new URL("./src", import.meta.url)) },
     },
@@ -157,4 +163,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
