@@ -78,6 +78,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 import { InsightRecovery } from "./insight-recovery";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
+import { isTerminalStatus } from "./insight-slot-records";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
@@ -206,7 +207,7 @@ export type Active = {
 };
 
 export class InsightRunCoordinator {
-  private readonly active = new Map<string, Active>();
+  private readonly active: Map<string, Active>;
   /** The last activity trace per profile, Review, and Insight type, kept after the run ends until the next run starts. */
   private readonly traces = new Map<
     string,
@@ -241,7 +242,10 @@ export class InsightRunCoordinator {
     private readonly reach?: BriefReachComputer,
     /** Announces a settled run outside the window (ADR 0044). */
     private readonly notifications?: InsightSettledNotifier,
+    /** The scope's shared run ownership: Guide preparation registers here so recovery and cancel see its runs as live. */
+    owned: Map<string, Active> = new Map(),
   ) {
+    this.active = owned;
     this.preparation = new InsightRunPreparation(
       this.paths,
       this.contextPack,
@@ -597,7 +601,18 @@ export class InsightRunCoordinator {
           : reason,
       );
     }
-    this.active.get(input.runId)?.controller.abort();
+    const owned = this.active.get(input.runId);
+    owned?.controller.abort();
+    // Only a confirmed terminal settlement ends the ownership a shared Guide preparation registered; a run still
+    // cancelling (dispatched) or an unconfirmed outcome (handled above) keeps its entry.
+    if (
+      owned !== undefined &&
+      owned.profileId === input.profileId &&
+      owned.reviewId === input.reviewId &&
+      owned.type === input.type &&
+      isTerminalStatus(cancelled.value.status)
+    )
+      this.active.delete(input.runId);
     return this.observeCurrent(input);
   }
 

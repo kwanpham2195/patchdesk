@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import * as v from "valibot";
 
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
-import { readJsonFile } from "#src/adapters/storage/json-file";
+import {
+  containsSensitiveData,
+  readJsonFile,
+} from "#src/adapters/storage/json-file";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
@@ -26,13 +29,15 @@ import {
   renderStatedGoalSection,
   type StatedGoal,
 } from "#src/domain/stated-goal";
-import { tokenizeUnifiedPatch } from "#src/domain/unified-patch";
 import {
   resolveChangeIntent,
   type ChangeIntentUnreadable,
 } from "./change-intent-resolution";
+import type { GuideUpstreamCompleteness } from "#src/domain/guide-preparation";
 import {
+  changedPatchFiles,
   REVIEW_INPUT_HEADING,
+  type ReviewContextMaterial,
   type ReviewContextService,
 } from "./review-context-service";
 import { exists } from "./review-preparation-journal";
@@ -42,6 +47,12 @@ import { captureModelReviewSnapshots } from "./model-review-runner";
 export type ReviewContextPackFailure =
   | { readonly _tag: "ContextPackUnavailable" }
   | ChangeIntentUnreadable;
+
+/** Why a Guide run's context could not be captured; the first two are not retryable by waiting. */
+export type GuideContextFailure =
+  | ReviewContextPackFailure
+  | { readonly _tag: "RequiredContextUnavailable" }
+  | { readonly _tag: "ContextAborted" };
 
 /**
  * Only Analysis reads `review-input.md`, where the stated goal goes: the
@@ -164,13 +175,79 @@ export class ReviewContextPackService {
         checks: pullRequestEvidence.value?.checks,
         statedGoal,
       }),
-      changedFiles: changedFiles(patch),
+      changedFiles: changedPatchFiles(patch),
       patch: { path: input.session.patchPath, sha256: input.patchHash },
       rulePaths: profile.value.rulePaths,
     });
     return built._tag === "ok"
       ? provenance
       : err({ _tag: "ContextPackUnavailable" });
+  }
+
+  /**
+   * Context for one Guide run: reads what `ensure` reads, minus the stated goal and Change intent, and writes nothing
+   * under the session. A configured rule, or an optional rule file that exists but cannot be used, fails the capture
+   * instead of becoming an omission; the shared pack keeps its older tolerance. No aggregate byte limit applies.
+   * Pull request comments and checks are read without proof that the adapter returned every page, so their upstream
+   * completeness is unknown; a local Review has none to omit. The GitHub reads cannot be aborted: the signal is checked
+   * between them and the caller joins whatever began.
+   */
+  async captureRunContext(
+    session: ReviewSession,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<
+    Result<
+      {
+        readonly material: ReviewContextMaterial;
+        readonly upstream: GuideUpstreamCompleteness;
+      },
+      GuideContextFailure
+    >
+  > {
+    const aborted = err({ _tag: "ContextAborted" } as const);
+    if (options.signal?.aborted) return aborted;
+    const profile = await this.dependencies.profiles.load(
+      session.key.profileId,
+    );
+    if (profile._tag === "err") return err({ _tag: "ContextPackUnavailable" });
+    if (options.signal?.aborted) return aborted;
+    const evidence = isPullRequestReviewSession(session)
+      ? await this.readPullRequestEvidence(profile.value, session)
+      : ok(undefined);
+    if (evidence._tag === "err") return evidence;
+    if (options.signal?.aborted) return aborted;
+    const pr = {
+      repository: `${session.key.owner}/${session.key.repo}`,
+      source: reviewSourceTitle(session.key.source),
+      headSha: session.key.headSha,
+    };
+    if (
+      containsSensitiveData({
+        pr,
+        comments: evidence.value?.comments,
+        checks: evidence.value?.checks,
+      })
+    )
+      return err({ _tag: "ContextPackUnavailable" });
+    const material = await this.dependencies.context.acquire(
+      {
+        worktreePath: session.worktree.path,
+        pr,
+        ...definedProps({
+          comments: evidence.value?.comments,
+          checks: evidence.value?.checks,
+        }),
+        rulePaths: profile.value.rulePaths,
+      },
+      { aggregate: "none", ...definedProps({ signal: options.signal }) },
+    );
+    if (options.signal?.aborted) return aborted;
+    if (material.ruleLoadFailureCount > 0)
+      return err({ _tag: "RequiredContextUnavailable" });
+    return ok({
+      material,
+      upstream: evidence.value === undefined ? "complete" : "unknown",
+    });
   }
 
   /** Uses the same captured-blob limits as Analysis preparation, under the caller's Review lock. */
@@ -301,18 +378,4 @@ export class ReviewContextPackService {
     const section = start < 0 ? undefined : reviewInput.slice(start + 1);
     return section === changeIntent.section;
   }
-}
-
-/**
- * Reads the new-side paths through the shared tokenizer rather than a `+++ b/`
- * prefix test, which silently dropped every git-quoted path (a space, a quote,
- * or a non-ASCII byte is enough) and would have read a hunk body line beginning
- * with `+++ b/` as a file.
- */
-function changedFiles(diff: string): ReadonlyArray<string> {
-  return tokenizeUnifiedPatch(diff).flatMap((token) =>
-    token.kind === "new_file_path" && token.path !== "/dev/null"
-      ? [token.path]
-      : [],
-  );
 }

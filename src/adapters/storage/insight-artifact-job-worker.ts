@@ -8,7 +8,10 @@ import {
   insightArtifactJobReplySchema,
   insightArtifactJobRequestSchema,
   type InsightArtifactJobRequest,
+  guidePreparationFailure,
   patchCaptureFailure,
+  type GuidePreparationInput,
+  type GuidePreparationResult,
   type InsightPatchCaptureInput,
   type InsightPatchCaptureResult,
 } from "./insight-artifact-job-protocol";
@@ -22,6 +25,11 @@ export type InsightArtifactJobWorker = {
     input: InsightPatchCaptureInput,
     options?: { readonly signal?: AbortSignal },
   ): Promise<InsightPatchCaptureResult>;
+  /** Builds and verifies the stored Guide inputs for one admitted run; abort behaves like `capturePatch`. */
+  prepareGuide(
+    input: GuidePreparationInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GuidePreparationResult>;
   /** Settles all admitted jobs and awaits the same termination on repeated disposal. */
   dispose(): Promise<Result<void, StorageFailure>>;
 };
@@ -150,6 +158,85 @@ export async function acquireInsightArtifactJobWorker(
   worker.on("exit", failTransport);
   worker.on("messageerror", failTransport);
 
+  type CancellableRequest = Extract<
+    InsightArtifactJobRequest,
+    { kind: "capture_patch" | "prepare_guide" }
+  >;
+
+  /** Validates and numbers a cancellable job; `invalid_source` is a refused request, `transport` an overloaded or closed worker. */
+  function admit(
+    kind: CancellableRequest["kind"],
+    input: InsightPatchCaptureInput | GuidePreparationInput,
+    options: { readonly signal?: AbortSignal },
+  ): Result<CancellableRequest, "aborted" | "invalid_source" | "transport"> {
+    if (options.signal?.aborted) return err("aborted");
+    if (
+      state !== "ready" ||
+      pending.length >= maxPendingJobs ||
+      nextId > Number.MAX_SAFE_INTEGER
+    )
+      return err("transport");
+    const parsed = v.safeParse(insightArtifactJobRequestSchema, {
+      kind,
+      id: nextId,
+      input,
+    });
+    if (
+      !parsed.success ||
+      (parsed.output.kind !== "capture_patch" &&
+        parsed.output.kind !== "prepare_guide")
+    )
+      return err("invalid_source");
+    nextId += 1;
+    return ok(parsed.output);
+  }
+
+  /** Queued abort removes the job; active abort posts a cancel and settles when the worker replies. */
+  function enqueueCancellable<TResult>(
+    request: CancellableRequest,
+    options: { readonly signal?: AbortSignal },
+    failure: (reason: "aborted" | "transport") => TResult,
+    accept: (
+      reply: Exclude<
+        v.InferOutput<typeof insightArtifactJobReplySchema>,
+        { kind: "ready" }
+      >,
+    ) => TResult | undefined,
+  ): Promise<TResult> {
+    return new Promise<TResult>((resolve) => {
+      const job: PendingJob = {
+        request,
+        receive(reply) {
+          const accepted = accept(reply);
+          if (accepted === undefined) return false;
+          resolve(accepted);
+          return true;
+        },
+        fail: () => resolve(failure("transport")),
+        abort: () => resolve(failure("aborted")),
+        release: () => options.signal?.removeEventListener("abort", onAbort),
+      };
+      function onAbort(): void {
+        const index = pending.indexOf(job);
+        if (index >= 0) {
+          pending.splice(index, 1);
+          job.release();
+          job.abort();
+          return;
+        }
+        if (active !== job || state !== "ready") return;
+        try {
+          worker.postMessage({ kind: "cancel", id: request.id });
+        } catch {
+          failTransport();
+        }
+      }
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      pending.push(job);
+      dispatch();
+    });
+  }
+
   const started = await ready;
   if (started._tag === "err") {
     await terminate();
@@ -196,54 +283,26 @@ export async function acquireInsightArtifactJobWorker(
       });
     },
     capturePatch(input, options = {}) {
-      if (options.signal?.aborted)
-        return Promise.resolve(patchCaptureFailure("aborted"));
-      if (
-        state !== "ready" ||
-        pending.length >= maxPendingJobs ||
-        nextId > Number.MAX_SAFE_INTEGER
-      )
-        return Promise.resolve(patchCaptureFailure("transport"));
-      const parsed = v.safeParse(insightArtifactJobRequestSchema, {
-        kind: "capture_patch",
-        id: nextId,
-        input,
-      });
-      if (!parsed.success || parsed.output.kind !== "capture_patch")
-        return Promise.resolve(patchCaptureFailure("invalid_source"));
-      nextId += 1;
-      const request = parsed.output;
-      return new Promise<InsightPatchCaptureResult>((resolve) => {
-        const job: PendingJob = {
-          request,
-          receive(reply) {
-            if (reply.kind !== "capture_patch") return false;
-            resolve(reply.result);
-            return true;
-          },
-          fail: () => resolve(patchCaptureFailure("transport")),
-          abort: () => resolve(patchCaptureFailure("aborted")),
-          release: () => options.signal?.removeEventListener("abort", onAbort),
-        };
-        function onAbort(): void {
-          const index = pending.indexOf(job);
-          if (index >= 0) {
-            pending.splice(index, 1);
-            job.release();
-            job.abort();
-            return;
-          }
-          if (active !== job || state !== "ready") return;
-          try {
-            worker.postMessage({ kind: "cancel", id: request.id });
-          } catch {
-            failTransport();
-          }
-        }
-        options.signal?.addEventListener("abort", onAbort, { once: true });
-        pending.push(job);
-        dispatch();
-      });
+      const parsed = admit("capture_patch", input, options);
+      if (parsed._tag === "err")
+        return Promise.resolve(patchCaptureFailure(parsed.error));
+      return enqueueCancellable(
+        parsed.value,
+        options,
+        patchCaptureFailure,
+        (reply) => (reply.kind === "capture_patch" ? reply.result : undefined),
+      );
+    },
+    prepareGuide(input, options = {}) {
+      const parsed = admit("prepare_guide", input, options);
+      if (parsed._tag === "err")
+        return Promise.resolve(guidePreparationFailure(parsed.error));
+      return enqueueCancellable(
+        parsed.value,
+        options,
+        guidePreparationFailure,
+        (reply) => (reply.kind === "prepare_guide" ? reply.result : undefined),
+      );
     },
     async dispose() {
       failTransport();

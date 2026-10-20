@@ -1,0 +1,456 @@
+import { resolve } from "node:path";
+
+import type { GuideScope } from "#src/adapters/storage/guide-preparation-store";
+import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
+import {
+  guidePreparationFailure,
+  type GuidePreparationResult,
+} from "#src/adapters/storage/insight-artifact-job-protocol";
+import { InsightStore } from "#src/adapters/storage/insight-store";
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { ReviewStore } from "#src/adapters/storage/review-store";
+import {
+  guidePreparedInputCodec,
+  type GuidePreparationFailureReason,
+} from "#src/domain/guide-preparation";
+import {
+  parseContentHash,
+  parseInsightRunId,
+  type IsoTimestamp,
+  type ReviewId,
+  type ReviewSessionId,
+  type WorkspaceProfileId,
+} from "#src/domain/ids";
+import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
+import { sessionRepresentsReview } from "#src/domain/review";
+import type { ReviewSession } from "#src/domain/review-session";
+import { err, ok, type Result } from "#src/domain/result";
+import { stageGuideContext } from "./guide-context-capture";
+import type {
+  InsightAdmissionInput,
+  InsightAdmittedRun,
+} from "./insight-slot-admission";
+import type { InsightResourceBundle } from "./insight-resource-bundle";
+import { InsightSlotAuthority } from "./insight-slot-authority";
+import {
+  isTerminalStatus,
+  type InsightJournalStatus,
+  type InsightSlotFailure,
+  type InsightSlotKey,
+} from "./insight-slot-records";
+import type { Active } from "./insight-run-coordinator";
+import type { ReviewContextPackService } from "./review-context-pack-service";
+import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+
+/** The exact Review revision and selection one preparation is admitted for; selection never authorizes dispatch. */
+export type GuidePreparationRequest = {
+  readonly profileId: WorkspaceProfileId;
+  readonly reviewId: ReviewId;
+  /** The Review's `updatedAt` the caller observed; checked once, at admission. */
+  readonly revision: string;
+  readonly sessionId: ReviewSessionId;
+  readonly expectedHash: string;
+  readonly selection: InsightAdmissionInput["selection"];
+};
+
+/** One running preparation; `result` settles after the job, installation and any durable settlement have finished. */
+export type GuidePreparationOperation = {
+  readonly result: Promise<GuidePreparationResult>;
+  /**
+   * Records cancellation durably, and only then aborts the job and joins it. A prepared run is settled cancelled and
+   * released. A storage failure or unknown outcome returns `unsettled`, leaves the run owned and the job running, and a
+   * later call retries; only a success is remembered.
+   */
+  cancel(): Promise<Result<void, "unsettled">>;
+  /** Whether this process still owns an admitted run, which is until its durable settlement is confirmed. */
+  owned(): boolean;
+};
+
+type Observation = {
+  readonly session: ReviewSession;
+  readonly sourcePath: string;
+};
+
+type AdmittedRun = InsightSlotKey & InsightAdmittedRun;
+
+/**
+ * Prepares the immutable Guide inputs for one Review in a destination scope: admits a current-format run, captures run
+ * owned context outside the Review lock, lets the job worker build and verify everything, then installs the verified
+ * root with one short fenced transaction. No provider is reachable from here.
+ */
+export class GuidePreparationService {
+  private readonly reviews: ReviewStore;
+  private readonly sessions: ReviewSessionStore;
+  private readonly profiles: ProfileStore;
+  private readonly slots: InsightSlotAuthority;
+  private readonly artifacts: InsightArtifactStore;
+
+  /** Run ownership for the destination scope: the coordinator of that scope shares this map, so it sees live preparations. */
+  private readonly owned: Map<string, Active>;
+
+  constructor(
+    private readonly source: PatchdeskPaths,
+    private readonly destination: PatchdeskPaths,
+    private readonly resources: InsightResourceBundle,
+    private readonly operations: ReviewOperationCoordinator,
+    private readonly pack: Pick<ReviewContextPackService, "captureRunContext">,
+    now: () => IsoTimestamp,
+  ) {
+    this.owned = resources.ownership.forScope(destination.dataDirectory());
+    this.reviews = new ReviewStore(source);
+    this.sessions = new ReviewSessionStore(source);
+    this.profiles = new ProfileStore(source);
+    this.slots = new InsightSlotAuthority(
+      destination,
+      resources.authorityReader,
+      new InsightStore(destination, resources.authorityReader),
+      operations,
+      now,
+    );
+    this.artifacts = new InsightArtifactStore(
+      destination,
+      resources.authorityReader,
+    );
+  }
+
+  /** Starts one preparation; the caller owns the returned operation until its result settles. */
+  begin(request: GuidePreparationRequest): GuidePreparationOperation {
+    const controller = new AbortController();
+    let admitted: AdmittedRun | undefined;
+    let cancelled = false;
+    let cancelling: Promise<Result<void, "unsettled">> | undefined;
+    const isOwned = (): boolean =>
+      admitted !== undefined && this.owned.has(admitted.runId);
+    /** True once storage confirms the run is settled or no longer named by the slot; only then is ownership released. */
+    const settleDurably = async (
+      run: AdmittedRun,
+      act: () => Promise<
+        Result<{ readonly status: InsightJournalStatus }, InsightSlotFailure>
+      >,
+    ): Promise<boolean> => {
+      try {
+        const settled = await act();
+        if (
+          (settled._tag === "ok" && isTerminalStatus(settled.value.status)) ||
+          (settled._tag === "err" && settled.error === "not_active")
+        ) {
+          this.owned.delete(run.runId);
+          return true;
+        }
+      } catch {
+        // A thrown storage error is an unknown outcome: ownership stays and a retry reconciles.
+      }
+      return false;
+    };
+    const result = this.prepare(request, controller, (run) => {
+      admitted = run;
+    })
+      .catch(() =>
+        guidePreparationFailure(controller.signal.aborted ? "aborted" : "io"),
+      )
+      .then(async (outcome) => {
+        const run = admitted;
+        if (outcome._tag === "ok" || run === undefined) return outcome;
+        const code = settleCode(outcome.error.reason);
+        return (await settleDurably(run, () =>
+          this.slots.settleRun({ ...run, code, phase: "capture" }),
+        ))
+          ? outcome
+          : guidePreparationFailure("unsettled");
+      });
+    return {
+      result,
+      owned: isOwned,
+      cancel: () => {
+        if (cancelled) return Promise.resolve(ok(undefined));
+        cancelling ??= (async () => {
+          try {
+            const run = admitted;
+            if (run !== undefined && this.owned.has(run.runId)) {
+              // Durable first: no signal reaches the job until the cancel epoch is recorded.
+              const durable = await settleDurably(run, () =>
+                this.slots.cancelRun(run, async () => ok(undefined)),
+              );
+              if (!durable) return err("unsettled" as const);
+            }
+            controller.abort();
+            await result;
+            // A failed settlement inside `result` leaves the run owned, so cancellation is not yet confirmed.
+            if (isOwned()) return err("unsettled" as const);
+            cancelled = true;
+            return ok(undefined);
+          } finally {
+            cancelling = undefined;
+          }
+        })();
+        return cancelling;
+      },
+    };
+  }
+
+  private async prepare(
+    request: GuidePreparationRequest,
+    controller: AbortController,
+    onAdmitted: (run: AdmittedRun) => void,
+  ): Promise<GuidePreparationResult> {
+    const signal = controller.signal;
+    const before = await this.observe(request, request.revision);
+    if (before._tag === "err") return guidePreparationFailure(before.error);
+    const patchHash = parseContentHash(request.expectedHash);
+    if (patchHash._tag === "err")
+      return guidePreparationFailure("invalid_source");
+    if (signal.aborted) return guidePreparationFailure("aborted");
+    const key = {
+      profileId: request.profileId,
+      reviewId: request.reviewId,
+      type: "guide",
+    } as const;
+    // Both guards run under the authority's Review lock, so they must not take that lock again.
+    const unchanged = async (): Promise<
+      Result<void, GuidePreparationFailureReason>
+    > => {
+      const after = await this.readRepresented(request, undefined);
+      if (after._tag === "err") return after;
+      return after.value.session.key.headSha ===
+        before.value.session.key.headSha &&
+        after.value.session.key.baseSha === before.value.session.key.baseSha
+        ? ok(undefined)
+        : err("stale_source");
+    };
+    const admitted = await this.slots.admitRun({
+      ...key,
+      sessionId: request.sessionId,
+      source: before.value.session.key.source,
+      baseSha: before.value.session.key.baseSha,
+      headSha: before.value.session.key.headSha,
+      patchHash: patchHash.value,
+      selection: request.selection,
+      possibleSpendAcknowledged: false,
+      inProcess: this.owned,
+      // The authority calls this under its locks, also when an admission outcome is unknown, so the full identity is
+      // kept and the run stays owned until `begin` settles it (or storage shows the slot never named it).
+      claim: (named) => {
+        const id = parseInsightRunId(named.runId);
+        if (id._tag === "ok")
+          this.owned.set(named.runId, {
+            ...key,
+            runId: id.value,
+            controller,
+            preparing: true,
+          });
+        onAdmitted({ ...key, ...named });
+      },
+      represented: unchanged,
+    });
+    if (admitted._tag === "err")
+      return guidePreparationFailure(
+        admitted.error === "already_running"
+          ? "busy"
+          : admitted.error === "stale_source" ||
+              admitted.error === "invalid_source"
+            ? admitted.error
+            : "io",
+      );
+    const run: AdmittedRun = { ...key, ...admitted.value };
+    if (signal.aborted) return guidePreparationFailure("aborted");
+    const prepared = await this.runJob(request, run, before.value, signal);
+    if (prepared._tag === "err") return prepared;
+    const installed = await this.slots.installGuidePreparation(
+      { ...run, guidePreparation: prepared.value.root },
+      unchanged,
+    );
+    if (installed._tag === "err")
+      return guidePreparationFailure(
+        installed.error === "not_active"
+          ? "aborted"
+          : installed.error === "stale_source" ||
+              installed.error === "invalid_source"
+            ? installed.error
+            : "io",
+      );
+    return prepared;
+  }
+
+  /** Bulk work: no Review or slot lock is held while context is acquired or the worker builds and verifies the inputs. */
+  private async runJob(
+    request: GuidePreparationRequest,
+    run: AdmittedRun,
+    before: Observation,
+    signal: AbortSignal,
+  ): Promise<GuidePreparationResult> {
+    const destinationReview = this.destination.reviewDirectory(
+      request.profileId,
+      request.reviewId,
+    );
+    const context = await stageGuideContext(
+      this.pack,
+      before.session,
+      destinationReview,
+      run.runId,
+      signal,
+    );
+    if (context._tag === "err")
+      return guidePreparationFailure(
+        context.error === "context_unavailable"
+          ? "context_unavailable"
+          : context.error,
+      );
+    try {
+      // Acquisition above was joined, not cancelled; a stop requested meanwhile takes effect here.
+      if (signal.aborted) return guidePreparationFailure("aborted");
+      const permit = await this.resources.permits.capture(
+        `guide-preparation:${request.profileId}:${request.reviewId}`,
+        signal,
+      );
+      if (permit._tag === "err")
+        return guidePreparationFailure(
+          permit.error === "aborted" ? "aborted" : "busy",
+        );
+      try {
+        const job = await this.resources.jobs.prepareGuide(
+          {
+            sourceRoot: this.source.dataDirectory(),
+            sourcePath: before.sourcePath,
+            destinationRoot: this.destination.dataDirectory(),
+            destinationReview,
+            profileId: request.profileId,
+            reviewId: request.reviewId,
+            sessionId: request.sessionId,
+            expectedHash: request.expectedHash,
+            runId: run.runId,
+            headSha: before.session.key.headSha,
+            baseSha: before.session.key.baseSha,
+            binding: run.binding,
+            contextPath: context.value.path,
+            contextHash: context.value.sha256,
+            contextBytes: context.value.bytes,
+          },
+          { signal },
+        );
+        if (job._tag === "err") return job;
+        // The job verified what it stored; the host confirms the root it will install names this run's Binding.
+        const stored = await this.artifacts.readObject(
+          request.profileId,
+          request.reviewId,
+          guidePreparedInputCodec,
+          job.value.root,
+        );
+        return stored._tag === "ok" &&
+          stored.value.binding.hash === run.binding.hash
+          ? job
+          : guidePreparationFailure("io");
+      } finally {
+        permit.value.release();
+      }
+    } finally {
+      await context.value.discard();
+    }
+  }
+
+  /** Short Review-locked read of the represented session. */
+  private observe(
+    request: GuidePreparationRequest,
+    revision: string | undefined,
+  ): Promise<Result<Observation, GuidePreparationFailureReason>> {
+    return this.operations.withReviewLock(
+      request.profileId,
+      request.reviewId,
+      () => this.readRepresented(request, revision),
+    );
+  }
+
+  /** Ordinary refresh timestamps do not invalidate unchanged represented content; the caller holds the Review lock. */
+  private async readRepresented(
+    request: GuidePreparationRequest,
+    revision: string | undefined,
+  ): Promise<Result<Observation, GuidePreparationFailureReason>> {
+    const [profile, review] = await Promise.all([
+      this.profiles.load(request.profileId),
+      this.reviews.load(request.profileId, request.reviewId),
+    ]);
+    if (
+      profile._tag === "err" ||
+      profile.value.id !== request.profileId ||
+      review._tag === "err"
+    )
+      return err("invalid_source");
+    if (
+      review.value.status._tag !== "Open" ||
+      review.value.currentSessionId !== request.sessionId ||
+      (revision !== undefined && review.value.updatedAt !== revision)
+    )
+      return err("stale_source");
+    const session = await this.sessions.load(
+      request.profileId,
+      request.sessionId,
+    );
+    if (
+      session._tag === "err" ||
+      !sessionRepresentsReview(review.value, session.value)
+    )
+      return err("invalid_source");
+    const sourcePath = this.source.patchFile(
+      request.profileId,
+      request.sessionId,
+    );
+    // The job verifies the actual bytes, so a session without the optional stored hash is still checked.
+    if (
+      (session.value.canonicalPatchHash !== undefined &&
+        session.value.canonicalPatchHash !== request.expectedHash) ||
+      resolve(session.value.patchPath) !== resolve(sourcePath)
+    )
+      return err("stale_source");
+    return ok({ session: session.value, sourcePath });
+  }
+}
+
+/** Maps a preparation failure to the FailureRecord code that settles its run. */
+function settleCode(
+  reason: GuidePreparationFailureReason,
+): InsightFailureRecord["code"] {
+  switch (reason) {
+    case "aborted":
+      return "cancelled";
+    case "stale_source":
+      return "evidence_changed";
+    case "too_large":
+      return "resource_exhausted";
+    case "invalid_source":
+    case "not_indexable":
+    case "sensitive_value":
+    case "context_unavailable":
+      return "evidence_missing";
+    default:
+      return "storage_unavailable";
+  }
+}
+
+/**
+ * Settles the Guide run an earlier process left active in a registered diagnostic scope, with the same authority that
+ * admitted it. A run this process owns is skipped. It reads and writes only the scope, never the source Review or
+ * session, and it never dispatches or generates.
+ */
+export async function recoverGuideScope(
+  scope: GuideScope,
+  resources: InsightResourceBundle,
+  operations: ReviewOperationCoordinator,
+  now: () => IsoTimestamp,
+): Promise<Result<void, InsightSlotFailure>> {
+  const destination = PatchdeskPaths.fromEnvironment({
+    PATCHDESK_CONFIG_DIRECTORY: scope.path,
+    PATCHDESK_DATA_DIRECTORY: scope.path,
+    PATCHDESK_CACHE_DIRECTORY: scope.path,
+  });
+  return new InsightSlotAuthority(
+    destination,
+    resources.authorityReader,
+    new InsightStore(destination, resources.authorityReader),
+    operations,
+    now,
+  ).recover(
+    { profileId: scope.profileId, reviewId: scope.reviewId, type: "guide" },
+    resources.ownership.forScope(destination.dataDirectory()),
+  );
+}

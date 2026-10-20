@@ -6,13 +6,20 @@ import * as v from "valibot";
 import { err, type Result } from "#src/domain/result";
 import {
   parseContentHash,
+  parseGitSha,
+  parseInsightRunId,
   parseReviewId,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
 } from "#src/domain/ids";
 import { isNotFound, type StorageFailure } from "./json-file";
-import { insightTextRootDescriptorSchema } from "#src/domain/insight-artifact-scalars";
+import { guidePreparationResultSchema } from "#src/domain/guide-preparation";
+import {
+  insightArtifactReferenceSchema,
+  insightArtifactUnsignedSchema,
+  insightTextRootDescriptorSchema,
+} from "#src/domain/insight-artifact-scalars";
 
 const requestId = v.pipe(
   v.number(),
@@ -56,6 +63,32 @@ export type InsightPatchCaptureInput = v.InferOutput<
   typeof insightPatchCaptureInputSchema
 >;
 
+/** Main-derived locations and identities for one Guide preparation; the context input is a private hash-bound file. */
+const guidePreparationInputSchema = v.strictObject({
+  ...insightPatchCaptureInputSchema.entries,
+  runId: v.pipe(
+    v.string(),
+    v.check((value) => parseInsightRunId(value)._tag === "ok"),
+  ),
+  headSha: v.pipe(
+    v.string(),
+    v.check((value) => parseGitSha(value)._tag === "ok"),
+  ),
+  baseSha: v.pipe(
+    v.string(),
+    v.check((value) => parseGitSha(value)._tag === "ok"),
+  ),
+  binding: insightArtifactReferenceSchema,
+  contextPath: boundedPath,
+  contextHash: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+  contextBytes: insightArtifactUnsignedSchema,
+});
+
+/** Parsed, bounded arguments for the Guide preparation operation. */
+export type GuidePreparationInput = v.InferOutput<
+  typeof guidePreparationInputSchema
+>;
+
 const patchFailureSchema = v.strictObject({
   _tag: v.literal("InsightPatchFailure"),
   reason: v.picklist([
@@ -63,6 +96,7 @@ const patchFailureSchema = v.strictObject({
     "invalid_source",
     "stale_source",
     "sensitive_value",
+    "too_large",
     "io",
     "transport",
     "busy",
@@ -77,6 +111,24 @@ export type InsightPatchCaptureResult = Result<
   v.InferOutput<typeof insightTextRootDescriptorSchema>,
   InsightPatchFailure
 >;
+
+/** Safe failure categories carry no source paths, prose or caught exception messages. */
+export type GuidePreparationFailure = Extract<
+  GuidePreparationResult,
+  { readonly _tag: "err" }
+>["error"];
+
+/** A stored, fully verified GuidePreparedInput1 root, not a generated result. */
+export type GuidePreparationResult = v.InferOutput<
+  typeof guidePreparationResultSchema
+>;
+
+/** Constructs a prose-free Guide preparation failure. */
+export function guidePreparationFailure(
+  reason: GuidePreparationFailure["reason"],
+): Result<never, GuidePreparationFailure> {
+  return err({ _tag: "GuidePreparationFailure", reason });
+}
 
 /** Constructs a prose-free patch failure. */
 export function patchCaptureFailure(
@@ -94,15 +146,28 @@ export const insightArtifactJobRequestSchema = v.pipe(
       id: requestId,
       input: insightPatchCaptureInputSchema,
     }),
+    v.strictObject({
+      kind: v.literal("prepare_guide"),
+      id: requestId,
+      input: guidePreparationInputSchema,
+    }),
     v.strictObject({ kind: v.literal("cancel"), id: requestId }),
   ]),
   v.check((request) => {
     const strings =
       request.kind === "capture_patch"
         ? Object.values(request.input)
-        : request.kind === "hash_file"
-          ? [request.path]
-          : [];
+        : request.kind === "prepare_guide"
+          ? [
+              request.input.sourceRoot,
+              request.input.sourcePath,
+              request.input.destinationRoot,
+              request.input.destinationReview,
+              request.input.contextPath,
+            ]
+          : request.kind === "hash_file"
+            ? [request.path]
+            : [];
     // The code-unit lower bound avoids allocating an oversized JSON string before checking actual encoded bytes.
     return (
       strings.reduce((sum, value) => sum + value.length, 0) <= 32 * 1024 &&
@@ -149,6 +214,11 @@ export const insightArtifactJobReplySchema = v.union([
       }),
       v.strictObject({ _tag: v.literal("err"), error: patchFailureSchema }),
     ]),
+  }),
+  v.strictObject({
+    kind: v.literal("prepare_guide"),
+    id: requestId,
+    result: guidePreparationResultSchema,
   }),
 ]);
 

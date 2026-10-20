@@ -196,14 +196,20 @@ export class InsightArtifactStore {
     return this.installBytes(profileId, reviewId, bytes);
   }
 
-  /** Fully scans immutable metadata, then stages bounded text blocks and their multi-level index. */
+  /** Fully scans immutable metadata, then stages bounded text blocks and their multi-level index; an abort stops before the next block. */
   async writeTextRoot(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
     text: string,
+    options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
-    return writeInsightTextRoot(this, profileId, reviewId, text, (bytes) =>
-      this.installBytes(profileId, reviewId, bytes),
+    return writeInsightTextRoot(
+      this,
+      profileId,
+      reviewId,
+      text,
+      (bytes) => this.installBytes(profileId, reviewId, bytes),
+      options,
     );
   }
 

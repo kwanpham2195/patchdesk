@@ -101,6 +101,11 @@ export class InsightSlotWriter {
       failure = record.value;
       staged.push({ schema: "FailureRecord", root: record.value });
     }
+    if (change.guidePreparation !== undefined)
+      staged.push({
+        schema: "GuidePreparedInput1",
+        root: change.guidePreparation,
+      });
     const committed = await this.journals.applyInternalTransaction(
       journal,
       snapshot,
@@ -110,6 +115,7 @@ export class InsightSlotWriter {
         cancelEpoch: change.cancelEpoch ?? snapshot.state.cancelEpoch,
         failure,
         usage,
+        ...definedProps({ guidePreparation: change.guidePreparation }),
       },
       { createdAt: at, staged },
     );

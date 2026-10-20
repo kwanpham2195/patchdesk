@@ -2,6 +2,9 @@ import {
   acquireInsightArtifactJobWorker,
   type InsightArtifactJobWorker,
 } from "#src/adapters/storage/insight-artifact-job-worker";
+import { resolve } from "node:path";
+
+import { prepareGuideInputs } from "#src/adapters/storage/guide-preparation-job";
 import { hashUtf8FileSha256 } from "#src/adapters/storage/insight-artifact-job-protocol";
 import { captureInsightPatch } from "#src/adapters/storage/insight-patch-capture-job";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
@@ -11,6 +14,7 @@ import {
 } from "#src/adapters/storage/insight-artifact-worker";
 import type { StorageFailure } from "#src/adapters/storage/json-file";
 import { err, ok, type Result } from "#src/domain/result";
+import type { Active } from "./insight-run-coordinator";
 
 type Reader = typeof readBoundedInsightArtifactFile;
 
@@ -37,7 +41,10 @@ export type InsightResourceBundle = {
   readonly authorityReader: Reader;
   /** Reads for one run, at most 2 in flight per run id; all callers share 16. */
   runReader(runId: string): Reader;
-  readonly jobs: Pick<InsightArtifactJobWorker, "hashFile" | "capturePatch">;
+  readonly jobs: Pick<
+    InsightArtifactJobWorker,
+    "hashFile" | "capturePatch" | "prepareGuide"
+  >;
   /**
    * Abortable FIFO permits keyed by holder. A holder that already holds or
    * waits for any permit gets `nested`, so nobody holds one while waiting for
@@ -53,6 +60,14 @@ export type InsightResourceBundle = {
       signal?: AbortSignal,
     ): Promise<Result<PermitLease, PermitFailure>>;
   };
+  /**
+   * In-process run ownership, one map per storage scope (its data directory), so equal deterministic run IDs in two
+   * scopes never collide. The production coordinator and Guide preparation over the same scope share one map; a
+   * disposable diagnostic scope gets its own, invisible to the coordinator.
+   */
+  readonly ownership: {
+    forScope(dataDirectory: string): Map<string, Active>;
+  };
   /** Closes admission and awaits both worker terminations. */
   dispose(): Promise<Result<void, StorageFailure>>;
 };
@@ -61,7 +76,7 @@ type Workers = {
   readonly reader: Pick<InsightArtifactWorker, "read" | "dispose">;
   readonly jobs: Pick<
     InsightArtifactJobWorker,
-    "hashFile" | "capturePatch" | "dispose"
+    "hashFile" | "capturePatch" | "prepareGuide" | "dispose"
   >;
 };
 
@@ -97,6 +112,7 @@ export function createInProcessInsightResourceBundle(): InsightResourceBundle {
     jobs: {
       hashFile: hashUtf8FileSha256,
       capturePatch: captureInsightPatch,
+      prepareGuide: prepareGuideInputs,
       dispose: disposed,
     },
   });
@@ -117,6 +133,7 @@ function createBundle(workers: Workers): InsightResourceBundle {
   const authority: Counter = { count: 0, limit: authorityReadQuota };
   const runs = new Map<string, Counter>();
   const holders = new Set<string>();
+  const scopes = new Map<string, Map<string, Active>>();
   const capture = createPermitPool(capturePermits, holders);
   const generation = createPermitPool(generationPermits, holders);
 
@@ -176,6 +193,18 @@ function createBundle(workers: Workers): InsightResourceBundle {
       hashFile: (path) => workers.jobs.hashFile(path),
       capturePatch: (input, options) =>
         workers.jobs.capturePatch(input, options),
+      prepareGuide: (input, options) =>
+        workers.jobs.prepareGuide(input, options),
+    },
+    ownership: {
+      forScope(dataDirectory) {
+        const key = resolve(dataDirectory);
+        const existing = scopes.get(key);
+        if (existing !== undefined) return existing;
+        const created = new Map<string, Active>();
+        scopes.set(key, created);
+        return created;
+      },
     },
     permits: {
       capture: (holder, signal) => capture.acquire(holder, signal),

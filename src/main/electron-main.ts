@@ -27,7 +27,10 @@ import {
 } from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
 import { createDesktopInsightArtifactLifecycle } from "./desktop-insight-artifact-lifecycle";
-import { insightCoordinatorFactory } from "./insight-coordinator-composition";
+import {
+  insightContextPackFactory,
+  insightCoordinatorFactory,
+} from "./insight-coordinator-composition";
 import {
   answerWindowFullScreenReads,
   sendWindowFullScreen,
@@ -422,6 +425,10 @@ function createInsightProviderCatalog(
   );
 }
 
+const createContextPack = insightContextPackFactory({
+  paths,
+  logUnclassifiedCommandFailure,
+});
 const createInsightCoordinator = insightCoordinatorFactory({
   paths,
   logs,
@@ -437,6 +444,8 @@ async function recoverInsights(
   github: GitHubReader,
   insightResources: InsightResourceBundle,
 ): Promise<InsightRunCoordinator> {
+  if (__PATCHDESK_CAPTURE_DIAGNOSTICS__)
+    captureDiagnostics?.connectContext(createContextPack(github));
   const coordinator = createInsightCoordinator(
     modelCatalog,
     providerCatalog,

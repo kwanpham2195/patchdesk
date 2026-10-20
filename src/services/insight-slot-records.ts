@@ -73,6 +73,8 @@ export type InsightJournalChange = {
   readonly cancelEpoch?: number;
   readonly failure?: Pick<InsightFailureRecord, "code" | "phase" | "recovery">;
   readonly usageUnknown?: true;
+  /** R<GuidePreparedInput1> a verified Guide preparation installs; the writer lists it among the transaction's objects. */
+  readonly guidePreparation?: InsightArtifactReference;
 };
 
 export function failed(): Result<never, InsightSlotFailure> {
