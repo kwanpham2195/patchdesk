@@ -114,6 +114,8 @@ export default defineConfig({
           "electron-main": "src/main/electron-main.ts",
           "insight-artifact-worker":
             "src/adapters/storage/insight-artifact-worker-entry.ts",
+          "insight-artifact-job":
+            "src/adapters/storage/insight-artifact-job-entry.ts",
         },
         output: { entryFileNames: "[name].js" },
       },

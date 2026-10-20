@@ -63,6 +63,7 @@ import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import type { ReviewWorkbenchProjection } from "#src/services/review-workbench-projection";
 import { ReviewWorkbenchProjectionService } from "#src/services/review-workbench-projection";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { ReviewWriteGate } from "#src/services/review-write-gate";
 import type { GitReadExecutor } from "#src/services/review-worktree-service";
 import { ReviewWorktreeService } from "#src/services/review-worktree-service";
@@ -292,6 +293,7 @@ export async function localApplyHarness(
       new ReviewWriteOperationStore(paths),
       viewedFiles,
       operations,
+      createInProcessInsightResourceBundle().jobs,
     ),
     {
       reviews,

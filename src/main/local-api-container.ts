@@ -247,7 +247,7 @@ export async function buildLocalApiContainer(
     github,
     readOnlyGit,
     paths,
-    configuration.insightArtifactReader,
+    configuration.insightResources.uiReader,
     commands,
     avatarRailDependencies,
   );
@@ -273,6 +273,7 @@ export async function buildLocalApiContainer(
     reviewWriteOperations,
     viewedFiles,
     localApplyOperations,
+    configuration.insightResources.jobs,
   );
   const inlineConversations = new InlineConversationService(
     reviewWriteGate,
@@ -497,7 +498,7 @@ export async function buildLocalApiContainer(
   );
   const slotStatus = new InsightSlotStatus(
     paths,
-    configuration.insightArtifactReader,
+    configuration.insightResources.uiReader,
   );
   const sidebarListing = new SidebarListingService({
     reviews,

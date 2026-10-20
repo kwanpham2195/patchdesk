@@ -12,7 +12,7 @@ import type { AppCapability } from "./ipc-contract";
 import type { ReviewWindow } from "./desktop-review-window";
 import type { WorkspaceProfileId } from "#src/domain/ids";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
-import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import type { InsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type {
   StorageManagementService,
   TrashMover,
@@ -116,8 +116,8 @@ export type LocalApiConfiguration = {
   /** Test-only merge seam. Production gets this capability from the main-process adapter. */
   readonly mergeWriter?: GitHubMergeWriter;
   readonly paths: PatchdeskPaths;
-  /** Desktop-owned worker reader shared by all current-artifact consumers. */
-  readonly insightArtifactReader: typeof readBoundedInsightArtifactFile;
+  /** Desktop-owned reader and job workers shared by all current-artifact consumers. */
+  readonly insightResources: InsightResourceBundle;
   /** Main-process-only source of currently enabled Pi models. */
   readonly modelCatalog?: PiRuntimeModelCatalog;
   /** Main-process-only provider catalog; account-provider activation is explicit and authenticated. */

@@ -1,7 +1,7 @@
 import {
-  acquireInsightArtifactWorker,
-  type InsightArtifactWorker,
-} from "#src/adapters/storage/insight-artifact-worker";
+  acquireInsightResourceBundle,
+  type InsightResourceBundle,
+} from "#src/services/insight-resource-bundle";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import type { LocalApiServer } from "./local-api";
 
@@ -10,18 +10,18 @@ type DesktopInsightArtifactLifecycle = {
   stop(): Promise<void>;
 };
 
-/** Couples the desktop API's consumers to one worker acquired before construction/recovery. */
+/** Couples the desktop API's consumers to one resource bundle (reader and job workers) acquired before construction/recovery. */
 export function createDesktopInsightArtifactLifecycle(
-  workerEntry: URL,
+  workerDirectory: URL,
   startApi: (
-    reader: InsightArtifactWorker["read"],
+    resources: InsightResourceBundle,
   ) => Promise<LocalApiStartupResult<LocalApiServer>>,
 ): DesktopInsightArtifactLifecycle {
   let terminal = false;
   let starting: Promise<LocalApiStartupResult<LocalApiServer>> | undefined;
   let active:
     | {
-        readonly worker: InsightArtifactWorker;
+        readonly resources: InsightResourceBundle;
         readonly server: LocalApiServer;
       }
     | undefined;
@@ -43,7 +43,7 @@ export function createDesktopInsightArtifactLifecycle(
         try {
           await owned.server.stop();
         } finally {
-          await dispose(owned.worker);
+          await dispose(owned.resources);
         }
       })();
       return stopping;
@@ -53,27 +53,30 @@ export function createDesktopInsightArtifactLifecycle(
   async function startOwnedApi(): Promise<
     LocalApiStartupResult<LocalApiServer>
   > {
-    const acquired = await acquireInsightArtifactWorker(workerEntry);
+    const acquired = await acquireInsightResourceBundle(
+      new URL("insight-artifact-worker.js", workerDirectory),
+      new URL("insight-artifact-job.js", workerDirectory),
+    );
     if (acquired._tag === "err") return { _tag: "recovery-failed" };
-    const worker = acquired.value;
+    const resources = acquired.value;
     try {
       if (terminal) return { _tag: "recovery-failed" };
-      const startup = await startApi(worker.read);
+      const startup = await startApi(resources);
       if (startup._tag !== "started") return startup;
       if (terminal) {
         await startup.server.stop();
         return { _tag: "recovery-failed" };
       }
-      active = { worker, server: startup.server };
+      active = { resources, server: startup.server };
       return startup;
     } finally {
-      if (active === undefined) await dispose(worker);
+      if (active === undefined) await dispose(resources);
     }
   }
 }
 
-async function dispose(worker: InsightArtifactWorker): Promise<void> {
-  const disposed = await worker.dispose();
+async function dispose(resources: InsightResourceBundle): Promise<void> {
+  const disposed = await resources.dispose();
   // The desktop lifecycle reports shutdown exceptions through its existing failure boundary.
   if (disposed._tag === "err")
     throw new Error("Insight artifact worker termination failed");

@@ -23,8 +23,8 @@ type PendingRead = {
   readonly resolve: (result: Result<Uint8Array, StorageFailure>) => void;
 };
 
-// A metadata read holds one descriptor; four waiting callers bound retained messages/promises.
-const maxPendingReads = 4;
+// A metadata read holds one descriptor; sixteen waiting callers (the resource bundle's total lease quota) bound retained messages/promises.
+const maxPendingReads = 16;
 const startupWaitMs = 5_000;
 
 /** Acquires one handler-ready worker without retry or an in-process fallback. */

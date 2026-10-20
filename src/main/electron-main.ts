@@ -72,7 +72,7 @@ import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import { ReviewStore } from "#src/adapters/storage/review-store";
 import { InsightStore } from "#src/adapters/storage/insight-store";
-import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
+import type { InsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import type { GitHubFetch } from "#src/adapters/github/github-http-client";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
@@ -289,8 +289,8 @@ const reviewWindow = createReviewWindow({
   },
 });
 const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
-  new URL("./insight-artifact-worker.js", import.meta.url),
-  async (insightArtifactReader) => {
+  new URL("./", import.meta.url),
+  async (insightResources) => {
     const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
     // Never trust the development server origin from a packaged application.
     const developmentOriginField = app.isPackaged
@@ -300,7 +300,7 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
       allowedOrigin: rendererOrigin,
       ...developmentOriginField,
       capability: createAppCapability(),
-      insightArtifactReader,
+      insightResources,
       appMetadata: {
         productName: app.name,
         version: app.getVersion(),
@@ -313,7 +313,7 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
           insightProviders,
           reviewOperations,
           github,
-          insightArtifactReader,
+          insightResources,
         ),
       insightProviders,
       githubFetch,
@@ -395,7 +395,7 @@ function createInsightCoordinator(
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
-  reader: typeof readBoundedInsightArtifactFile,
+  { authorityReader: reader }: InsightResourceBundle,
 ): InsightRunCoordinator {
   const runtime = resolveInsightRuntime(
     app.getAppPath(),
@@ -519,14 +519,14 @@ async function recoverInsights(
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
-  insightArtifactReader: typeof readBoundedInsightArtifactFile,
+  insightResources: InsightResourceBundle,
 ): Promise<InsightRunCoordinator> {
   const coordinator = createInsightCoordinator(
     modelCatalog,
     providerCatalog,
     operations,
     github,
-    insightArtifactReader,
+    insightResources,
   );
   await coordinator.recoverAll();
   return coordinator;
