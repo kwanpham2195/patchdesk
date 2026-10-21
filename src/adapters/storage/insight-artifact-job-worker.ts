@@ -3,6 +3,11 @@ import * as v from "valibot";
 
 import { parseContentHash, type ContentHash } from "#src/domain/ids";
 import { err, ok, type Result } from "#src/domain/result";
+import {
+  guideValidationFailure,
+  type GuideValidationInput,
+  type GuideValidationResult,
+} from "./guide-result-job";
 import type { StorageFailure } from "./json-file";
 import {
   insightArtifactJobReplySchema,
@@ -30,6 +35,11 @@ export type InsightArtifactJobWorker = {
     input: GuidePreparationInput,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GuidePreparationResult>;
+  /** Replays the frozen Guide receipts and stores the verified result graph; abort behaves like `capturePatch`. */
+  validateGuide(
+    input: GuideValidationInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GuideValidationResult>;
   /** Settles all admitted jobs and awaits the same termination on repeated disposal. */
   dispose(): Promise<Result<void, StorageFailure>>;
 };
@@ -160,13 +170,16 @@ export async function acquireInsightArtifactJobWorker(
 
   type CancellableRequest = Extract<
     InsightArtifactJobRequest,
-    { kind: "capture_patch" | "prepare_guide" }
+    { kind: "capture_patch" | "prepare_guide" | "validate_guide" }
   >;
 
   /** Validates and numbers a cancellable job; `invalid_source` is a refused request, `transport` an overloaded or closed worker. */
   function admit(
     kind: CancellableRequest["kind"],
-    input: InsightPatchCaptureInput | GuidePreparationInput,
+    input:
+      | InsightPatchCaptureInput
+      | GuidePreparationInput
+      | GuideValidationInput,
     options: { readonly signal?: AbortSignal },
   ): Result<CancellableRequest, "aborted" | "invalid_source" | "transport"> {
     if (options.signal?.aborted) return err("aborted");
@@ -184,7 +197,8 @@ export async function acquireInsightArtifactJobWorker(
     if (
       !parsed.success ||
       (parsed.output.kind !== "capture_patch" &&
-        parsed.output.kind !== "prepare_guide")
+        parsed.output.kind !== "prepare_guide" &&
+        parsed.output.kind !== "validate_guide")
     )
       return err("invalid_source");
     nextId += 1;
@@ -302,6 +316,21 @@ export async function acquireInsightArtifactJobWorker(
         options,
         guidePreparationFailure,
         (reply) => (reply.kind === "prepare_guide" ? reply.result : undefined),
+      );
+    },
+    validateGuide(input, options = {}) {
+      const parsed = admit("validate_guide", input, options);
+      if (parsed._tag === "err")
+        return Promise.resolve(
+          guideValidationFailure(
+            parsed.error === "invalid_source" ? "invalid_input" : parsed.error,
+          ),
+        );
+      return enqueueCancellable(
+        parsed.value,
+        options,
+        guideValidationFailure,
+        (reply) => (reply.kind === "validate_guide" ? reply.result : undefined),
       );
     },
     async dispose() {

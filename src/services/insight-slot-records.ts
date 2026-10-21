@@ -12,6 +12,7 @@ import type {
   WorkspaceProfileId,
 } from "#src/domain/ids";
 import type {
+  InsightArtifactIndexDescriptor,
   InsightArtifactReference,
   InsightArtifactRunId,
   InsightTextRootDescriptor,
@@ -75,6 +76,28 @@ export type InsightJournalChange = {
   readonly usageUnknown?: true;
   /** R<GuidePreparedInput1> a verified Guide preparation installs; the writer lists it among the transaction's objects. */
   readonly guidePreparation?: InsightArtifactReference;
+  /** R<GuideRuntime1> the transaction sets as the journal's specialized Guide state. */
+  readonly guideRuntime?: InsightArtifactReference;
+  /** An accepted Guide operation: the journal's receipts index gains its receipt, and the intent names both objects. */
+  readonly operation?: {
+    readonly operation: InsightArtifactReference;
+    readonly receipt: InsightArtifactReference;
+    readonly receipts: InsightArtifactIndexDescriptor;
+  };
+  /** The journal's dispatches index after a durable dispatch intent was appended. */
+  readonly dispatches?: InsightArtifactIndexDescriptor;
+  /** A resume advances the journal to this generation together with a raised cancel epoch and a `resume` Authorization. */
+  readonly generation?: number;
+  readonly authorization?: InsightArtifactReference;
+  /** Clears the FailureRecord a resume answers; the record object itself stays in storage. */
+  readonly clearFailure?: true;
+  /** R<GuidePublication1>; set only by the publication that completes the run. */
+  readonly publication?: InsightArtifactReference;
+  /** Other immutable objects the transaction created, listed among its ObjectDigests. */
+  readonly staged?: ReadonlyArray<{
+    readonly schema: string;
+    readonly root: InsightArtifactReference;
+  }>;
 };
 
 export function failed(): Result<never, InsightSlotFailure> {

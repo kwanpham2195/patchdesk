@@ -1,6 +1,9 @@
-import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
-import { GuideReader } from "./guide-reader";
-import { guideReviewDisabledReason } from "./guide-review-controls";
+import { InsightEmpty } from "./insight-panels";
+import { PagedGuideReader } from "./paged-guide-reader";
+import { GuideActiveRunControls } from "./guide-resume-controls";
+import { GuideFailurePanel } from "./guide-failure-panel";
+import type { GuideRunStatus } from "#src/domain/guide-progress";
+import type { GuideSummaryState } from "#src/renderer/src/hooks/use-guide-summary";
 import * as v from "valibot";
 
 import type { ChangeScopeBucket } from "#src/domain/change-scope";
@@ -24,10 +27,8 @@ import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type InsightReaderBuilderInput = {
   readonly workbench: WorkbenchResponse;
-  readonly guideReading?: GuideReadingControls;
   /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
   readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
-  readonly selectedInsight: InsightRunDialogType;
   readonly onFinishWithAnalysisSummary?: (summary: string) => void;
   readonly addFinding?: (finding: AnalysisFinding) => Promise<void>;
   readonly addAllFindings?: AddAllFindingsControls;
@@ -55,7 +56,24 @@ type InsightReaderBuilderInput = {
   readonly onOpenFileInDiff?: (path: string) => void;
   /** Opens the full Review diff filtered to one Scope bucket; absent outside the workbench. */
   readonly onOpenScopeBucketInDiff?: (bucket: ChangeScopeBucket) => void;
-};
+  /** Starts a Guide from the empty state; absent when the Review can no longer run one. */
+  readonly onRunGuide?: () => void;
+} & (
+  | {
+      readonly selectedInsight: Exclude<InsightRunDialogType, "guide">;
+      readonly guideSummaryState?: never;
+      readonly refreshGuide?: never;
+      readonly guideActiveRun?: never;
+      readonly guideOnReprepare?: never;
+    }
+  | {
+      readonly selectedInsight: InsightRunDialogType;
+      readonly guideSummaryState: GuideSummaryState;
+      readonly refreshGuide: () => void;
+      readonly guideActiveRun: GuideRunStatus;
+      readonly guideOnReprepare: () => Promise<WorkbenchResponse>;
+    }
+);
 /**
  * Says whether a retained Walkthrough can show inline discussion, and if not,
  * whether regenerating ("stale") or refreshing ("loading") is what can help.
@@ -112,7 +130,6 @@ async function loadBriefPullRequestDescription(body: {
 
 export function buildInsightReaders({
   workbench,
-  guideReading,
   patchFiles,
   selectedInsight,
   onFinishWithAnalysisSummary,
@@ -132,26 +149,52 @@ export function buildInsightReaders({
   setWalkthroughFocused,
   onRegenerateBrief,
   runEnabled,
+  onRunGuide,
+  guideSummaryState,
+  refreshGuide,
+  guideActiveRun,
+  guideOnReprepare,
 }: InsightReaderBuilderInput): React.ReactNode {
-  if (
-    selectedInsight === "guide" &&
-    workbench.insights.guide?.retained !== undefined
-  ) {
-    const disabledReason = guideReviewDisabledReason(workbench);
+  // Production Guide display has one source: the published GuideResultRoot1 through the bounded page routes.
+  if (selectedInsight === "guide") {
     return (
-      <GuideReader
-        key={`${workbench.session.id}:${workbench.insights.guide.retained.runId}`}
-        guide={workbench.insights.guide.retained.value}
-        {...(workbench.insights.guide.retained.sessionId ===
-        workbench.session.id
-          ? { viewedPaths: new Set(workbench.viewedPaths) }
-          : {})}
-        {...definedProps({ reading: guideReading })}
-        {...definedProps({ disabledReason })}
-        {...(disabledReason === undefined
-          ? definedProps({ diffAuthoring: walkthroughDiffAuthoring })
-          : {})}
-      />
+      <div className="flex h-full min-h-0 flex-col">
+        <GuideActiveRunControls
+          workbench={workbench}
+          state={guideSummaryState}
+          run={guideActiveRun}
+          refresh={refreshGuide}
+        />
+        <GuideFailurePanel
+          state={guideSummaryState}
+          runEnabled={runEnabled}
+          onRetry={onRunGuide}
+          onReprepare={guideOnReprepare}
+        />
+        <div className="min-h-0 flex-1">
+          <PagedGuideReader
+            key={`${workbench.session.key.profileId}:${workbench.review.id}`}
+            profileId={workbench.session.key.profileId}
+            reviewId={workbench.review.id}
+            workbench={workbench}
+            summaryState={guideSummaryState}
+            empty={
+              guideSummaryState.status === "loaded" &&
+              guideSummaryState.summary.failure !== null ? null : (
+                <InsightEmpty
+                  type="guide"
+                  disabled={!runEnabled}
+                  {...definedProps({ onRun: onRunGuide })}
+                />
+              )
+            }
+            {...definedProps({
+              onOpenFileInDiff,
+              diffAuthoring: walkthroughDiffAuthoring,
+            })}
+          />
+        </div>
+      </div>
     );
   }
   const analysisSummaryScope = {

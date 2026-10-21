@@ -11,6 +11,11 @@ import { resolveWalkthroughTimeoutMs } from "./child-invocation";
 import { join } from "node:path";
 
 import { providerEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
+import {
+  runGuideChild,
+  type GuideChannelHandler,
+  type GuideChannelIdentity,
+} from "#src/adapters/process/guide-child-channel";
 import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 import type {
@@ -94,6 +99,16 @@ export const unavailablePiInsightInvoker: InsightInvoker = {
     return err({ reason: "runtime_unavailable" as const });
   },
 };
+
+/** How a tool-driven Guide child ended. `effectKnown` is false when a recorded request may have reached the provider. */
+export type PiGuideChildOutcome =
+  | { readonly _tag: "finished" }
+  | {
+      readonly _tag: "failed";
+      readonly reason: PiInsightChildFailure["reason"];
+      readonly detail?: string;
+      readonly effectKnown: boolean;
+    };
 
 /** Runs a bounded app-owned one-shot child with the selected built-in provider's ambient credentials. */
 export class PiInsightChildInvoker implements InsightInvoker {
@@ -260,6 +275,105 @@ export class PiInsightChildInvoker implements InsightInvoker {
       : err({ reason: "invalid_result" });
   }
 
+  /**
+   * Runs the tool-driven Guide child. Unlike `runChild`, the child keeps a private channel to the app for the whole run;
+   * the app answers each frame through `handler`. A child that reported its own failure has known effects; one that was
+   * killed, timed out or broke the protocol may have a request in flight, so its effects are unknown.
+   */
+  async invokeGuide(input: {
+    readonly profileId: string;
+    readonly sessionId: string;
+    readonly model: string;
+    readonly reasoning: "low" | "medium" | "high";
+    readonly language: InsightLanguage;
+    readonly evidence: InsightEvidenceReference;
+    readonly identity: GuideChannelIdentity;
+    readonly handler: GuideChannelHandler;
+    readonly signal: AbortSignal;
+  }): Promise<PiGuideChildOutcome> {
+    const unknown = (
+      reason: PiInsightChildFailure["reason"],
+    ): PiGuideChildOutcome => ({ _tag: "failed", reason, effectKnown: false });
+    if (input.signal.aborted)
+      return { _tag: "failed", reason: "cancelled", effectKnown: true };
+    const stdin = JSON.stringify({
+      type: "guide_session",
+      input: {
+        profileId: input.profileId,
+        sessionId: input.sessionId,
+        model: input.model,
+        reasoning: input.reasoning,
+        language: input.language,
+        evidence: input.evidence,
+        channel: {
+          runId: input.identity.runId,
+          generation: input.identity.generation,
+          cancelEpoch: input.identity.cancelEpoch,
+          connection: input.identity.connection,
+        },
+      },
+    });
+    if (Buffer.byteLength(stdin, "utf8") > MAX_CHILD_STDIN_BYTES)
+      return { _tag: "failed", reason: "execution_failed", effectKnown: true };
+    // Credentials are read from this process's environment, which the login shell may still be filling in (ADR 0038).
+    await whenLoginShellEnvironmentImported();
+    const environment = productionChildEnvironment(
+      JSON.parse(stdin),
+      this.environment,
+      this.rootsEnvironment,
+    );
+    if (environment === undefined)
+      return {
+        _tag: "failed",
+        reason: "runtime_unavailable",
+        effectKnown: true,
+      };
+    const exit = await runGuideChild({
+      executable: this.runtimeExecutable,
+      args: [this.runnerPath],
+      cwd: this.projectRoot,
+      environment,
+      stdin,
+      signal: input.signal,
+      identity: input.identity,
+      handler: input.handler,
+    });
+    switch (exit._tag) {
+      case "Aborted":
+        return unknown("cancelled");
+      case "Violation":
+      case "OutputExceeded":
+        return unknown("execution_failed");
+      case "Unavailable":
+        return {
+          _tag: "failed",
+          reason: "runtime_unavailable",
+          effectKnown: true,
+        };
+      case "Exited": {
+        const response = parseGuideChildStdout(exit.stdout);
+        if (response === undefined) return unknown("execution_failed");
+        if (response.ok) return { _tag: "finished" };
+        return {
+          _tag: "failed",
+          reason: childResponseReason(response.reason),
+          // The child names a possibly sent request or an unconfirmed app outcome; its failure then proves nothing.
+          effectKnown: !/request_unconfirmed|outcome_unknown/.test(
+            response.detail ?? "",
+          ),
+          ...definedProps({
+            detail:
+              response.detail === undefined
+                ? undefined
+                : sanitizedInsightFailureDetail(response.detail),
+          }),
+        };
+      }
+      default:
+        return casesHandled(exit);
+    }
+  }
+
   private async runChild(
     body: unknown,
     timeoutMs: number,
@@ -404,6 +518,26 @@ function parseChildResponse(
   )
     return undefined;
   return parsed.output;
+}
+
+function parseGuideChildStdout(
+  stdout: string,
+):
+  | { readonly ok: true }
+  | v.InferOutput<typeof childFailureSchema>
+  | undefined {
+  try {
+    const parsed: unknown = JSON.parse(stdout);
+    if (
+      readObjectField(parsed, "ok") === true &&
+      readObjectField(readObjectField(parsed, "value"), "finished") === true
+    )
+      return { ok: true };
+    const failure = v.safeParse(childFailureSchema, parsed);
+    return failure.success ? failure.output : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function childFailureReason(

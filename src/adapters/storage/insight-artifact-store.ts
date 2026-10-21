@@ -120,6 +120,15 @@ export class InsightArtifactStore {
       : parsed;
   }
 
+  /** Verifies a raw blob of at most 16 KiB against `reference`; the caller owns decoding it. */
+  async readBlob(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    reference: InsightArtifactReference,
+  ): Promise<Result<Uint8Array, StorageFailure>> {
+    return this.readVerifiedObject(profileId, reviewId, reference);
+  }
+
   private async readVerifiedObject(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

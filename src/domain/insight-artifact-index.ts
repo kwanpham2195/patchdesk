@@ -114,6 +114,13 @@ type InvalidInsightArtifactValue = {
 export type InsightIndexElement =
   | "BlobBlock"
   | "DispatchRecord"
+  | "GuideDispatchIntent1"
+  | "GuideExpandedAppearance1"
+  | "GuideGroup1"
+  | "GuideInventoryEntry1"
+  | "GuideMember1"
+  | "GuideReceipt1"
+  | "GuideReviewedGroup1"
   | "ObjectDigest"
   | "Receipt"
   | "TransactionEntry"

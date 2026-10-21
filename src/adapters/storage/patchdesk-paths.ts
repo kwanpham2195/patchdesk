@@ -373,6 +373,20 @@ export class PatchdeskPaths {
     );
   }
 
+  /** The app-owned pointer naming the reading-progress root for one exact Guide result digest. */
+  guideProgressPointerFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    resultDigest: string,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "insight-artifacts-v2",
+      "guide-progress",
+      `${resultDigest}.json`,
+    );
+  }
+
   insightJournalPointerFile(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

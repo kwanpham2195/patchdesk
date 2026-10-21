@@ -25,6 +25,14 @@ import {
 } from "#src/domain/ids";
 import type { InsightType } from "#src/domain/insight-record";
 import { guideReadingContentSchema } from "#src/domain/guide-reading-state";
+import {
+  guidePageRequestSchema,
+  guideResumeRequestSchema,
+  guideProgressMutationRequestSchema,
+  guideSummaryRequestSchema,
+  type GuideReadFailure,
+} from "#src/domain/guide-progress";
+import type { Result } from "#src/domain/result";
 import { definedProps } from "#src/domain/defined-props";
 import {
   agentRunDeclineRequestSchema,
@@ -246,6 +254,85 @@ export function registerInsightRoutes(
             result.error === "guide_version_conflict"
           ? 409
           : insightFailureStatus(result.error),
+    );
+  });
+  app.post("/v1/reviews/insights/guide/summary", async (context) => {
+    const parsed = safeParse(
+      guideSummaryRequestSchema,
+      await jsonBody(context),
+    );
+    const profileId = parsed.success
+      ? parseWorkspaceProfileId(parsed.output.profileId)
+      : undefined;
+    const reviewId = parsed.success
+      ? parseReviewId(parsed.output.reviewId)
+      : undefined;
+    if (profileId?._tag !== "ok" || reviewId?._tag !== "ok")
+      return context.json({ error: "invalid_input" }, 400);
+    return guideReadResponse(
+      context,
+      await container.guidePages.summary(profileId.value, reviewId.value),
+    );
+  });
+  app.post("/v1/reviews/insights/guide/resume", async (context) => {
+    // The seam type omits Resume; the composed coordinator has it, and a double without it answers unavailable.
+    const resumable:
+      | (InsightCoordinatorSeam &
+          Partial<Pick<InsightRunCoordinator, "resumeGuide">>)
+      | undefined = insights;
+    if (resumable?.resumeGuide === undefined)
+      return context.json({ error: "workflow_unavailable" }, 503);
+    const parsed = safeParse(guideResumeRequestSchema, await jsonBody(context));
+    const profileId = parsed.success
+      ? parseWorkspaceProfileId(parsed.output.profileId)
+      : undefined;
+    const reviewId = parsed.success
+      ? parseReviewId(parsed.output.reviewId)
+      : undefined;
+    if (!parsed.success || profileId?._tag !== "ok" || reviewId?._tag !== "ok")
+      return context.json({ error: "invalid_input" }, 400);
+    const resumed = await resumable.resumeGuide({
+      profileId: profileId.value,
+      reviewId: reviewId.value,
+      runId: parsed.output.runId,
+      expectedGeneration: parsed.output.expectedGeneration,
+      acknowledgedDispatches: parsed.output.acknowledgedDispatches,
+      lastRequestHash: parsed.output.lastRequestHash,
+    });
+    return resumed._tag === "ok"
+      ? context.json({ status: "resumed" }, 202)
+      : context.json(
+          { error: resumed.error },
+          insightFailureStatus(resumed.error),
+        );
+  });
+  app.post("/v1/reviews/insights/guide/page", async (context) => {
+    const parsed = safeParse(guidePageRequestSchema, await jsonBody(context));
+    if (
+      !parsed.success ||
+      parseWorkspaceProfileId(parsed.output.profileId)._tag !== "ok" ||
+      parseReviewId(parsed.output.reviewId)._tag !== "ok"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return guideReadResponse(
+      context,
+      await container.guidePages.page(parsed.output),
+    );
+  });
+  app.post("/v1/reviews/insights/guide/progress", async (context) => {
+    const parsed = safeParse(
+      guideProgressMutationRequestSchema,
+      await jsonBody(context),
+    );
+    if (
+      !parsed.success ||
+      parseWorkspaceProfileId(parsed.output.profileId)._tag !== "ok" ||
+      parseReviewId(parsed.output.reviewId)._tag !== "ok"
+    )
+      return context.json({ error: "invalid_input" }, 400);
+    return guideReadResponse(
+      context,
+      await container.guideProgress.mutate(parsed.output),
     );
   });
   app.post("/v1/reviews/insights/analysis/verification", async (context) =>
@@ -510,6 +597,28 @@ async function insightFindingResponse(
         })
       : await coordinator.restoreFinding(finding),
   );
+}
+
+/** Maps a bounded Guide read or progress save to its HTTP answer; failures carry only their category. */
+function guideReadResponse<T>(
+  context: Context,
+  result: Result<T, GuideReadFailure>,
+): Response {
+  if (result._tag === "ok") return context.json(result.value, 200);
+  switch (result.error) {
+    case "not_available":
+      return context.json({ error: result.error }, 404);
+    case "stale_result":
+    case "version_conflict":
+      return context.json({ error: result.error }, 409);
+    case "invalid_cursor":
+    case "invalid_progress":
+      return context.json({ error: result.error }, 400);
+    case "invalid_result":
+      return context.json({ error: result.error }, 422);
+    case "storage_unavailable":
+      return context.json({ error: result.error }, 503);
+  }
 }
 
 function parseInsightType(value: string | undefined): InsightType | undefined {

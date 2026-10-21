@@ -342,6 +342,8 @@ async function bootOnLocalReviewWithTypedNote(): Promise<{
           inbox: { ...inboxWithRow.inbox, state: "open", pageSize: 25 },
         }),
       "/v1/reviews/load": () => success(asJsonBody(workingTreeReview())),
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       // Context hydration is not under test; an unreadable file keeps the patch as it is.

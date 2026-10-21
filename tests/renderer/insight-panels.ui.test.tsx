@@ -43,6 +43,11 @@ it("names each Insight tab with its status and leaves a current result unmarked"
         },
       }}
       selectedInsight="analysis"
+      guideStatus={{
+        status: "not_generated",
+        label: undefined,
+        activeStatus: undefined,
+      }}
       setSelectedInsight={vi.fn()}
       runs={{
         brief: { status: "idle" },

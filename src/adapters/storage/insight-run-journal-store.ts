@@ -169,13 +169,21 @@ export class InsightRunJournalStore {
     input: {
       readonly createdAt: string;
       readonly staged: ReadonlyArray<Staged>;
+      /** An accepted operation: the intent names the operation and receipt, and the head carries the grown receipts index. */
+      readonly operation?: {
+        readonly operation: InsightArtifactReference;
+        readonly receipt: InsightArtifactReference;
+        readonly receipts: InsightArtifactIndexDescriptor;
+      };
     },
   ): Promise<Result<InsightJournalCommit, StorageFailure>> {
     return this.commit(journal, prior, nextState, {
-      receipts: prior.head.receipts,
+      receipts: input.operation?.receipts ?? prior.head.receipts,
       transactions: prior.head.transactions,
       createdAt: input.createdAt,
       staged: input.staged,
+      operation: input.operation?.operation ?? null,
+      receipt: input.operation?.receipt ?? null,
     });
   }
 
@@ -189,6 +197,8 @@ export class InsightRunJournalStore {
       readonly transactions: InsightArtifactIndexDescriptor;
       readonly createdAt: string;
       readonly staged: ReadonlyArray<Staged>;
+      readonly operation?: InsightArtifactReference | null;
+      readonly receipt?: InsightArtifactReference | null;
     },
   ): Promise<Result<InsightJournalCommit, StorageFailure>> {
     const { profileId, reviewId } = journal;
@@ -226,8 +236,8 @@ export class InsightRunJournalStore {
         runId: journal.runId,
         expectedSequence: sequence - 1,
         expectedHead: prior?.pointer.head ?? null,
-        operation: null,
-        receipt: null,
+        operation: input.operation ?? null,
+        receipt: input.receipt ?? null,
         nextState: state.value,
         nextReceipts: input.receipts,
         objects: objects.value,

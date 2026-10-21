@@ -12,7 +12,7 @@ import {
 export const GUIDE_MAX_PATCH_BYTES = 64 * 1024 * 1024;
 
 /** Counts are the known prefix omitted from advisory context, never an upstream total. */
-const contextCompletenessSchema = v.strictObject({
+export const guideContextCompletenessSchema = v.strictObject({
   knownOmittedChecks: insightArtifactUnsignedSchema,
   knownOmittedThreads: insightArtifactUnsignedSchema,
   knownOmittedRules: insightArtifactUnsignedSchema,
@@ -27,7 +27,7 @@ const guidePreparedInputSchema = v.strictObject({
   evidenceManifest: insightTextRootDescriptorSchema,
   evidenceBundleId: insightArtifactHashSchema,
   entryPageId: insightTextRootDescriptorSchema,
-  contextCompleteness: contextCompletenessSchema,
+  contextCompleteness: guideContextCompletenessSchema,
 });
 
 /** Closed wrapper for everything Guide preparation verified before generation; it carries no provider or result state. */

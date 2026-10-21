@@ -59,6 +59,11 @@ import { localPatchViewLabels } from "#src/renderer/src/review-source";
 import { RelativeTime } from "./relative-time";
 import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
 import {
+  useGuideSummary,
+  guideSummaryStatus,
+} from "#src/renderer/src/hooks/use-guide-summary";
+import { publishedGuideRevisionMatches } from "./guide-review-controls";
+import {
   analysisChangeIntentLine,
   changeIntentRunRefusalMessage,
 } from "#src/renderer/src/change-intent-copy";
@@ -236,7 +241,6 @@ function retainedInsightDescription(
 
 export function InsightsSlot({
   workbench,
-  guideReading,
   initialDetail,
   onWorkbenchReplace,
   onWorkbenchPatch,
@@ -317,6 +321,23 @@ export function InsightsSlot({
     onWorkbenchPatch,
   });
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
+  const guideSummary = useGuideSummary(
+    workbench,
+    runs.guide,
+    selectedInsight === "guide",
+  );
+  const guideSnapshot =
+    guideSummary.state.status === "loaded"
+      ? guideSummary.state.summary
+      : undefined;
+  const readyGuide =
+    guideSnapshot?._tag === "ready" ? guideSnapshot : undefined;
+  const guideRun = guideSnapshot?.run;
+  const guideStatus = guideSummaryStatus(
+    workbench,
+    guideSummary.state,
+    runs.guide,
+  );
   const projections = {
     analysis: workbench.insights.analysis,
     walkthrough: workbench.insights.walkthrough,
@@ -325,12 +346,13 @@ export function InsightsSlot({
   };
   const reviewOpen = workbench.review.status === "open";
   const runEnabled = insightRunEnabled(configuration, reviewOpen);
-  const selectedProjection = projections[selectedInsight];
+  const selectedProjection =
+    selectedInsight === "guide" ? undefined : projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
       analysis: workbench.insights.analysis.retained?.runId,
       brief: brief.retained?.runId,
-      guide: workbench.insights.guide?.retained?.runId,
+      guide: readyGuide?.runId,
       walkthrough: workbench.insights.walkthrough.retained?.runId,
     },
     selectedInsight,
@@ -338,7 +360,9 @@ export function InsightsSlot({
   });
   const selectedRunning = runs[selectedInsight];
   const selectedBusy =
-    selectedRunning?.busy === true || selectedProjection?.status === "running";
+    selectedInsight !== "guide" &&
+    (selectedRunning?.busy === true ||
+      selectedProjection?.status === "running");
   const retainedDescription = retainedInsightDescription(
     workbench,
     brief,
@@ -353,7 +377,7 @@ export function InsightsSlot({
     patchFiles,
     selectedInsight,
     ...definedProps({
-      guideReading,
+      onRunGuide: reviewOpen ? () => openRunDialog("run") : undefined,
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
       addAllFindings,
@@ -372,13 +396,19 @@ export function InsightsSlot({
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
     runEnabled,
+    guideSummaryState: guideSummary.state,
+    refreshGuide: guideSummary.refresh,
+    guideActiveRun: guideSummary.activeRun,
+    guideOnReprepare: onReprepare,
   });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
   const selectedRetained = selectedProjection?.retained;
   const selectedIsOutdated =
     selectedInsight === "guide"
-      ? workbench.insights.guide.retained?.freshness === "outdated"
+      ? readyGuide !== undefined &&
+        workbench.revision.patchHash !== undefined &&
+        !publishedGuideRevisionMatches(workbench, readyGuide)
       : selectedProjection?.status === "outdated";
   const analysisFirstRunActive =
     selectedInsight === "analysis" &&
@@ -422,6 +452,7 @@ export function InsightsSlot({
             selectedInsight={selectedInsight}
             setSelectedInsight={setSelectedInsight}
             runs={runs}
+            guideStatus={guideStatus}
             onRunInsights={reviewOpen ? runInsights.open : undefined}
             runInsightsDisabled={!runEnabled}
             trailing={
@@ -442,7 +473,12 @@ export function InsightsSlot({
                   />
                 ) : null}
                 <InsightHeaderAction
-                  running={selectedRunning}
+                  running={
+                    selectedInsight === "guide" &&
+                    (!reviewOpen || guideSummary.activeRun !== null)
+                      ? undefined
+                      : selectedRunning
+                  }
                   projectionRunning={selectedProjection?.status === "running"}
                   insightName={selectedInsightName}
                   hideRegenerate={
@@ -450,7 +486,12 @@ export function InsightsSlot({
                     !reviewOpen ||
                     selectedIsOutdated ||
                     selectedProjection?.status === "failed" ||
-                    selectedProjection?.retained === undefined
+                    (selectedInsight === "guide"
+                      ? readyGuide === undefined ||
+                        guideSnapshot?.failure != null ||
+                        guideRun != null ||
+                        runs.guide.busy
+                      : selectedProjection?.retained === undefined)
                   }
                   runEnabled={runEnabled}
                   onRegenerate={() => openRunDialog("regenerate")}
@@ -473,7 +514,9 @@ export function InsightsSlot({
           onReprepare={onReprepare}
           retainedDescription={retainedDescription}
           retryRun={retryRun}
-          selectedIsOutdated={selectedIsOutdated}
+          selectedIsOutdated={
+            selectedInsight === "guide" ? false : selectedIsOutdated
+          }
           currentRevision={currentRevision}
           onRun={() => openRunDialog("run")}
           runEnabled={runEnabled}

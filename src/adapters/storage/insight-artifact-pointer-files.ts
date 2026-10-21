@@ -173,11 +173,14 @@ async function parentsUnchanged(
   return checked._tag === "ok" && sameParents(parents, checked.value);
 }
 
-/** Pointers live only directly under a Review's insight-artifacts-v2 slots/ or journals/ directory. */
+/** Pointers live only in the Review's named pointer directories; Guide progress filenames bind a result digest. */
 function pointerDirectory(ownedRoot: string, path: string): string | undefined {
   const directory = dirname(resolve(path));
   return basename(dirname(directory)) === "insight-artifacts-v2" &&
-    (basename(directory) === "slots" || basename(directory) === "journals") &&
+    (basename(directory) === "slots" ||
+      basename(directory) === "journals" ||
+      (basename(directory) === "guide-progress" &&
+        /^[a-f0-9]{64}\.json$/.test(basename(path)))) &&
     isPathContained(ownedRoot, directory)
     ? directory
     : undefined;

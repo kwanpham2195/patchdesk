@@ -132,7 +132,9 @@ export class GuideReadingSaveQueue {
       this.onConfirmed(saved);
       return this.dirty ? this.drain() : true;
     } catch (cause) {
-      this.reloadNeeded = isApiErrorCode(cause, "guide_version_conflict");
+      this.reloadNeeded =
+        isApiErrorCode(cause, "guide_version_conflict") ||
+        isApiErrorCode(cause, "version_conflict");
       if (this.reloadNeeded) {
         try {
           this.confirmed = await this.reload();

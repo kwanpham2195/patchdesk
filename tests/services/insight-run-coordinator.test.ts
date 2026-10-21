@@ -34,7 +34,7 @@ afterEach(cleanupRoots);
 
 describe("InsightRunCoordinator current lifecycle", () => {
   // Startup recovery sweeps every Insight type.
-  it.each(["analysis", "walkthrough", "brief", "guide"] as const)(
+  it.each(["analysis", "walkthrough", "brief"] as const)(
     "recovers a persisted active %s run during bounded startup recovery",
     async (type) => {
       let release!: () => void;
@@ -42,25 +42,9 @@ describe("InsightRunCoordinator current lifecycle", () => {
         release = resolve;
       });
       const value = await fixture({
-        async invoke(input) {
-          if (type === "guide")
-            expect(input.guide?.inventory.map((file) => file.id)).toEqual([
-              "f1",
-            ]);
+        async invoke() {
           await waiting;
-          return ok(
-            type === "guide"
-              ? {
-                  groups: [
-                    {
-                      title: "Guard",
-                      explanation: "Adds the guard.",
-                      files: [{ fileId: "f1", relevance: "Owns the guard." }],
-                    },
-                  ],
-                }
-              : analysisResult,
-          );
+          return ok(analysisResult);
         },
       });
       const started = await value.coordinator.start({

@@ -100,6 +100,8 @@ function DraftingReview(): React.JSX.Element {
 describe("Local drafts on a local Review", () => {
   it("adds a Finding to draft from its Analysis row and removes it from the Notes list", async () => {
     const double = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       // Context hydration is not under test; an unreadable file keeps the patch as it is.
@@ -174,6 +176,8 @@ describe("Local drafts on a local Review", () => {
 
   it("shows a refused Add to draft on the Insights tab", async () => {
     const double = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),

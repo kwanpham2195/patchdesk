@@ -4,6 +4,7 @@ import type {
   InsightJournalKey,
   InsightJournalSnapshot,
 } from "#src/adapters/storage/insight-run-journal-reader";
+import { InsightRunJournalReader } from "#src/adapters/storage/insight-run-journal-reader";
 import { InsightRunJournalStore } from "#src/adapters/storage/insight-run-journal-store";
 import {
   InsightSlotStore,
@@ -34,11 +35,16 @@ import {
   type InsightAdmittedRun,
   type InsightProcessRuns,
 } from "./insight-slot-admission";
+import { reconcilePublishedGuide } from "./guide-publication-recovery";
+import { GuideRunTransactions } from "./guide-run-transactions";
 import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
 
-type Decision = Result<InsightJournalChange | undefined, InsightSlotFailure>;
+type Decision<E = never> = Result<
+  InsightJournalChange | undefined,
+  InsightSlotFailure | E
+>;
 type Outcome = {
   readonly status: InsightJournalStatus;
   readonly cancelEpoch: number;
@@ -59,6 +65,11 @@ export class InsightSlotAuthority {
   private readonly admission: InsightSlotAdmission;
   /** Lock-free reads of the same state, for status, cancel lookup and listings. */
   readonly status: InsightSlotStatus;
+  private readonly publishedGuide: Parameters<
+    typeof reconcilePublishedGuide
+  >[0];
+  /** The Guide begin, produce, resume and publish transitions over this authority's own locks and stores. */
+  readonly guide: GuideRunTransactions;
 
   constructor(
     paths: PatchdeskPaths,
@@ -78,6 +89,27 @@ export class InsightSlotAuthority {
       legacy,
       now,
     );
+    this.guide = new GuideRunTransactions({
+      locked: (key, operation) => this.locked(key, operation),
+      withJournal: (journal, operation) => this.withJournal(journal, operation),
+      advanceActive: (run, guard, decide) =>
+        this.advanceActive(run, guard, decide),
+      advanceJournal: (run, decide) => this.advanceJournal(run, decide),
+      slots: this.slots,
+      journals: this.journals,
+      writer: this.writer,
+    });
+    this.publishedGuide = {
+      paths,
+      artifacts: this.artifacts,
+      slots: this.slots,
+      journals: new InsightRunJournalReader(
+        paths,
+        this.artifacts,
+        insightArtifactReader,
+      ),
+      guide: this.guide,
+    };
     this.admission = new InsightSlotAdmission(
       this.slots,
       this.writer,
@@ -174,6 +206,10 @@ export class InsightSlotAuthority {
   ): Promise<Result<void, InsightSlotFailure>> {
     return this.reconcile(input, inProcess, (operation) =>
       this.locked(input, operation),
+    ).then(async (reconciled) =>
+      reconciled._tag === "err"
+        ? reconciled
+        : reconcilePublishedGuide(this.publishedGuide, input),
     );
   }
 
@@ -293,10 +329,12 @@ export class InsightSlotAuthority {
    * Under the journal lock: refuses while a pending intent the journal moved past is unreconciled, rereads the journal,
    * lets `decide` pick at most one transaction, and commits it.
    */
-  private advanceJournal(
+  private advanceJournal<E = never>(
     run: InsightRunRef,
-    decide: (snapshot: InsightJournalSnapshot) => Decision,
-  ): Promise<Result<InsightJournalSnapshot, InsightSlotFailure>> {
+    decide: (
+      snapshot: InsightJournalSnapshot,
+    ) => Decision<E> | Promise<Decision<E>>,
+  ): Promise<Result<InsightJournalSnapshot, InsightSlotFailure | E>> {
     const journal = journalKey(run);
     return this.withJournal(journal, async () => {
       const pending = await this.journals.pendingIntent(journal);
@@ -304,7 +342,7 @@ export class InsightSlotAuthority {
       if (pending.value._tag === "conflict") return err("outcome_unknown");
       const read = await this.journals.read(journal);
       if (read._tag === "err") return failed();
-      const change = decide(read.value);
+      const change = await decide(read.value);
       if (change._tag === "err") return change;
       return change.value === undefined
         ? ok(read.value)
@@ -376,7 +414,8 @@ function settleDecision(
   const { status } = snapshot.state;
   if (isTerminalStatus(status)) return ok(undefined);
   if (status === "complete") return err("not_active");
-  return ok({
+  const dispatched = snapshot.state.dispatches.count > 0;
+  const change: InsightJournalChange = {
     status:
       code === "cancelled"
         ? "cancelled"
@@ -384,5 +423,11 @@ function settleDecision(
           ? "superseded"
           : "failed",
     failure: { code, phase, recovery: "terminal" },
-  });
+  };
+  // A dispatched request may still have been served, so its usage is unknown rather than zero.
+  return ok(
+    dispatched && code === "cancelled"
+      ? { ...change, usageUnknown: true }
+      : change,
+  );
 }
