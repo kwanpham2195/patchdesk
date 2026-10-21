@@ -6,9 +6,11 @@ Guide is an optional Insight in the Review workbench. It groups changed files by
 
 ## The simple case
 
-Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose the provider, model, reasoning, and language, then start the run.
+Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose API key, a model, reasoning, and language, then start the run. This paged generation path currently refuses Codex CLI account and pi CLI account selections.
 
 The result shows a distinct file count, a group count, and Reviewed progress. Numbered groups have an explanation and expandable file rows. Others holds changed files outside the groups. Expanding a row shows that file's complete retained diff, including changes the group explanation does not discuss. Repeated appearances expand independently.
+
+Groups, file lists, and long text load in pages. Show more files continues a list; Show the rest of this explanation continues a long explanation. The reader also states known omissions from captured checks, discussion threads, and rules, and whether source context completeness is known.
 
 Mark reviewed records progress for one group. Viewed records progress for a file and is shared with Diff and every Guide appearance. Neither action submits a GitHub review. Notes, comments, replies, and drafts use the [shared inline actions](inline-conversations.md).
 
@@ -31,7 +33,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Opening Guide does not start a run. A retained result identifies its represented revision and whether it is current or outdated. An outdated result keeps its own patch rather than showing newer source. Without a result, the reader offers Generate Guide.
+Opening Guide does not start a run. Only a saved result in the new paged format is readable; earlier-format Guides and their reading progress are not imported. An outdated result keeps its own patch rather than showing newer source. Without a readable result, the reader offers Generate Guide. A saved failed run shows its failure separately, including whether an earlier result remains available.
 
 At wide widths, explanations and files occupy separate columns. Narrow layouts stack them. The minimap's current indicator follows the visible group. A check identifies a Reviewed group, independently of the current marker. Equal marker spacing represents group order, not the relative height of each group.
 
@@ -51,9 +53,13 @@ A file row expands or collapses only that appearance. Text diffs show code witho
 
 The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
-Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#while-the-action-runs). Empty or unindexable patches, context over 512 KiB, or a serialized inventory over 512 KiB fail the saved queued run during preparation, rather than refusing the start before it has a run identity. The captured patch has no separate 2 MiB limit; its complete bytes remain local for inventory and retained-result validation. No provider is invoked for that failure.
+Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#while-the-action-runs). The workbench stays usable during preparation. Empty or unindexable patches, captured patches over 64 MiB, and unavailable required evidence fail preparation without invoking a provider. The complete patch and inventory remain local; the model reads them in pages.
 
-A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Stop requests cancellation; cancellation is not complete until the run settles.
+The model submits groups and supporting files in small batches. Patchdesk validates the complete submitted result before making it readable. There is no twelve-group cap; the model chooses how many groups to create. Others still contains files outside those groups, not a promise that their changes are unimportant.
+
+A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Cancel run requests cancellation; cancellation is not complete until the run settles. A known active run keeps its cancellation control when result pages cannot be read or GitHub freshness becomes unavailable.
+
+If a recorded provider request has an unknown outcome, the run pauses rather than sending it again automatically. Resume as a new generation requires acknowledging that another generation may spend again and does not recover the missing responses. Cancel run remains a separate action.
 
 Reading progress updates immediately while Patchdesk saves it. A failed save keeps the displayed progress and offers Retry reading progress. Navigation that would leave the Review waits for its registered progress saves. If they fail, Patchdesk keeps the current Review open.
 
@@ -62,6 +68,8 @@ Reading progress updates immediately while Patchdesk saves it. A failed save kee
 A validated, saved result replaces the prior Guide. It starts at the beginning with collapsed files and no Reviewed groups. Shared Viewed marks and review drafts are not reset by regeneration.
 
 A failed, cancelled, or superseded replacement does not erase the prior retained result or its progress. An invalid result never replaces readable evidence. A later successful retry replaces the result normally.
+
+Failed, cancelled, and superseded runs keep distinct messages after reopening. Try again appears only when the recorded failure permits a retry and the current Review can run one. Cancelling or superseding a run does not itself offer a retry button.
 
 ## Variants
 
@@ -77,7 +85,7 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 
 | Event                                                                                                 | Before the action runs                                                                                                       | While the action runs                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cancel, Stop, or Escape                                                                               | Escape closes the active preview or dialog without changing Guide content.                                                   | Stop requests run cancellation. Escape cannot bypass a pending write or leave decision.                                                                                                               |
+| Cancel, Stop, or Escape                                                                               | Escape closes the active preview or dialog without changing Guide content.                                                   | Cancel run requests cancellation independently of file-authoring freshness. Escape cannot bypass a pending write or leave decision.                                                                   |
 | Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Registered reading progress must save before leaving its Review. Shared unsaved review text can require a separate decision. | Failed progress saves hold the destination. A pending GitHub write still blocks leaving.                                                                                                              |
 | Start another action or request a refresh                                                             | Each control checks its own availability. Viewing or navigating Guide does not start a replacement.                          | Conflicting work follows the shared run and Review owners. Newer responses cannot adopt an obsolete session.                                                                                          |
 | GitHub, the network, a local tool, or an Insight provider fails or times out                          | Unavailable prerequisites prevent generation and explain the failure.                                                        | A failed run keeps the previous result. A progress failure offers Retry reading progress. An uncertain GitHub write follows shared recovery, without replay.                                          |
@@ -92,6 +100,8 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 **Review revision and freshness.** Retained file evidence belongs to the Guide's represented patch. See [Review session and revision](../foundations/review-session-and-revision.md). Outdated Guide evidence cannot authorize a current-revision comment.
 
 **Local persistence and recovery.** Reviewed groups, expanded appearances, and a position within a group or file are saved locally. Resize and tab return restore that content position rather than an old document pixel height. Successful replacement resets only Guide reading progress.
+
+Reading progress belongs to the exact saved result. Reopening and returning from another Insight reread current progress rather than combining new marks with an old position or save version. Earlier-format progress is not restored into a new-format Guide.
 
 **GitHub permissions and write authority.** Guide uses the same [inline conversations](inline-conversations.md) and [pending review](pending-review-and-finish.md) as Diff. Typing, navigation, and generation do not publish. A successful action clears only the confirmed draft, not newer text.
 
@@ -119,12 +129,10 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 ## Open questions and verification
 
 - [Guide checklist](../verification/insights-and-cross-cutting.md#review-workbenchguidemd) records generation, retained evidence, navigation, restoration, and recovery checks.
-- Real retained PR #125 was inspected over CDP at wide, narrow, and short heights. Browser fixtures cover long names, many groups, Others, repeated appearances, transformed preview ancestry, stale refusals, and save failure. Fixture checks are not native desktop proof.
-- Prior native close, save-failure Retry, restart, held-save input, and crashed-renderer checks cover unchanged queue and main-process code. Crash admission used injected public states, not real pending GitHub writes.
+- The paged API-key path generated a real Guide with DeepSeek on the 516-file PR #140. CDP checks confirmed its 12 groups and 258 Others, file expansion, Open in Diff selecting the same file, saved Reviewed and expansion marks, tab-return position restoration, and reopening after a full dev-app restart without another provider dispatch. The source context completeness notice was inspected after it loaded.
+- The new cancellation, terminal-failure, unknown-request Resume, and interrupted-generation recovery paths have source-review evidence, not live lifecycle proof. Earlier native and legacy-fixture checks do not verify these changed owners. Provider transport parity and the remaining Review-source checks are pending.
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
 
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
 
-Captured input and failure behavior revised from source commit `1148d23c` for #821. Provider generation across every Insight and Review source remains unverified.
-
-Queued Guide preparation failures revised for #821. Before removal of the patch cap, PR #140 was checked live with Codex CLI account selected: the run was acknowledged before preparation failed, and its saved failure named the supported input size. No provider invocation was observed. That check does not verify successful large-patch Guide generation after the cap removal.
+Paged generation, reading, progress, and failure behavior revised from source commit `e90d1ef8b733404004eb2e30796256c5ac06b526` for #821. The successful-run evidence and remaining lifecycle limits are stated above. Provider generation across every Insight and Review source remains unverified.
