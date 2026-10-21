@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added paged API-key Guide generation without a twelve-group cap, with a 64 MiB captured-patch ceiling, saved reading progress, visible context completeness, and explicit Resume for uncertain provider requests. Earlier-format Guides and progress are not imported. #821
+
 - Removed Guide's 2 MiB patch limit for captured evidence, while keeping model requests and evidence pages bounded and validating the complete retained patch. #821
 
 - Changed Insight startup to acknowledge saved runs before preparing evidence, show Preparing and Cancelling separately from Running, and recover an active run after a lost start response. Guide preparation failures follow the same saved-run lifecycle. #821
