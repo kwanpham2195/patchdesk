@@ -34,6 +34,7 @@ import type { InsightStore } from "#src/adapters/storage/insight-store";
 import {
   parseContentHash,
   parseInsightRunId,
+  type ContentHash,
   parseIsoTimestamp,
   type FindingId,
   type InsightRunId,
@@ -63,6 +64,7 @@ import {
 } from "#src/domain/insight-provider";
 import { parseReviewResult } from "#src/domain/review-result";
 import type { Review } from "#src/domain/review";
+import type { ReviewSession } from "#src/domain/review-session";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
@@ -82,6 +84,12 @@ import { isTerminalStatus } from "./insight-slot-records";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
+import {
+  guideResumeFailure,
+  type GuideResumeRequest,
+} from "./guide-generation-resume";
+import { guideStartFailure } from "./guide-preparation-runtime";
+import type { GuideGenerationStarter } from "./guide-generation-service";
 import {
   InsightActivityBuffer,
   type InsightActivitySnapshot,
@@ -244,6 +252,11 @@ export class InsightRunCoordinator {
     private readonly notifications?: InsightSettledNotifier,
     /** The scope's shared run ownership: Guide preparation registers here so recovery and cancel see its runs as live. */
     owned: Map<string, Active> = new Map(),
+    /**
+     * Tool-driven Guide generation. When present, every Guide start runs through it: only the API-key `pi` route is
+     * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
+     */
+    private readonly guide?: GuideGenerationStarter,
   ) {
     this.active = owned;
     this.preparation = new InsightRunPreparation(
@@ -290,11 +303,17 @@ export class InsightRunCoordinator {
     hooks?: InsightStartHooks,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const began = performance.now();
-    const result = await this.operations.withReviewLock(
-      input.profileId,
-      input.reviewId,
-      () => this.startUnlocked(input, hooks),
-    );
+    const result =
+      input.type === "guide"
+        ? // Production Guide generation has one route; without its service the Guide is unavailable.
+          this.guide === undefined
+          ? err("not_available" as const)
+          : await this.startGuide(this.guide, input, hooks)
+        : await this.operations.withReviewLock(
+            input.profileId,
+            input.reviewId,
+            () => this.startUnlocked(input, hooks),
+          );
     const durationMs = Math.round(performance.now() - began);
     setImmediate(() => {
       void this.preparation.recordAdmission(
@@ -306,10 +325,68 @@ export class InsightRunCoordinator {
     return result;
   }
 
-  private async startUnlocked(
+  /**
+   * Admission checks run under one short Review lock; the run itself is admitted by the Guide service, which takes
+   * its own short locks, so nothing here is held across preparation, the worker or the provider.
+   */
+  private async startGuide(
+    guide: GuideGenerationStarter,
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    if (
+      (input.provider ?? "pi") !== "pi" ||
+      input.reasoning === "minimal" ||
+      input.reasoning === "xhigh"
+    )
+      return err("not_available");
+    const admitted = await this.operations.withReviewLock(
+      input.profileId,
+      input.reviewId,
+      () => this.resolveStart(input, hooks),
+    );
+    if (admitted._tag === "err") return admitted;
+    const { review, model, session, hash } = admitted.value;
+    const started = await guide.start({
+      profileId: input.profileId,
+      reviewId: input.reviewId,
+      revision: review.updatedAt,
+      sessionId: session.id,
+      expectedHash: hash,
+      headSha: session.key.headSha,
+      baseSha: session.key.baseSha,
+      reasoning: input.reasoning,
+      selection: {
+        provider: "pi",
+        model,
+        reasoning: input.reasoning,
+        language: input.language,
+      },
+    });
+    if (started._tag === "err") return err(guideStartFailure(started.error));
+    const runId = parseInsightRunId(started.value.run.runId);
+    if (runId._tag === "err") return err("storage_unavailable");
+    // Request linkage cannot strand a run that already has a durable identity.
+    await hooks?.started(review, runId.value).catch(() => undefined);
+    return ok({ runId: runId.value, type: input.type, status: "queued" });
+  }
+
+  /** The Review, selection and session identity a start is admitted against; run under the Review lock. */
+  private async resolveStart(
+    input: InsightCoordinatorInput,
+    hooks: InsightStartHooks | undefined,
+  ): Promise<
+    Result<
+      {
+        readonly review: Review;
+        readonly provider: InsightProvider;
+        readonly model: string;
+        readonly session: ReviewSession;
+        readonly hash: ContentHash;
+      },
+      InsightCoordinatorFailure
+    >
+  > {
     const review = await this.reviews.load(input.profileId, input.reviewId);
     if (review._tag === "err") {
       if (review.error.reason !== "not_found")
@@ -361,6 +438,22 @@ export class InsightRunCoordinator {
       );
     const hash = parseContentHash(await contentHash(session.value.patchPath));
     if (hash._tag === "err") return err("storage_unavailable");
+    return ok({
+      review: review.value,
+      provider,
+      model,
+      session: session.value,
+      hash: hash.value,
+    });
+  }
+
+  private async startUnlocked(
+    input: InsightCoordinatorInput,
+    hooks: InsightStartHooks | undefined,
+  ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const admitted = await this.resolveStart(input, hooks);
+    if (admitted._tag === "err") return admitted;
+    const { review, provider, model, session, hash } = admitted.value;
     // A current slot owns this type: a legacy run cannot begin, whatever the legacy file holds.
     const slotted = await this.slots.hasSlot(input);
     if (slotted._tag === "err") return err("storage_unavailable");
@@ -383,9 +476,9 @@ export class InsightRunCoordinator {
     if (record._tag === "ok" && record.value.activeRun !== undefined)
       return err("already_running");
     const resolved = await this.contextPack.resolve(
-      session.value,
+      session,
       input.type === "analysis"
-        ? { _tag: "Read", intent: review.value.changeIntent }
+        ? { _tag: "Read", intent: review.changeIntent }
         : { _tag: "Unread" },
     );
     if (resolved._tag === "err")
@@ -402,13 +495,13 @@ export class InsightRunCoordinator {
     if (timestamp._tag === "err") return err("storage_unavailable");
     const token = record._tag === "ok" ? record.value.nextToken : 1;
     const runId = parseInsightRunId(
-      `insight-${input.type}-${token}-${session.value.key.headSha.slice(0, 12)}-${input.reviewId}`,
+      `insight-${input.type}-${token}-${session.key.headSha.slice(0, 12)}-${input.reviewId}`,
     );
     if (runId._tag === "err") return err("invalid_request");
     const revision: InsightRevision = {
-      sessionId: session.value.id,
-      headSha: session.value.key.headSha,
-      patchHash: hash.value,
+      sessionId: session.id,
+      headSha: session.key.headSha,
+      patchHash: hash,
     };
     const started = await this.insights.mutate({
       profileId: input.profileId,
@@ -443,7 +536,7 @@ export class InsightRunCoordinator {
       type: input.type,
     });
     try {
-      await hooks?.started(review.value, runId.value);
+      await hooks?.started(review, runId.value);
     } catch {
       // Request linkage cannot strand a run that already has a saved identity.
     }
@@ -461,20 +554,17 @@ export class InsightRunCoordinator {
     const invocation = {
       profileId: input.profileId,
       reviewId: input.reviewId,
-      sessionId: session.value.id,
+      sessionId: session.id,
       runId: runId.value,
       type: input.type,
-      expectedHeadSha: session.value.key.headSha,
-      contextPath: this.paths.preparedContextFile(
-        input.profileId,
-        session.value.id,
-      ),
+      expectedHeadSha: session.key.headSha,
+      contextPath: this.paths.preparedContextFile(input.profileId, session.id),
       reviewInputPath: this.paths.preparedReviewInputFile(
         input.profileId,
-        session.value.id,
+        session.id,
       ),
-      patchPath: session.value.patchPath,
-      worktreePath: session.value.worktree.path,
+      patchPath: session.patchPath,
+      worktreePath: session.worktree.path,
       provider,
       model,
       reasoning: input.reasoning,
@@ -484,8 +574,8 @@ export class InsightRunCoordinator {
     setImmediate(() => {
       void this.executor.prepareAndExecute(
         invocation,
-        session.value,
-        hash.value,
+        session,
+        hash,
         controller,
         activity === undefined ? undefined : (event) => activity.append(event),
         () =>
@@ -493,18 +583,18 @@ export class InsightRunCoordinator {
             identity: {
               profileId: input.profileId,
               reviewId: input.reviewId,
-              sessionId: session.value.id,
+              sessionId: session.id,
               runId: runId.value,
               type: input.type,
-              headSha: session.value.key.headSha,
-              baseSha: session.value.key.baseSha,
-              patchHash: hash.value,
+              headSha: session.key.headSha,
+              baseSha: session.key.baseSha,
+              patchHash: hash,
               intentHash:
                 changeIntent === undefined
                   ? null
                   : hashReviewArtifactContent(JSON.stringify(changeIntent)),
             },
-            session: session.value,
+            session: session,
             language: input.language,
             changeIntent:
               input.type === "analysis"
@@ -515,6 +605,22 @@ export class InsightRunCoordinator {
       );
     });
     return ok({ runId: runId.value, type: input.type, status: "queued" });
+  }
+
+  /** Explicit Resume of a Guide paused for an unknown paid effect, under the maintainer's acknowledgment. */
+  async resumeGuide(
+    input: GuideResumeRequest,
+  ): Promise<Result<void, InsightCoordinatorFailure>> {
+    if (this.guide === undefined) return err("not_available");
+    const ownership = await this.ensureMutableOwned(
+      input.profileId,
+      input.reviewId,
+    );
+    if (ownership._tag === "err") return ownership;
+    const resumed = await this.guide.resume(input);
+    return resumed._tag === "ok"
+      ? resumed
+      : err(guideResumeFailure(resumed.error));
   }
 
   async cancel(input: {

@@ -7,6 +7,7 @@ import { InsightSlotStore } from "#src/adapters/storage/insight-slot-store";
 import { isNotFound } from "#src/adapters/storage/json-file";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { definedProps } from "#src/domain/defined-props";
+import { guidePublicationCodec } from "#src/domain/guide-result";
 import type { ReviewSessionId } from "#src/domain/ids";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import {
@@ -155,13 +156,26 @@ export class InsightSlotStatus {
     );
     if (current._tag === "err") return failed();
     if (current.value === undefined) return ok(undefined);
-    const { activeRun, replacementFailure, nextToken } = current.value.record;
+    const { activeRun, replacementFailure, nextToken, publication } =
+      current.value.record;
     if (activeRun?.tag === "current" && activeRun.runId === input.runId)
       return this.observeJournal({
         ...input,
         runId: activeRun.runId,
         journalId: activeRun.journalId,
       });
+    // A published Guide names its run in GuidePublication1; the publication belongs to the last admitted run.
+    if (publication !== null && runToken(input.runId) === nextToken - 1) {
+      const published = await this.artifacts.readObject(
+        input.profileId,
+        input.reviewId,
+        guidePublicationCodec,
+        publication,
+      );
+      if (published._tag === "err") return failed();
+      if (published.value.runId === input.runId)
+        return ok({ status: "completed" });
+    }
     // The failure belongs to the last admitted run, so a run ID with another token skips the text comparison.
     if (replacementFailure !== null && runToken(input.runId) === nextToken - 1)
       return this.observeReplacement(input, replacementFailure);

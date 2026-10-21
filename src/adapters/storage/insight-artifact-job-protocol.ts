@@ -16,6 +16,10 @@ import {
 import { isNotFound, type StorageFailure } from "./json-file";
 import { guidePreparationResultSchema } from "#src/domain/guide-preparation";
 import {
+  guideValidationInputSchema,
+  guideValidationResultSchema,
+} from "./guide-result-job";
+import {
   insightArtifactReferenceSchema,
   insightArtifactUnsignedSchema,
   insightTextRootDescriptorSchema,
@@ -151,6 +155,11 @@ export const insightArtifactJobRequestSchema = v.pipe(
       id: requestId,
       input: guidePreparationInputSchema,
     }),
+    v.strictObject({
+      kind: v.literal("validate_guide"),
+      id: requestId,
+      input: guideValidationInputSchema,
+    }),
     v.strictObject({ kind: v.literal("cancel"), id: requestId }),
   ]),
   v.check((request) => {
@@ -165,9 +174,11 @@ export const insightArtifactJobRequestSchema = v.pipe(
               request.input.destinationReview,
               request.input.contextPath,
             ]
-          : request.kind === "hash_file"
-            ? [request.path]
-            : [];
+          : request.kind === "validate_guide"
+            ? [request.input.destinationRoot]
+            : request.kind === "hash_file"
+              ? [request.path]
+              : [];
     // The code-unit lower bound avoids allocating an oversized JSON string before checking actual encoded bytes.
     return (
       strings.reduce((sum, value) => sum + value.length, 0) <= 32 * 1024 &&
@@ -219,6 +230,11 @@ export const insightArtifactJobReplySchema = v.union([
     kind: v.literal("prepare_guide"),
     id: requestId,
     result: guidePreparationResultSchema,
+  }),
+  v.strictObject({
+    kind: v.literal("validate_guide"),
+    id: requestId,
+    result: guideValidationResultSchema,
   }),
 ]);
 

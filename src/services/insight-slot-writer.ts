@@ -63,7 +63,7 @@ export class InsightSlotWriter {
       readonly schema: string;
       readonly root: InsightArtifactReference;
     }> = [];
-    let failure = snapshot.state.failure;
+    let failure = change.clearFailure === true ? null : snapshot.state.failure;
     let usage = snapshot.state.usage;
     const at = this.now();
     if (change.usageUnknown === true) {
@@ -101,23 +101,41 @@ export class InsightSlotWriter {
       failure = record.value;
       staged.push({ schema: "FailureRecord", root: record.value });
     }
+    if (change.authorization !== undefined)
+      staged.push({ schema: "Authorization", root: change.authorization });
     if (change.guidePreparation !== undefined)
       staged.push({
         schema: "GuidePreparedInput1",
         root: change.guidePreparation,
       });
+    if (change.guideRuntime !== undefined)
+      staged.push({ schema: "GuideRuntime1", root: change.guideRuntime });
+    if (change.publication !== undefined)
+      staged.push({ schema: "GuidePublication1", root: change.publication });
+    staged.push(...(change.staged ?? []));
     const committed = await this.journals.applyInternalTransaction(
       journal,
       snapshot,
       {
         ...snapshot.state,
         status: change.status,
+        generation: change.generation ?? snapshot.state.generation,
         cancelEpoch: change.cancelEpoch ?? snapshot.state.cancelEpoch,
         failure,
         usage,
-        ...definedProps({ guidePreparation: change.guidePreparation }),
+        ...definedProps({
+          guidePreparation: change.guidePreparation,
+          guideRuntime: change.guideRuntime,
+          dispatches: change.dispatches,
+          authorization: change.authorization,
+          publication: change.publication,
+        }),
       },
-      { createdAt: at, staged },
+      {
+        createdAt: at,
+        staged,
+        ...definedProps({ operation: change.operation }),
+      },
     );
     if (committed._tag === "err") return failed();
     if (committed.value._tag === "committed")

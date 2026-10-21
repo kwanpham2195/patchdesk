@@ -71,6 +71,12 @@ import { AgentRunRequestService } from "#src/services/agent-run-request-service"
 import { ReviewRetention } from "#src/services/review-retention";
 import { LocalReviewSessionPreparation } from "#src/services/local-review-session-preparation";
 import { ReviewDiffSourceService } from "#src/services/review-diff-source-service";
+import { GuideProgressStore } from "#src/adapters/storage/guide-progress-store";
+import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
+import { GuideCapturedFilePages } from "#src/services/guide-captured-file-pages";
+import { GuidePageService } from "#src/services/guide-result-pages";
+import { GuideProgressService } from "#src/services/guide-result-progress";
+import { GuideResultReader } from "#src/services/guide-result-reader";
 import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import { SidebarListingService } from "#src/services/sidebar-listing-service";
 import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
@@ -115,6 +121,10 @@ export type LocalApiContainer = {
   readonly localChangeIntent: LocalChangeIntentService;
   /** Agent run requests over MCP and their approval in the app (ADR 0052). */
   readonly agentRunRequests: AgentRunRequestService;
+  /** Bounded summary and page reads of the published Guide (GuideResultRoot1 only). */
+  readonly guidePages: GuidePageService;
+  /** Digest-keyed Guide reading progress. */
+  readonly guideProgress: GuideProgressService;
   /** Retained Insight reads for routes that compose from a stored result, such as the Brief's PR description. */
   readonly retainedInsights: Pick<InsightStore, "loadTyped">;
   readonly reviewDiffSources: ReviewDiffSourceService;
@@ -496,6 +506,24 @@ export async function buildLocalApiContainer(
     profiles,
     paths,
   );
+  const guideReader = new GuideResultReader(
+    paths,
+    configuration.insightResources.uiReader,
+  );
+  const guideProgress = new GuideProgressService(
+    new GuideProgressStore(
+      paths,
+      new InsightArtifactStore(paths, configuration.insightResources.uiReader),
+      configuration.insightResources.uiReader,
+    ),
+    guideReader,
+    reviewOperations,
+  );
+  const guidePages = new GuidePageService(
+    guideReader,
+    guideProgress,
+    new GuideCapturedFilePages(),
+  );
   const slotStatus = new InsightSlotStatus(
     paths,
     configuration.insightResources.uiReader,
@@ -670,6 +698,8 @@ export async function buildLocalApiContainer(
         now: systemNow,
       }),
       agentRunRequests,
+      guidePages,
+      guideProgress,
       retainedInsights: insights,
       reviewDiffSources,
       mergeWrites,

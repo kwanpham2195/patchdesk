@@ -14,6 +14,7 @@ import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   guidePreparedInputCodec,
   type GuidePreparationFailureReason,
+  type GuidePreparedInput,
 } from "#src/domain/guide-preparation";
 import {
   parseContentHash,
@@ -23,11 +24,15 @@ import {
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "#src/domain/ids";
-import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
 import { sessionRepresentsReview } from "#src/domain/review";
 import type { ReviewSession } from "#src/domain/review-session";
 import { err, ok, type Result } from "#src/domain/result";
 import { stageGuideContext } from "./guide-context-capture";
+import {
+  guideEvidenceReference,
+  guideSettleCode,
+} from "./guide-preparation-runtime";
+import type { InsightEvidenceReference } from "./insight-evidence-reference";
 import type {
   InsightAdmissionInput,
   InsightAdmittedRun,
@@ -59,11 +64,20 @@ export type GuidePreparationRequest = {
 export type GuidePreparationOperation = {
   readonly result: Promise<GuidePreparationResult>;
   /**
+   * Settles once admission is decided: the run the slot now names (also when an uncertain admission left it owned), or
+   * the reason no run was admitted. Callers that must report a run identity wait for this, not for `result`.
+   */
+  readonly admission: Promise<
+    Result<AdmittedRun, GuidePreparationFailureReason>
+  >;
+  /**
    * Records cancellation durably, and only then aborts the job and joins it. A prepared run is settled cancelled and
    * released. A storage failure or unknown outcome returns `unsettled`, leaves the run owned and the job running, and a
    * later call retries; only a success is remembered.
    */
   cancel(): Promise<Result<void, "unsettled">>;
+  /** Stops the job without recording anything; used by shutdown, where recovery settles the run on the next launch. */
+  abort(): void;
   /** Whether this process still owns an admitted run, which is until its durable settlement is confirmed. */
   owned(): boolean;
 };
@@ -73,7 +87,7 @@ type Observation = {
   readonly sourcePath: string;
 };
 
-type AdmittedRun = InsightSlotKey & InsightAdmittedRun;
+export type AdmittedRun = InsightSlotKey & InsightAdmittedRun;
 
 /**
  * Prepares the immutable Guide inputs for one Review in a destination scope: admits a current-format run, captures run
@@ -97,18 +111,22 @@ export class GuidePreparationService {
     private readonly operations: ReviewOperationCoordinator,
     private readonly pack: Pick<ReviewContextPackService, "captureRunContext">,
     now: () => IsoTimestamp,
+    /** The scope's one authority: sharing it keeps preparation, generation and cancel on the same journal locks. */
+    authority?: InsightSlotAuthority,
   ) {
     this.owned = resources.ownership.forScope(destination.dataDirectory());
     this.reviews = new ReviewStore(source);
     this.sessions = new ReviewSessionStore(source);
     this.profiles = new ProfileStore(source);
-    this.slots = new InsightSlotAuthority(
-      destination,
-      resources.authorityReader,
-      new InsightStore(destination, resources.authorityReader),
-      operations,
-      now,
-    );
+    this.slots =
+      authority ??
+      new InsightSlotAuthority(
+        destination,
+        resources.authorityReader,
+        new InsightStore(destination, resources.authorityReader),
+        operations,
+        now,
+      );
     this.artifacts = new InsightArtifactStore(
       destination,
       resources.authorityReader,
@@ -121,6 +139,14 @@ export class GuidePreparationService {
     let admitted: AdmittedRun | undefined;
     let cancelled = false;
     let cancelling: Promise<Result<void, "unsettled">> | undefined;
+    let announce: (
+      decided: Result<AdmittedRun, GuidePreparationFailureReason>,
+    ) => void = () => undefined;
+    const admission = new Promise<
+      Result<AdmittedRun, GuidePreparationFailureReason>
+    >((resolve) => {
+      announce = resolve;
+    });
     const isOwned = (): boolean =>
       admitted !== undefined && this.owned.has(admitted.runId);
     /** True once storage confirms the run is settled or no longer named by the slot; only then is ownership released. */
@@ -146,14 +172,18 @@ export class GuidePreparationService {
     };
     const result = this.prepare(request, controller, (run) => {
       admitted = run;
+      announce(ok(run));
     })
       .catch(() =>
         guidePreparationFailure(controller.signal.aborted ? "aborted" : "io"),
       )
       .then(async (outcome) => {
         const run = admitted;
+        // A failure before admission names no run; `announce` is a no-op once a run was announced.
+        if (run === undefined && outcome._tag === "err")
+          announce(err(outcome.error.reason));
         if (outcome._tag === "ok" || run === undefined) return outcome;
-        const code = settleCode(outcome.error.reason);
+        const code = guideSettleCode(outcome.error.reason);
         return (await settleDurably(run, () =>
           this.slots.settleRun({ ...run, code, phase: "capture" }),
         ))
@@ -162,6 +192,8 @@ export class GuidePreparationService {
       });
     return {
       result,
+      admission,
+      abort: () => controller.abort(),
       owned: isOwned,
       cancel: () => {
         if (cancelled) return Promise.resolve(ok(undefined));
@@ -349,6 +381,37 @@ export class GuidePreparationService {
     }
   }
 
+  /** Projects the stored evidence manifest onto the reference the child verifies file by file. */
+  evidenceReference(
+    prepared: GuidePreparedInput,
+    sessionId: ReviewSessionId,
+    run: Pick<AdmittedRun, "profileId" | "reviewId" | "runId">,
+  ): Promise<InsightEvidenceReference | undefined> {
+    return guideEvidenceReference(
+      this.artifacts,
+      this.destination,
+      prepared,
+      sessionId,
+      run,
+    );
+  }
+
+  /**
+   * For a caller that holds the Review lock: the Review is open on the same session and the session's head, base and
+   * patch are the ones the run represents. An ordinary refresh timestamp does not count as a change.
+   */
+  async representedInputs(
+    request: GuidePreparationRequest,
+    expected: { readonly headSha: string; readonly baseSha: string },
+  ): Promise<Result<void, GuidePreparationFailureReason>> {
+    const current = await this.readRepresented(request, undefined);
+    if (current._tag === "err") return current;
+    return current.value.session.key.headSha === expected.headSha &&
+      current.value.session.key.baseSha === expected.baseSha
+      ? ok(undefined)
+      : err("stale_source");
+  }
+
   /** Short Review-locked read of the represented session. */
   private observe(
     request: GuidePreparationRequest,
@@ -403,27 +466,6 @@ export class GuidePreparationService {
     )
       return err("stale_source");
     return ok({ session: session.value, sourcePath });
-  }
-}
-
-/** Maps a preparation failure to the FailureRecord code that settles its run. */
-function settleCode(
-  reason: GuidePreparationFailureReason,
-): InsightFailureRecord["code"] {
-  switch (reason) {
-    case "aborted":
-      return "cancelled";
-    case "stale_source":
-      return "evidence_changed";
-    case "too_large":
-      return "resource_exhausted";
-    case "invalid_source":
-    case "not_indexable":
-    case "sensitive_value":
-    case "context_unavailable":
-      return "evidence_missing";
-    default:
-      return "storage_unavailable";
   }
 }
 

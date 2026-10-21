@@ -16,6 +16,7 @@ import { Spinner } from "./ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { InsightFailureCategory } from "#src/domain/insight-record";
+import type { GuideSummary } from "#src/domain/guide-progress";
 import {
   NOT_GENERATED_BRIEF,
   type BriefInsight,
@@ -63,6 +64,7 @@ export function InsightNavRail({
   onRunInsights,
   runInsightsDisabled = false,
   trailing,
+  guideStatus,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly selectedInsight: InsightRunDialogType;
@@ -78,6 +80,11 @@ export function InsightNavRail({
   readonly runInsightsDisabled?: boolean;
   /** The selected document's meta line and run action, drawn at the row's right end so the tab strip is the only divider above the content. */
   readonly trailing?: React.ReactNode;
+  readonly guideStatus: {
+    readonly status: InsightProjection["status"];
+    readonly label: string | undefined;
+    readonly activeStatus: InsightRunController["status"] | undefined;
+  };
 }): React.JSX.Element {
   // Reading order: Brief says what changed structurally, Walkthrough how it
   // behaves now, Analysis whether it should merge. The judgment comes last.
@@ -110,15 +117,22 @@ export function InsightNavRail({
                   key={type}
                   type={type}
                   activeStatus={
-                    runs[type].runId === undefined
-                      ? projection.activeRun?.status
-                      : runs[type].status
+                    type === "guide"
+                      ? guideStatus.activeStatus
+                      : runs[type].runId === undefined
+                        ? projection.activeRun?.status
+                        : runs[type].status
                   }
                   status={
-                    runs[type].runId === undefined
-                      ? projection.status
-                      : "running"
+                    type === "guide"
+                      ? guideStatus.status
+                      : runs[type].runId === undefined
+                        ? projection.status
+                        : "running"
                   }
+                  {...(type === "guide" && guideStatus.label !== undefined
+                    ? { statusLabel: guideStatus.label }
+                    : {})}
                 />
               ))}
             </TabsList>
@@ -147,18 +161,21 @@ function InsightTab({
   type,
   status,
   activeStatus,
+  statusLabel,
 }: {
   readonly activeStatus: InsightRunController["status"] | undefined;
   readonly type: InsightRunDialogType;
   readonly status: InsightProjection["status"];
+  readonly statusLabel?: string;
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
   const label =
-    activeStatus === "queued"
+    statusLabel ??
+    (activeStatus === "queued"
       ? "Preparing"
       : activeStatus === "cancelling"
         ? "Cancelling"
-        : INSIGHT_STATUS_LABELS[status];
+        : INSIGHT_STATUS_LABELS[status]);
   if (label === undefined)
     return <TabsTrigger value={type}>{noun}</TabsTrigger>;
   return (
@@ -194,10 +211,11 @@ export function InsightRunning({
   /** Absent for a Pi run, which projects no trace. */
   readonly activity: InsightRunActivity | undefined;
 }): React.JSX.Element {
-  const preparing =
-    status === "queued" ||
-    status === "idle" ||
-    (projection?.activeRun?.status === "queued" && status === undefined);
+  const phase =
+    status === undefined || status === "idle"
+      ? projection?.activeRun?.status
+      : status;
+  const preparing = phase === "queued";
   return (
     <Empty className={INSIGHT_STATE_CLASS}>
       <EmptyHeader>
@@ -208,20 +226,22 @@ export function InsightRunning({
           {INSIGHT_NOUNS[type]} is{" "}
           {preparing
             ? "preparing"
-            : status === "cancelling"
+            : phase === "cancelling"
               ? "cancelling"
               : "running"}
         </EmptyTitle>
         <EmptyDescription>
-          {projection?.activeRun === undefined ||
-          preparing ||
-          activity?.phase === "preparing" ? (
+          {preparing ? (
             "Preparing…"
-          ) : (
+          ) : projection?.activeRun !== undefined ? (
             <RelativeTime
               iso={projection.activeRun.startedAt}
               prefix="Started "
             />
+          ) : phase === "cancelling" ? (
+            "Cancelling…"
+          ) : (
+            "Generation in progress…"
           )}
         </EmptyDescription>
       </EmptyHeader>
@@ -287,6 +307,8 @@ export function InsightFailed({
   onReprepare,
   retainedDescription,
   activity,
+  guideFailure,
+  retainedHeadSha,
 }: {
   readonly projection: InsightProjection;
   /** Absent on a merged or closed Review, where the service refuses a run, so neither Try again nor Re-prepare Review is drawn. */
@@ -295,18 +317,21 @@ export function InsightFailed({
   readonly retainedDescription?: string;
   /** The trace the run left, so a timed-out run still shows what it was doing. */
   readonly activity?: InsightRunActivity | undefined;
+  /** New Guide metadata does not require a legacy retained value. */
+  readonly guideFailure?: NonNullable<GuideSummary["failure"]>;
+  /** Published Guide revision for the retained-document line. */
+  readonly retainedHeadSha?: string;
 }): React.JSX.Element {
-  const failure = projection.replacementFailure;
+  const failure = guideFailure ?? projection.replacementFailure;
+  const category = failure?.category;
+  const retainedHead = retainedHeadSha ?? projection.retained?.headSha;
   const [repreparing, setRepreparing] = useState(false);
   const [reprepareFailed, setReprepareFailed] = useState(false);
-  const message =
-    failure?.category === undefined
-      ? "This Insight run failed."
-      : failureMessage(failure.category);
+  const message = failureMessage(category);
   const needsReprepare =
-    failure?.category === "review_worktree_unavailable" ||
-    failure?.category === "evidence_unavailable" ||
-    failure?.category === "evidence_mismatch";
+    category === "review_worktree_unavailable" ||
+    category === "evidence_unavailable" ||
+    category === "evidence_mismatch";
   const runReprepare = async (): Promise<void> => {
     setRepreparing(true);
     setReprepareFailed(false);
@@ -326,11 +351,11 @@ export function InsightFailed({
     >
       <AlertDescription className="basis-full space-y-1">
         <p>{message}</p>
-        {projection.retained === undefined ? (
+        {retainedHead === undefined ? (
           <p>No retained result.</p>
         ) : (
           <p>
-            Retained from {projection.retained.headSha.slice(0, 8)}:{" "}
+            Retained from {retainedHead.slice(0, 8)}:{" "}
             {retainedDescription ?? "retained document"}
           </p>
         )}
@@ -358,7 +383,9 @@ export function InsightFailed({
   );
 }
 
-function failureMessage(category: InsightFailureCategory | undefined): string {
+function failureMessage(
+  category: InsightFailureCategory | null | undefined,
+): string {
   switch (category) {
     case "authentication_required":
       return "The provider needs authentication.";

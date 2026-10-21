@@ -60,20 +60,31 @@ const journalStateSchema = v.pipe(
     cancelEpoch: insightArtifactUnsignedSchema,
     failure: nullableReference,
     publication: nullableReference,
-    /** R<GuidePreparedInput1>; present only after Guide preparation verified its inputs, before any generation. */
+    /** R<GuidePreparedInput1>; present only after Guide preparation verified its inputs. */
     guidePreparation: v.exactOptional(reference),
+    /** R<GuideRuntime1>; the specialized Guide generation state, which never uses candidate, draft, checkpoint or seal. */
+    guideRuntime: v.exactOptional(reference),
   }),
   v.check(
     (state) =>
       state.guidePreparation === undefined ||
       (state.candidate === null &&
-        state.dispatches.count === 0 &&
-        state.publication === null),
-    "A prepared Guide input belongs to a journal that has not generated, dispatched or published.",
+        state.draft === null &&
+        state.checkpoint === null &&
+        state.seal === null &&
+        (state.guideRuntime !== undefined ||
+          (state.dispatches.count === 0 && state.publication === null))),
+    "A prepared Guide input belongs to a journal with no generic candidate state, and without a GuideRuntime it has not dispatched or published.",
+  ),
+  v.check(
+    (state) =>
+      state.guideRuntime === undefined || state.guidePreparation !== undefined,
+    "A GuideRuntime requires its verified preparation.",
   ),
   v.check(
     (state) =>
       state.candidate !== null ||
+      state.guideRuntime !== undefined ||
       (PRE_CAPTURE_STATUSES.includes(state.status) &&
         state.draft === null &&
         state.checkpoint === null &&

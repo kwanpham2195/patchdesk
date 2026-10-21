@@ -31,6 +31,8 @@ import {
   InsightRunCoordinator,
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
+import { GuideGenerationService } from "#src/services/guide-generation-service";
+import { GuidePreparationService } from "#src/services/guide-preparation-service";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import {
   PiInsightChildInvoker,
@@ -183,6 +185,38 @@ export function insightCoordinatorFactory({
       operations,
       now,
     );
+    const pack = contextPack(github);
+    // The Pi route alone is cut over to tool-driven Guide generation; without a verified runtime it stays unavailable.
+    const guideInvoker =
+      runtime === undefined
+        ? undefined
+        : new PiInsightChildInvoker(
+            new CommandRunner(undefined, logUnclassifiedCommandFailure),
+            runtime.root,
+            process.execPath,
+            runtime.runnerPath,
+            undefined,
+            paths.rootsEnvironment(),
+          );
+    const guide =
+      guideInvoker === undefined
+        ? undefined
+        : new GuideGenerationService(
+            paths,
+            new GuidePreparationService(
+              paths,
+              paths,
+              resources,
+              operations,
+              pack,
+              now,
+              slots,
+            ),
+            slots,
+            resources,
+            guideInvoker,
+            now,
+          );
     return new InsightRunCoordinator(
       new ReviewStore(paths),
       new ReviewSessionStore(paths),
@@ -196,7 +230,7 @@ export function insightCoordinatorFactory({
         guide: invoker,
       },
       operations,
-      contextPack(github),
+      pack,
       slots,
       now,
       diagnostics,
@@ -207,6 +241,7 @@ export function insightCoordinatorFactory({
       ),
       { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
       resources.ownership.forScope(paths.dataDirectory()),
+      guide,
     );
   };
 }

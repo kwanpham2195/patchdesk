@@ -4,12 +4,14 @@ import { parseRepoRelativePath } from "./ids";
 import { err, ok, type Result } from "./result";
 import { iterateUnifiedPatch } from "./unified-patch";
 
-const fileIdSchema = v.pipe(
+/** Prepared inventory identity `fN`, assigned in patch order by Patchdesk. */
+export const guideFileIdSchema = v.pipe(
   v.string(),
   v.regex(/^f[1-9]\d*$/),
   v.brand("GuideFileId"),
 );
-const groupIdSchema = v.pipe(
+/** Group identity `gN`, assigned by Patchdesk in accepted-open order. */
+export const guideGroupIdSchema = v.pipe(
   v.string(),
   v.regex(/^g[1-9]\d*$/),
   v.brand("GuideGroupId"),
@@ -20,13 +22,19 @@ const nonblank = (limit: number) =>
     v.maxLength(limit),
     v.check((value) => value.trim().length > 0),
   );
+/** Existing per-field limits: 200, 4000 and 500 characters; there is no total group or membership cap. */
+export const guideTitleSchema = nonblank(200);
+export const guideExplanationSchema = nonblank(4_000);
+export const guideRelevanceSchema = nonblank(500);
+const fileIdSchema = guideFileIdSchema;
+const groupIdSchema = guideGroupIdSchema;
 const membershipSchema = v.strictObject({
   fileId: fileIdSchema,
-  relevance: nonblank(500),
+  relevance: guideRelevanceSchema,
 });
 const groupFields = {
-  title: nonblank(200),
-  explanation: nonblank(4_000),
+  title: guideTitleSchema,
+  explanation: guideExplanationSchema,
   files: v.pipe(v.array(membershipSchema), v.minLength(1)),
 };
 /** Strict model contract; all evidence and identities are attached by Patchdesk. */
@@ -37,7 +45,8 @@ export const guideModelOutputSchema = v.strictObject({
     v.maxLength(12),
   ),
 });
-const inventoryEntrySchema = v.strictObject({
+/** One complete inventory entry, including its metadata lines. */
+export const guideInventoryEntrySchema = v.strictObject({
   id: fileIdSchema,
   oldPath: v.string(),
   newPath: v.string(),
@@ -50,15 +59,20 @@ const inventoryEntrySchema = v.strictObject({
 /** Self-contained Guide evidence, validated again when storage or the renderer reads it. */
 export const retainedGuideSchema = v.strictObject({
   patchText: v.string(),
-  inventory: v.pipe(v.array(inventoryEntrySchema), v.minLength(1)),
+  inventory: v.pipe(v.array(guideInventoryEntrySchema), v.minLength(1)),
   groups: v.pipe(
     v.array(v.strictObject({ id: groupIdSchema, ...groupFields })),
     v.minLength(1),
     v.maxLength(12),
   ),
 });
+/** Branded `fN` and `gN` identities. */
+export type GuideFileId = v.InferOutput<typeof guideFileIdSchema>;
+export type GuideGroupId = v.InferOutput<typeof guideGroupIdSchema>;
 /** Complete metadata for one patch file block. */
-export type GuideInventoryEntry = v.InferOutput<typeof inventoryEntrySchema>;
+export type GuideInventoryEntry = v.InferOutput<
+  typeof guideInventoryEntrySchema
+>;
 /** Stored result includes its immutable evidence. */
 export type RetainedGuide = v.InferOutput<typeof retainedGuideSchema>;
 /** Invalid evidence or model output never produces a partial Guide. */
@@ -74,7 +88,7 @@ export function buildGuideInventory(
   let file: Omit<GuideInventoryEntry, "id"> | undefined;
   const finishFile = (): boolean => {
     if (file === undefined) return true;
-    const entry = v.safeParse(inventoryEntrySchema, {
+    const entry = v.safeParse(guideInventoryEntrySchema, {
       ...file,
       id: `f${inventory.length + 1}`,
     });

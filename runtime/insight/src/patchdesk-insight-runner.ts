@@ -40,9 +40,11 @@ import {
   walkthroughOutputLimitDiagnostic,
 } from "#app/services/walkthrough-operation";
 
+import { runGuideSession } from "./guide-runtime";
 import {
   guideInvocationSchema,
   productionGuideInvocationSchema,
+  productionGuideSessionInvocationSchema,
   guideResultSchema,
   createGuideAgent,
   createEvidenceTools,
@@ -100,6 +102,12 @@ const productionProtocolSchema = v.variant("type", [
     input: productionBriefInvocationSchema,
   }),
 ]);
+
+/** The tool-driven Guide child: it talks to the app over the private channel and takes no prompt or path. */
+const guideSessionProtocolSchema = v.strictObject({
+  type: v.literal("guide_session"),
+  input: productionGuideSessionInvocationSchema,
+});
 
 export type PatchdeskChildInvocation = v.InferOutput<
   typeof childProtocolSchema
@@ -514,8 +522,11 @@ export async function runPatchdeskChildProcess(
     writeProtocolOutput(output, { ok: false, reason: "invalid_input" });
     return;
   }
-  const invocation = parseProductionInvocation(decoded);
-  if (invocation === undefined) {
+  const session = v.safeParse(guideSessionProtocolSchema, decoded);
+  const invocation = session.success
+    ? undefined
+    : parseProductionInvocation(decoded);
+  if (!session.success && invocation === undefined) {
     writeProtocolOutput(output, { ok: false, reason: "invalid_input" });
     return;
   }
@@ -528,16 +539,41 @@ export async function runPatchdeskChildProcess(
   process.once("SIGTERM", terminate);
   process.once("SIGINT", terminate);
   try {
-    const result = await runProductionChild(invocation, controller.signal, {
-      onHandle: (abort) => {
-        abortActive = abort;
-      },
-    });
+    const result = session.success
+      ? await runGuideSessionChild(session.output.input, controller.signal)
+      : invocation === undefined
+        ? ({ ok: false, reason: "invalid_input" } as const)
+        : await runProductionChild(invocation, controller.signal, {
+            onHandle: (abort) => {
+              abortActive = abort;
+            },
+          });
     writeProtocolOutput(output, result);
   } finally {
     process.removeListener("SIGTERM", terminate);
     process.removeListener("SIGINT", terminate);
   }
+}
+
+/** Runs the tool-driven Guide with the directories the app passed in its environment. */
+async function runGuideSessionChild(
+  input: v.InferOutput<typeof productionGuideSessionInvocationSchema>,
+  signal: AbortSignal,
+): Promise<PatchdeskChildResult> {
+  const paths = PatchdeskPaths.fromEnvironment(process.env);
+  const profile = parseWorkspaceProfileId(input.profileId);
+  const session = parseReviewSessionId(input.sessionId);
+  const identity = input.evidence.identity;
+  if (
+    profile._tag === "err" ||
+    session._tag === "err" ||
+    identity.profileId !== profile.value ||
+    identity.sessionId !== session.value ||
+    identity.type !== "guide" ||
+    String(identity.runId) !== String(input.channel.runId)
+  )
+    return { ok: false, reason: "invalid_input" };
+  return runGuideSession(input, { paths, signal });
 }
 
 /** Parses one bounded stdin protocol object sent by the installed app. */

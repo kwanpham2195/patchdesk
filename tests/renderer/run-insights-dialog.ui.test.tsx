@@ -73,6 +73,8 @@ function installRuns(answer: (type: string) => DesktopResponse) {
     ]),
   );
   desktop = installDesktopDouble({
+    "/v1/reviews/insights/guide/summary": () =>
+      success({ _tag: "none", run: null, failure: null }),
     // SAFETY: the provider catalog fixture is JSON-compatible data.
     "/v1/insight-providers": () =>
       success(structuredClone(catalog) as RawJsonValue),
@@ -242,6 +244,8 @@ describe("Run Insights dialog", () => {
       finishBrief = resolve;
     });
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       // SAFETY: the provider catalog and workbench fixtures are JSON-compatible data.
       "/v1/insight-providers": () =>
         success(structuredClone(catalog) as RawJsonValue),

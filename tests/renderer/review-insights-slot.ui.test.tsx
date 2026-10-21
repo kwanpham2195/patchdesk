@@ -13,7 +13,6 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildGuideInventory, retainGuide } from "#src/domain/guide";
 import type { RawJsonValue } from "#src/domain/json";
 import type { DesktopResponse } from "#src/main/ipc-contract";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
@@ -163,6 +162,8 @@ describe("InsightsSlot empty states", () => {
   for (const emptyInsight of emptyInsights) {
     it(`uses the shared empty state and action for ${emptyInsight.type}`, async () => {
       desktop = installDesktopDouble({
+        "/v1/reviews/insights/guide/summary": () =>
+          success({ _tag: "none", run: null, failure: null }),
         "/v1/insight-providers": () => success(json(providerCatalog)),
       });
       const user = userEvent.setup();
@@ -186,6 +187,8 @@ const REMOVED_TERMINAL_REASON =
 describe("InsightsSlot on a merged Review", () => {
   it("draws no Generate button and no terminal reason line on each empty Insight", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
     });
     const user = userEvent.setup();
@@ -254,6 +257,8 @@ describe("InsightsSlot on a merged Review", () => {
 
   it("opens the Walkthrough run dialog from the Brief header when no Walkthrough is current", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
     });
     const user = userEvent.setup();
@@ -417,6 +422,8 @@ describe("InsightsSlot on a merged Review", () => {
 
   it("gives no reason on an open Review with a provider", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
     });
     renderInsights();
@@ -429,6 +436,8 @@ describe("InsightsSlot on a merged Review", () => {
   });
   it("names every way to get a model when no provider is available", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () =>
         success(
           json({
@@ -451,6 +460,8 @@ describe("InsightsSlot on a merged Review", () => {
 
   it("reports a catalog load failure apart from no model", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => failure({ error: "unavailable" }),
     });
     renderInsights();
@@ -551,6 +562,8 @@ describe("InsightsSlot run requests", () => {
   it("defaults Language to English, sends the chosen language, and preselects it next time", async () => {
     const runBodies: unknown[] = [];
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/run": (input) => {
         runBodies.push(input.body);
@@ -624,6 +637,8 @@ describe("InsightsSlot run requests", () => {
   it("keeps start pending visible and shows a bounded start failure", async () => {
     const start = deferred<DesktopResponse>();
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/run": () => start.promise,
       "/v1/reviews/load": () =>
@@ -649,6 +664,8 @@ describe("InsightsSlot run requests", () => {
 
   it("shows a bounded status failure while retaining the active run", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/runs/run-a": () =>
         failure({ message: "status unavailable" }),
@@ -697,6 +714,8 @@ describe("InsightsSlot run requests", () => {
   it("uses an icon-only cancelling state and preserves the active run after failure", async () => {
     const cancellation = deferred<DesktopResponse>();
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/runs/run-a": () =>
         new Promise<DesktopResponse>(() => undefined),
@@ -749,6 +768,8 @@ describe("InsightsSlot run requests", () => {
 describe("InsightsSlot Verification ticks", () => {
   it("keeps a ticked step after switching to Brief and back", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/verification": () =>
         success({ checkedStepIndexes: [0] }),
@@ -772,6 +793,8 @@ describe("InsightsSlot Verification ticks", () => {
 describe("InsightsSlot Walkthrough progress", () => {
   it("keeps a reviewed section after switching to Brief and back", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/walkthrough/progress": () =>
         success({ status: "saved" }),
@@ -793,6 +816,8 @@ describe("InsightsSlot Walkthrough progress", () => {
 
   it("unmarks a reviewed section and drops its rail badge", async () => {
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/walkthrough/progress": () =>
         success({ status: "saved" }),
@@ -869,6 +894,8 @@ describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
   it("runs a request from the keyboard through the run dialog with the stored preference and its requestId, then drops it from the bar", async () => {
     const runBodies: unknown[] = [];
     desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
       "/v1/insight-providers": () => success(json(providerCatalog)),
       "/v1/reviews/insights/analysis/run": (input) => {
         runBodies.push(input.body);
@@ -927,54 +954,4 @@ describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
       }),
     ]);
   });
-});
-
-describe("retained Guide revision", () => {
-  it.each(["running", "failed"] as const)(
-    "keeps old Guide outdated during %s replacement",
-    (status) => {
-      const workbench = projection();
-      const patchText =
-        "diff --git a/a.ts b/a.ts\nold mode 100644\nnew mode 100755\n";
-      const inventory = buildGuideInventory(patchText);
-      if (inventory._tag === "err") throw new Error("Invalid Guide inventory");
-      const guide = retainGuide(
-        {
-          groups: [
-            {
-              title: "Guard",
-              explanation: "Adds a guard.",
-              files: [{ fileId: "f1", relevance: "Owns the guard." }],
-            },
-          ],
-        },
-        { patchText, inventory: inventory.value },
-      );
-      if (guide._tag === "err") throw new Error("Invalid Guide result");
-      renderInsights(
-        {
-          ...workbench,
-          insights: {
-            ...workbench.insights,
-            guide: {
-              status,
-              retained: {
-                sessionId: "previous-session",
-                headSha: "b".repeat(40),
-                freshness: "outdated",
-                generatedAt: "2026-08-01T00:00:00.000Z",
-                value: guide.value,
-              },
-            },
-          },
-        },
-        "guide",
-      );
-      expect(
-        screen.getByLabelText("Insight document metadata").textContent,
-      ).toMatch(/^Outdated/);
-      expect(screen.getByRole("heading", { name: "Guard" })).toBeDefined();
-      expect(screen.getByRole("list", { name: "Guard files" })).toBeDefined();
-    },
-  );
 });

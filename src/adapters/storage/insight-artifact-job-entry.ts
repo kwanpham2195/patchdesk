@@ -8,6 +8,7 @@ import {
   type InsightArtifactJobRequest,
 } from "./insight-artifact-job-protocol";
 import { prepareGuideInputs } from "./guide-preparation-job";
+import { validateGuideResult } from "./guide-result-job";
 import { captureInsightPatch } from "./insight-patch-capture-job";
 
 if (parentPort === null)
@@ -39,9 +40,13 @@ async function runJob(
           ? await prepareGuideInputs(request.input, {
               signal: controller.signal,
             })
-          : await captureInsightPatch(request.input, {
-              signal: controller.signal,
-            });
+          : request.kind === "validate_guide"
+            ? await validateGuideResult(request.input, {
+                signal: controller.signal,
+              })
+            : await captureInsightPatch(request.input, {
+                signal: controller.signal,
+              });
     const reply = v.safeParse(insightArtifactJobReplySchema, {
       kind: request.kind,
       id: request.id,

@@ -7,8 +7,13 @@ import {
   unlink,
   type FileHandle,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
+import {
+  parseReviewId,
+  parseReviewSessionId,
+  parseWorkspaceProfileId,
+} from "#src/domain/ids";
 import { err, ok, type Result } from "#src/domain/result";
 import { readOwnedParents, sameParents } from "./insight-artifact-files";
 import {
@@ -17,6 +22,7 @@ import {
   type InsightPatchFailure,
 } from "./insight-artifact-job-protocol";
 import { InsightSensitiveStream } from "./insight-sensitive-stream";
+import { PatchdeskPaths } from "./patchdesk-paths";
 import { isPathContained } from "./path-containment";
 import type { StorageFailure } from "./json-file";
 
@@ -52,20 +58,7 @@ export class InsightCaptureSourceFile {
       );
       if (parents._tag === "err" || outputParents._tag === "err")
         return patchCaptureFailure("invalid_source");
-      if (
-        !isPathContained(
-          await realpath(input.sourceRoot),
-          await realpath(input.sourcePath),
-        ) ||
-        isPathContained(
-          await realpath(input.sourceRoot),
-          await realpath(input.destinationRoot),
-        ) ||
-        isPathContained(
-          await realpath(input.destinationRoot),
-          await realpath(input.sourceRoot),
-        )
-      )
+      if (!(await rootsAreSeparateOrExactSameStore(input)))
         return patchCaptureFailure("invalid_source");
       const before = await lstat(input.sourcePath);
       source = await open(
@@ -253,5 +246,48 @@ function sameFile(left: Stats, right: Stats): boolean {
     left.size === right.size &&
     left.mtimeMs === right.mtimeMs &&
     left.ctimeMs === right.ctimeMs
+  );
+}
+
+/**
+ * The source and the destination are disjoint roots (the isolated diagnostic scope), or they are the one production
+ * store and every path is exactly the layout the parsed identities derive: the session's patch file as the source and
+ * the Review directory as the destination, neither containing the other. Any other overlap, nesting or alias is refused.
+ */
+async function rootsAreSeparateOrExactSameStore(
+  input: InsightPatchCaptureInput,
+): Promise<boolean> {
+  const [sourceRoot, destinationRoot, sourceFile] = await Promise.all([
+    realpath(input.sourceRoot),
+    realpath(input.destinationRoot),
+    realpath(input.sourcePath),
+  ]);
+  if (!isPathContained(sourceRoot, sourceFile)) return false;
+  const overlap =
+    isPathContained(sourceRoot, destinationRoot) ||
+    isPathContained(destinationRoot, sourceRoot);
+  if (!overlap) return true;
+  if (sourceRoot !== destinationRoot) return false;
+  const profile = parseWorkspaceProfileId(input.profileId);
+  const review = parseReviewId(input.reviewId);
+  const session = parseReviewSessionId(input.sessionId);
+  if (profile._tag === "err" || review._tag === "err" || session._tag === "err")
+    return false;
+  const paths = PatchdeskPaths.fromEnvironment({
+    PATCHDESK_CONFIG_DIRECTORY: input.sourceRoot,
+    PATCHDESK_DATA_DIRECTORY: input.sourceRoot,
+    PATCHDESK_CACHE_DIRECTORY: input.sourceRoot,
+  });
+  const reviewDirectory = paths.reviewDirectory(profile.value, review.value);
+  if (
+    resolve(input.sourcePath) !==
+      resolve(paths.patchFile(profile.value, session.value)) ||
+    resolve(input.destinationReview) !== resolve(reviewDirectory)
+  )
+    return false;
+  const reviewReal = await realpath(reviewDirectory);
+  return (
+    !isPathContained(reviewReal, sourceFile) &&
+    !isPathContained(sourceFile, reviewReal)
   );
 }

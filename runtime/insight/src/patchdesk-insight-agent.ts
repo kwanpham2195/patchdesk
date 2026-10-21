@@ -1,4 +1,5 @@
 import { incompleteAnalysisSchema } from "#app/domain/analysis-invocation-outcome";
+import { insightArtifactRunIdSchema } from "#app/domain/insight-artifact-scalars";
 import {
   MAX_GUIDE_PROMPT_BYTES,
   GUIDE_RUNTIME_SUBMISSION_SUFFIX,
@@ -125,6 +126,29 @@ export const productionBriefInvocationSchema = v.strictObject({
   language: languageSchema,
   evidence: insightEvidenceReferenceSchema,
 });
+
+/**
+ * Guide session child input: identity, model and the identity of the private channel the app attached. It carries no
+ * prompt, path or credential; the child builds the prompt from the evidence reference and talks to the app only
+ * through that channel.
+ */
+export const productionGuideSessionInvocationSchema = v.strictObject({
+  profileId,
+  sessionId,
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: reasoningSchema,
+  language: languageSchema,
+  evidence: insightEvidenceReferenceSchema,
+  channel: v.strictObject({
+    runId: insightArtifactRunIdSchema,
+    generation: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+    cancelEpoch: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+    connection: v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{8,64}$/)),
+  }),
+});
+export type GuideSessionInvocation = v.InferOutput<
+  typeof productionGuideSessionInvocationSchema
+>;
 
 /** Guide generation uses the shared model schema and canonical artifact paths. */
 export const guideResultSchema = guideModelOutputSchema;

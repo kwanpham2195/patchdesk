@@ -5,6 +5,7 @@ import {
 import { resolve } from "node:path";
 
 import { prepareGuideInputs } from "#src/adapters/storage/guide-preparation-job";
+import { validateGuideResult } from "#src/adapters/storage/guide-result-job";
 import { hashUtf8FileSha256 } from "#src/adapters/storage/insight-artifact-job-protocol";
 import { captureInsightPatch } from "#src/adapters/storage/insight-patch-capture-job";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
@@ -43,7 +44,7 @@ export type InsightResourceBundle = {
   runReader(runId: string): Reader;
   readonly jobs: Pick<
     InsightArtifactJobWorker,
-    "hashFile" | "capturePatch" | "prepareGuide"
+    "hashFile" | "capturePatch" | "prepareGuide" | "validateGuide"
   >;
   /**
    * Abortable FIFO permits keyed by holder. A holder that already holds or
@@ -68,7 +69,14 @@ export type InsightResourceBundle = {
   readonly ownership: {
     forScope(dataDirectory: string): Map<string, Active>;
   };
-  /** Closes admission and awaits both worker terminations. */
+  /**
+   * Long-running owned work (a Guide generation with its paid child). `dispose` aborts it without recording a
+   * cancellation, joins it, and only then terminates the workers it may still be using.
+   */
+  readonly work: {
+    track(abort: () => void, work: Promise<unknown>): void;
+  };
+  /** Aborts and joins tracked work, then closes admission and awaits both worker terminations. */
   dispose(): Promise<Result<void, StorageFailure>>;
 };
 
@@ -76,7 +84,7 @@ type Workers = {
   readonly reader: Pick<InsightArtifactWorker, "read" | "dispose">;
   readonly jobs: Pick<
     InsightArtifactJobWorker,
-    "hashFile" | "capturePatch" | "prepareGuide" | "dispose"
+    "hashFile" | "capturePatch" | "prepareGuide" | "validateGuide" | "dispose"
   >;
 };
 
@@ -113,6 +121,7 @@ export function createInProcessInsightResourceBundle(): InsightResourceBundle {
       hashFile: hashUtf8FileSha256,
       capturePatch: captureInsightPatch,
       prepareGuide: prepareGuideInputs,
+      validateGuide: validateGuideResult,
       dispose: disposed,
     },
   });
@@ -134,6 +143,10 @@ function createBundle(workers: Workers): InsightResourceBundle {
   const runs = new Map<string, Counter>();
   const holders = new Set<string>();
   const scopes = new Map<string, Map<string, Active>>();
+  const tracked = new Set<{
+    readonly abort: () => void;
+    readonly work: Promise<unknown>;
+  }>();
   const capture = createPermitPool(capturePermits, holders);
   const generation = createPermitPool(generationPermits, holders);
 
@@ -195,6 +208,8 @@ function createBundle(workers: Workers): InsightResourceBundle {
         workers.jobs.capturePatch(input, options),
       prepareGuide: (input, options) =>
         workers.jobs.prepareGuide(input, options),
+      validateGuide: (input, options) =>
+        workers.jobs.validateGuide(input, options),
     },
     ownership: {
       forScope(dataDirectory) {
@@ -210,8 +225,19 @@ function createBundle(workers: Workers): InsightResourceBundle {
       capture: (holder, signal) => capture.acquire(holder, signal),
       generation: (holder, signal) => generation.acquire(holder, signal),
     },
+    work: {
+      track(abort, work) {
+        const entry = { abort, work };
+        tracked.add(entry);
+        void work.finally(() => tracked.delete(entry));
+        if (closed) abort();
+      },
+    },
     async dispose() {
       closed = true;
+      const joining = [...tracked];
+      for (const entry of joining) entry.abort();
+      await Promise.allSettled(joining.map((entry) => entry.work));
       capture.close();
       generation.close();
       const [reader, jobs] = await Promise.all([

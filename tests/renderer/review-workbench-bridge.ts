@@ -9,6 +9,7 @@ import type {
 import {
   failure,
   installDesktopDouble,
+  success,
   type DesktopDouble,
 } from "./fake-desktop-response";
 
@@ -93,9 +94,11 @@ export function bridge(
       body: answer as RawJsonValue | undefined,
     };
   };
-  installed = installDesktopDouble(
-    Object.fromEntries(WORKBENCH_PATHS.map((path) => [path, route])),
-  );
+  installed = installDesktopDouble({
+    ...Object.fromEntries(WORKBENCH_PATHS.map((path) => [path, route])),
+    "/v1/reviews/insights/guide/summary": () =>
+      success({ _tag: "none", run: null, failure: null }),
+  });
   return installed.request;
 }
 
