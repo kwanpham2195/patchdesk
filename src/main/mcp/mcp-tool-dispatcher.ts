@@ -1,4 +1,6 @@
 import { safeParse, type InferOutput } from "valibot";
+import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
+import type { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
 
 import type {
   GitHubHost,
@@ -69,6 +71,7 @@ export type McpToolReply = Result<
   | ReviewLocalResult
   | LocalReviewPrepared
   | InsightReading
+  | WalkthroughPage
   | LocalFeedback
   | LocalDraftReplied
   | AgentExplanationAdded
@@ -107,6 +110,7 @@ export type McpToolTable = {
 /** The services the tools call; `insightReader` is built here over the workbench `load` the renderer's route calls. */
 export type McpToolServices = Omit<McpReviewToolServices, "insightReader"> & {
   readonly reviewWorkbench: Pick<ReviewWorkbenchController, "load">;
+  readonly walkthroughPages: Pick<WalkthroughPageService, "page">;
 };
 
 export function createMcpToolTable(services: McpToolServices): McpToolTable {
@@ -116,6 +120,7 @@ export function createMcpToolTable(services: McpToolServices): McpToolTable {
       services.reviewWorkbench,
       services.sessions,
       services.reviews,
+      services.walkthroughPages,
     ),
   };
   return {

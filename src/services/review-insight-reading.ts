@@ -1,4 +1,6 @@
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
+import { safeParse } from "valibot";
+import { insightArtifactHashSchema } from "#src/domain/insight-artifact-scalars";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   findAgentRunRequest,
@@ -19,7 +21,13 @@ import type {
   AgentInsightType,
 } from "#src/domain/insight-record";
 import { findingDraftStates } from "#src/domain/local-draft";
-import type { WalkthroughSummary } from "#src/domain/walkthrough-progress";
+import type {
+  WalkthroughSummary,
+  WalkthroughPage,
+  WalkthroughPageRequest,
+  WalkthroughReadFailure,
+} from "#src/domain/walkthrough-progress";
+import type { WalkthroughPageService } from "./walkthrough-result-pages";
 import type { ReviewResult } from "#src/domain/review-result";
 import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
@@ -111,6 +119,7 @@ export type InsightStatusesReading = {
 export type InsightReadingFailure =
   | ReviewWorkbenchFailure
   | LocalBranchMismatch
+  | { readonly reason: WalkthroughReadFailure }
   /** A pull request Review, which the agent never reads. */
   | { readonly reason: "not_applicable" };
 
@@ -124,7 +133,32 @@ export class ReviewInsightReader {
     private readonly workbench: Pick<ReviewWorkbenchController, "load">,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly reviews: Pick<ReviewStore, "load">,
+    private readonly walkthroughPages: Pick<WalkthroughPageService, "page">,
   ) {}
+
+  /** Pages retain the local-Review gate without projecting unrelated whole-result Insights. */
+  async readPage(request: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: AgentInsightType;
+    readonly page: {
+      readonly digest: string;
+      readonly selector: WalkthroughPageRequest["page"];
+    };
+  }): Promise<Result<WalkthroughPage, InsightReadingFailure>> {
+    if (request.type !== "walkthrough") return err({ reason: "invalid_input" });
+    const digest = safeParse(insightArtifactHashSchema, request.page.digest);
+    if (!digest.success) return err({ reason: "invalid_input" });
+    const owned = await this.loadLocal(request);
+    if (owned._tag === "err") return owned;
+    const page = await this.walkthroughPages.page({
+      profileId: request.profileId,
+      reviewId: request.reviewId,
+      digest: digest.output,
+      page: request.page.selector,
+    });
+    return page._tag === "err" ? err({ reason: page.error }) : page;
+  }
 
   async read(request: {
     readonly profileId: WorkspaceProfileId;

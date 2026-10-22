@@ -343,7 +343,11 @@ describe("MCP read tool refusals", () => {
     const feedback = await call(client, "get_feedback", { reviewId });
     const insight = await call(client, "get_insight", {
       reviewId,
-      type: "analysis",
+      type: "walkthrough",
+      page: {
+        digest: "a".repeat(64),
+        selector: { kind: "navigation", cursor: null },
+      },
     });
     const status = await call(client, "get_review_status", { reviewId });
 

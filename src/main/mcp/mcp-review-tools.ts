@@ -1,4 +1,5 @@
 import type { InferOutput } from "valibot";
+import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
 
 import { COMMAND_OUTPUT_CAP_BYTES } from "#src/adapters/github/command-runner";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
@@ -103,7 +104,10 @@ export type McpReviewToolServices = {
   readonly localDrafts: Pick<LocalDraftService, "feedback" | "reply">;
   readonly agentExplanations: Pick<AgentExplanationService, "explain">;
   readonly agentRunRequests: Pick<AgentRunRequestService, "request">;
-  readonly insightReader: Pick<ReviewInsightReader, "read" | "readStatuses">;
+  readonly insightReader: Pick<
+    ReviewInsightReader,
+    "read" | "readPage" | "readStatuses"
+  >;
   readonly sessions: Pick<ReviewSessionStore, "load">;
   readonly reviews: Pick<ReviewStore, "load">;
   /** The desktop window `show_review` switches; absent outside the Electron app. */
@@ -175,6 +179,17 @@ const refusalMessages = {
   head_changed: "The Review's head changed while it was read. Try again.",
   revision_conflict: "The Review changed while it was read. Try again.",
   not_fresh: "The Review changed while it was read. Try again.",
+  not_available:
+    "No readable Walkthrough is available. Ask the maintainer to generate it in Patchdesk.",
+  stale_result:
+    "The Walkthrough changed. Read get_insight without page for its current digest.",
+  invalid_cursor: "The cursor does not match this Walkthrough page.",
+  invalid_result: "The stored Walkthrough could not be validated.",
+  invalid_progress: "The saved Walkthrough progress is invalid.",
+  version_conflict:
+    "The saved Walkthrough progress changed. Read the summary again.",
+  storage_unavailable:
+    "Patchdesk could not read its local Walkthrough storage.",
 } as const satisfies { readonly [Reason in ServiceReason]: string };
 
 function refusal(reason: ServiceReason): McpToolRefusal {
@@ -414,16 +429,20 @@ export async function refreshReview(
 export async function getInsight(
   services: McpReviewToolServices,
   input: ToolInput<"get_insight">,
-): Promise<Result<InsightReading, McpToolRefusal>> {
+): Promise<Result<InsightReading | WalkthroughPage, McpToolRefusal>> {
   const profiles = await readActiveProfile(services);
   if (profiles._tag === "err") return profiles;
   const reviewId = parseReviewId(input.reviewId);
   if (reviewId._tag === "err") return err(refusal("invalid_input"));
-  const read = await services.insightReader.read({
+  const request = {
     profileId: profiles.value.active.id,
     reviewId: reviewId.value,
     type: input.type,
-  });
+  };
+  const read =
+    input.page === undefined
+      ? await services.insightReader.read(request)
+      : await services.insightReader.readPage({ ...request, page: input.page });
   if (read._tag === "ok") return read;
   return err(
     read.error.reason === "not_found"

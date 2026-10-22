@@ -316,6 +316,11 @@ describe("LocalDraftService", () => {
       { load: async () => ok(shown) },
       new ReviewSessionStore(harness.paths),
       harness.reviews,
+      {
+        page: async () => {
+          throw new Error("Analysis does not read Walkthrough pages");
+        },
+      },
     );
 
     const reading = value(
