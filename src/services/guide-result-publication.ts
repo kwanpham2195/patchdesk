@@ -248,14 +248,15 @@ export class GuidePassConclusion {
       isTerminalStatus(state.status) ||
       state.status === "complete" ||
       state.status === "paused" ||
-      state.generation !== pass.generation ||
-      state.cancelEpoch !== pass.cancelEpoch
+      state.generation !== pass.generation
     )
       return;
     if (state.status === "cancelling" || controller.signal.aborted) {
       await this.settle(ref, "cancelled", "generation");
       return;
     }
+    // Cancellation advances the epoch before the stopped pass can settle it.
+    if (state.cancelEpoch !== pass.cancelEpoch) return;
     const runtimeRoot = state.guideRuntime;
     const runtime =
       runtimeRoot === undefined
