@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added paged API-key Walkthrough generation and reading with a 64 MiB captured-patch ceiling, original hunk line numbers, and no fixed chapter or section totals. Codex and pi CLI accounts are unavailable for new Walkthrough runs; earlier-format results and progress are not imported. #821
+
+- Saved Walkthrough reviewed marks and current section per result. Cancel keeps the previous result and Regenerate available; interrupted requests pause for explicit Resume with a spend acknowledgment and the original generation deadline. #821
+
 - Added paged API-key Guide generation without a twelve-group cap, with a 64 MiB captured-patch ceiling, saved reading progress, visible context completeness, and explicit Resume for uncertain provider requests. Earlier-format Guides and progress are not imported. #821
 
 - Removed Guide's 2 MiB patch limit for captured evidence, while keeping model requests and evidence pages bounded and validating the complete retained patch. #821

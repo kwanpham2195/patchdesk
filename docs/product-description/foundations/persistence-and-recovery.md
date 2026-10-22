@@ -61,7 +61,9 @@ An existing legacy Insight slot also protects every session of its Review from d
 
 A successful write makes one complete parsed value authoritative. A failed write returns a storage failure; it never loads the partial temporary file as the target.
 
-An interrupted Insight that has no live child at startup becomes a failed, retryable run with unexpected-failure classification. An interrupted preparation resumes cleanup or completion from its journal before another attempt begins.
+An interrupted Insight without a live child recovers through its run journal. A Walkthrough with recorded provider requests whose responses are unknown pauses without resending them. Explicit Resume starts a new generation from the same prepared inputs and keeps the original deadline. Other interrupted attempts can become failed and retryable. An interrupted preparation resumes cleanup or completion from its journal before another attempt begins.
+
+Walkthrough retains generated content and captured hunks separately from its per-result current section and reviewed marks. A successful replacement starts with no marks; cancellation, failure and pause keep the previous readable result and its progress. Missing progress is empty, but malformed explicit progress is an error. Earlier-format results and progress are not imported or rewritten. [Walkthrough](../review-workbench/walkthrough.md) owns the reader and recovery controls.
 
 An invalid stored session or Review moves to quarantine when its owner can safely identify it. Quarantine keeps the bad evidence out of the app while preserving it for diagnosis or later trash.
 
@@ -118,7 +120,7 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Credential-shaped keys and token-shaped strings are rejected on read and write.
 - Directory and file permissions are private where Patchdesk creates them.
 - Corrupt JSON and structurally invalid values are different storage failures but neither reaches the renderer as trusted state.
-- A crash-left active Insight with no live child becomes retryable failed, not permanently running.
+- A crash-left active Insight recovers from its journal rather than staying permanently running. Walkthrough requests with unknown responses pause for explicit Resume instead of automatic replay.
 - An open pull request does not prove an uncertain merge failed; the merge operation remains locked.
 - Clear cache keeps durable Review history. Clear local review data keeps active Reviews, running Insights, locked writes, pending merges, and diagnostics. [Data and recovery](../settings/data-and-recovery.md) owns their copy and what the screen does afterwards.
 - The retention sweep targets terminal or orphaned sessions older than 14 days and quarantine entries older than 30 days. Per-item failure does not fail startup.
@@ -137,3 +139,5 @@ After interruption, Patchdesk prefers a retained locked or quarantined record ov
 - Confirm native Trash behavior and recovery options for quarantined entries; the current Settings surface does not expose every lower-level storage-management action.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; local session retention from `ed32b718` (#474); pull request session retention from `6fd0fbf6` (#478).
+
+Walkthrough result/progress storage and interrupted-request recovery revised through source commit `95ded64c` for #821. The parent's 2026-10-23 live pass covered reload restoration and paused-run Resume, not cleanup or every crash window.

@@ -46,6 +46,10 @@ Review preparation journals paths before creating worktrees or artifacts. GitHub
 
 Insight generation retains a captured evidence bundle in Local data for its run. It contains represented source text and citation coordinates, so it has the same privacy needs as the prepared patch. Integrity checks use the complete expected file set and digests held by Patchdesk, rather than trusting a mutable manifest.
 
+Walkthrough keeps its captured hunks, generated chapters and sections, operation receipts, provider-request bodies and publication records in durable Local data. Its current section and reviewed marks belong to one saved result and live separately from generated content. A new result starts with no marks. Earlier-format results and progress stay stored but are not imported or rewritten; malformed current progress reports an error instead of becoming empty. Reading does not contact a provider. See [Walkthrough](../review-workbench/walkthrough.md#while-the-action-runs) for cancellation and explicit Resume after interruption.
+
+New Walkthrough generation is API-key only. The native account-provider behavior below applies to supported Insight types, not new Walkthrough runs.
+
 Codex account generation uses a private temporary home and native automatic approval review with a workspace-write sandbox. The home holds minimal same-account material in a private file, including an access token but no refresh token. Unsupported authentication stores, insufficient token lifetime, loaded instructions, or effective-policy mismatches prevent generation. Patchdesk checks the source login and configuration for changes and does not refresh or rewrite them. Pi account generation enables Bash alongside its inspection tools; Bash is not an enforced read-only shell. Edit and write tools are excluded, and inherited extensions, MCP, skills, templates, themes, and context files are disabled. Neither provider is a general filesystem confidentiality boundary.
 
 Private-home cleanup follows confirmed process cessation. If cessation cannot be confirmed, Patchdesk preserves the home and reports cleanup failure. An early directory identity failure can leave an empty directory. Cleanup does not promise secure erasure.
@@ -132,4 +136,6 @@ Clear cache removes rebuildable children while durable Review history remains. C
 
 Baseline drafted from Patchdesk application source commit `3100615`.
 
-Insight evidence and native account behavior revised through source commit `d0d37c1` for #821. A current Codex PR Walkthrough completed with observed owned process and private-home absence. An earlier cleanup failure remains unexplained, with its unidentified home untouched. Managed-refusal runtime behavior and the complete provider matrix remain unverified.
+Insight evidence and native account behavior revised through source commit `d0d37c1` for #821. An earlier-format Codex PR Walkthrough completed with observed owned process and private-home absence. An earlier cleanup failure remains unexplained, with its unidentified home untouched. Managed-refusal runtime behavior and the complete provider matrix remain unverified.
+
+Walkthrough storage and API-key-only generation revised through source commit `95ded64c` for #821. The parent's 2026-10-23 live pass confirmed saved marks and current section after reload and explicit Resume after interruption, not destructive cleanup or account-provider parity.

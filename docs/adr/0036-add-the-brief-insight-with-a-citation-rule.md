@@ -1,5 +1,7 @@
 # Add the Brief Insight with a citation rule
 
+> [ADR 0055](0055-read-captured-insight-evidence-on-demand.md#walkthrough-production-and-retained-reading) supersedes the Walkthrough path-in-prose check and whole-patch rereading described below. Walkthrough now validates captured hunk IDs and reads a retained result in pages. Brief's citation rules are unchanged.
+
 > **Status: Accepted.** Superseded in part by ADR 0040 (Goal, Assumptions,
 > Description vs diff, and the uncited-rejection rule; Start here since its
 > 2026-10-01 amendment); the citation manifest and the hunk-alias rule

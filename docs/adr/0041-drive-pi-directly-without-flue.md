@@ -2,6 +2,8 @@
 
 > Superseded in part by [ADR 0055](0055-read-captured-insight-evidence-on-demand.md). The historical input, inspection, and permission descriptions below remain as the record of the earlier decision.
 
+> ADR 0055's Walkthrough contract also replaces whole-result submission and transient retries with ordered durable operations, explicit Resume, and a retained generation deadline. The Pi runtime choice remains.
+
 > **Status: Accepted.** Supersedes ADR 0018 for the runtime choice. The rest
 > of 0018 stands: one throwaway child per run, bounded stdin and stdout, a
 > result that is never authoritative, and a child that inherits only the keys

@@ -62,6 +62,8 @@ https://github.com/user-attachments/assets/861a56f9-c76d-4b77-8254-43762a924251
 - **Your provider and model.** Run Insights with an API key for providers such
   as Anthropic, OpenAI, or Google, or with your Codex CLI login. Pick the
   model, reasoning level, and output language (English or Vietnamese) per run.
+  New Walkthrough generation currently requires an API key; account-provider
+  support for its paged format is pending.
   [More](#bring-your-preferred-model)
 - **Local Reviews.** Review your branch against its base branch, committed
   and uncommitted changes together, or one commit, before it reaches GitHub.
@@ -232,6 +234,7 @@ to your review, or dismiss it.
 Choose the provider, model, reasoning level, and language for every run.
 Patchdesk works with supported API-key providers and your existing Codex CLI
 login, so you can use the models and account you already have.
+Walkthrough currently accepts API keys only, not Codex or pi CLI accounts.
 
 Each Insight stays attached to the Review revision it analyzed. Brief,
 Walkthrough, and Analysis remain separate results, ready to revisit throughout
