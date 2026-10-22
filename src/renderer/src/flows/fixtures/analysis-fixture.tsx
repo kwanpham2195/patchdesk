@@ -64,6 +64,7 @@ export function AnalysisFixture(): React.ReactNode {
           summary: { _tag: "none", run: null, failure: null },
         },
         refreshWalkthrough: () => undefined,
+        onReprepare: async () => workbench,
         walkthroughFocused: false,
         setWalkthroughFocused: () => undefined,
         onRegenerateBrief: () => undefined,

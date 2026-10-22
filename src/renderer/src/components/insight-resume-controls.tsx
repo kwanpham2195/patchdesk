@@ -3,24 +3,28 @@ import { useState } from "react";
 import type { GuideRunStatus } from "#src/domain/guide-progress";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { GuideSummaryState } from "#src/renderer/src/hooks/use-guide-summary";
+import type { WalkthroughSummaryState } from "#src/renderer/src/hooks/use-walkthrough-summary";
+import { INSIGHT_NOUNS } from "./insight-run-dialog";
 import {
   guideCancelDisabledReason,
   guideRunReviewDisabledReason,
 } from "./guide-review-controls";
 import { definedProps } from "#src/domain/defined-props";
-import { useGuideResume } from "#src/renderer/src/hooks/use-guide-resume";
+import { useInsightResume } from "#src/renderer/src/hooks/use-insight-resume";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 
 /** Run identity remains cancellable independently of result pages and refresh availability. */
-export function GuideActiveRunControls({
+export function InsightActiveRunControls({
+  type,
   workbench,
   state,
   run,
   refresh,
 }: {
   readonly workbench: WorkbenchResponse;
-  readonly state: GuideSummaryState;
+  readonly type: "guide" | "walkthrough";
+  readonly state: GuideSummaryState | WalkthroughSummaryState;
   readonly run: GuideRunStatus;
   readonly refresh: () => void;
 }): React.JSX.Element | null {
@@ -29,17 +33,19 @@ export function GuideActiveRunControls({
     state.status === "loaded" &&
     state.summary.run?.runId === run.runId &&
     state.summary.run.generation === run.generation;
-  const cancelDisabledReason = guideCancelDisabledReason(workbench);
+  const noun = INSIGHT_NOUNS[type];
+  const cancelDisabledReason = guideCancelDisabledReason(workbench, noun);
   const disabledReason =
     cancelDisabledReason ??
     (run.status !== "paused"
       ? undefined
       : current
-        ? guideRunReviewDisabledReason(workbench)
-        : "Refresh Guide run status before resuming.");
+        ? guideRunReviewDisabledReason(workbench, noun)
+        : `Refresh ${noun} run status before resuming.`);
   return (
-    <GuideResumeControls
-      key={`${run.runId}:${run.generation}`}
+    <InsightResumeControls
+      key={`${type}:${run.runId}:${run.generation}`}
+      type={type}
       identity={{
         profileId: workbench.session.key.profileId,
         reviewId: workbench.review.id,
@@ -54,29 +60,28 @@ export function GuideActiveRunControls({
   );
 }
 
-/**
- * The current Guide run after reopening: generating, cancelling, or paused with requests whose responses are unknown.
- * A paused run is resumed only after the maintainer acknowledges that a new generation spends again and does not
- * recover those responses; cancelling stays available throughout.
- */
-function GuideResumeControls({
+/** Resume requires acknowledgment of unknown responses and possible repeat spend. */
+function InsightResumeControls({
+  type,
   identity,
   run,
   disabledReason,
   cancelDisabledReason,
   onSettled,
 }: {
+  readonly type: "guide" | "walkthrough";
   readonly identity: { readonly profileId: string; readonly reviewId: string };
   readonly run: NonNullable<GuideRunStatus>;
   readonly disabledReason?: string;
   readonly cancelDisabledReason?: string;
   readonly onSettled: () => void;
 }): React.JSX.Element {
-  const controls = useGuideResume(identity, run, onSettled);
+  const controls = useInsightResume(type, identity, run, onSettled);
+  const noun = INSIGHT_NOUNS[type];
   const [acknowledged, setAcknowledged] = useState(false);
   return (
     <section
-      aria-label="Guide run"
+      aria-label={`${noun} run`}
       className="mb-3 space-y-2 rounded-md border p-3 text-sm"
     >
       {run.status === "paused" ? (
@@ -126,10 +131,10 @@ function GuideResumeControls({
         <>
           <p role="status">
             {run.status === "queued"
-              ? "The Guide is being prepared."
+              ? `The ${noun} is being prepared.`
               : run.status === "cancelling"
-                ? "The Guide run is being cancelled."
-                : "The Guide is being generated."}
+                ? `The ${noun} run is being cancelled.`
+                : `The ${noun} is being generated.`}
           </p>
           {run.status === "cancelling" ? null : (
             <Button

@@ -110,9 +110,7 @@ export function useInsightSummaries(
       selected === "walkthrough" ? readyWalkthrough?.title : undefined,
     walkthroughRun: walkthroughSnapshot?.run ?? null,
     walkthroughCanRegenerate:
-      walkthroughSnapshot?._tag === "ready" &&
-      walkthroughSnapshot.run === null &&
-      walkthroughSnapshot.failure === null,
+      walkthroughSnapshot?._tag === "ready" && walkthroughSnapshot.run === null,
     guideStatus: guideSummaryStatus(workbench, guideSummary.state, runs.guide),
     walkthroughStatus,
   };

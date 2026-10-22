@@ -4,10 +4,11 @@ import type { GuideSummary } from "#src/domain/guide-progress";
 /** Cancel needs an owned active run and a nonterminal Review, not a current GitHub revision. */
 export function guideCancelDisabledReason(
   workbench: WorkbenchResponse,
+  noun: "Guide" | "Walkthrough" = "Guide",
 ): string | undefined {
   return workbench.review.status === "open"
     ? undefined
-    : "Guide controls are unavailable because this Review is closed.";
+    : `${noun} controls are unavailable because this Review is closed.`;
 }
 
 /** New Guide controls compare published evidence directly with the displayed patch, without legacy retained fields. */
@@ -42,19 +43,20 @@ export function publishedGuideReviewDisabledReason(
 /** Run actions use the current Review, not the optional result that a replacement run preserves. */
 export function guideRunReviewDisabledReason(
   workbench: WorkbenchResponse,
+  noun: "Guide" | "Walkthrough" = "Guide",
 ): string | undefined {
   if (workbench.review.status !== "open")
-    return "Guide controls are unavailable because this Review is closed.";
+    return `${noun} controls are unavailable because this Review is closed.`;
   if (
     workbench.revision.currentHeadSha !== undefined &&
     workbench.revision.currentHeadSha !== workbench.revision.reviewedHeadSha
   )
-    return "Refresh this Review before changing its Guide run.";
+    return `Refresh this Review before changing its ${noun} run.`;
   if (
     workbench.session.key.source.kind === "pull_request" &&
     workbench.revision.freshness !== "fresh"
   )
-    return "Refresh this Review before using Guide controls.";
+    return `Refresh this Review before using ${noun} controls.`;
   return undefined;
 }
 
