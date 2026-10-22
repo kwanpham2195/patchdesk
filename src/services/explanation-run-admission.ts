@@ -50,6 +50,7 @@ export class ExplanationRunAdmission {
       | undefined,
   ) {}
 
+  /** Admits only API-key explanation runs and releases the Review lock before generation. */
   async start(
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
@@ -101,6 +102,7 @@ export class ExplanationRunAdmission {
     return this.resume(input, this.guide);
   }
 
+  /** Checks ownership and terminal Review status before applying the explicit Resume acknowledgment. */
   async resumeWalkthrough(
     input: GuideResumeRequest,
   ): Promise<Result<void, InsightCoordinatorFailure>> {
