@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
-import type { NarrativeHunk } from "#src/domain/narrative-walkthrough";
+import type { NarrativeHunk } from "#src/renderer/src/components/narrative-walkthrough-diff";
 import {
   loadReviewViewPreferences,
   saveReviewViewPreferences,
@@ -18,6 +18,8 @@ const hunk: NarrativeHunk = {
   path: "src/example.ts" as never,
   header: "@@ -10 +10 @@",
   raw: "@@ -10 +10 @@\n-old\n+new",
+  filePrefix:
+    "diff --git a/src/example.ts b/src/example.ts\n--- a/src/example.ts\n+++ b/src/example.ts",
   oldStart: 10,
   oldLines: 1,
   newStart: 10,
@@ -26,14 +28,7 @@ const hunk: NarrativeHunk = {
 
 describe("narrative walkthrough diff block", () => {
   it("renders a unique block id and the filtered raw patch", () => {
-    render(
-      <NarrativeWalkthroughDiff
-        blockId="block-1"
-        hunkIds={[hunk.id]}
-        hunks={[hunk]}
-        allHunks={[hunk]}
-      />,
-    );
+    render(<NarrativeWalkthroughDiff blockId="block-1" hunk={hunk} />);
     const block = document.querySelector("[data-walkthrough-diff-block]");
     expect(block).toBeTruthy();
     expect(block?.getAttribute("data-walkthrough-diff-block")).toBe("block-1");
@@ -45,30 +40,15 @@ describe("narrative walkthrough diff block", () => {
       ...hunk,
       id: "h2",
       path: "src/second.ts" as never,
+      filePrefix:
+        "diff --git a/src/second.ts b/src/second.ts\n--- a/src/second.ts\n+++ b/src/second.ts",
       header: "@@ -20 +20 @@",
       raw: "@@ -20 +20 @@\n-old-second\n+new-second",
       oldStart: 20,
       newStart: 20,
     };
-    const patch = [
-      "diff --git a/src/example.ts b/src/example.ts",
-      "--- a/src/example.ts",
-      "+++ b/src/example.ts",
-      hunk.raw,
-      "diff --git a/src/second.ts b/src/second.ts",
-      "--- a/src/second.ts",
-      "+++ b/src/second.ts",
-      secondHunk.raw,
-      "",
-    ].join("\n");
     render(
-      <NarrativeWalkthroughDiff
-        blockId="block-filter"
-        patch={patch}
-        hunkIds={[secondHunk.id]}
-        hunks={[secondHunk]}
-        allHunks={[hunk, secondHunk]}
-      />,
+      <NarrativeWalkthroughDiff blockId="block-filter" hunk={secondHunk} />,
     );
     const renderedPatch =
       screen.getByLabelText("Review diff").textContent ?? "";
@@ -88,12 +68,7 @@ describe("narrative walkthrough diff block", () => {
       newLines: 0,
     };
     render(
-      <NarrativeWalkthroughDiff
-        blockId="block-deletion"
-        hunkIds={[deletion.id]}
-        hunks={[deletion]}
-        allHunks={[deletion]}
-      />,
+      <NarrativeWalkthroughDiff blockId="block-deletion" hunk={deletion} />,
     );
     expect(screen.getByLabelText("Review diff")).toBeTruthy();
   });
@@ -102,12 +77,7 @@ describe("narrative walkthrough diff block", () => {
     saveReviewViewPreferences({ diffStyle: "split", overflow: "scroll" });
     const user = userEvent.setup();
     const { container } = render(
-      <NarrativeWalkthroughDiff
-        blockId="block-prefs"
-        hunkIds={[hunk.id]}
-        hunks={[hunk]}
-        allHunks={[hunk]}
-      />,
+      <NarrativeWalkthroughDiff blockId="block-prefs" hunk={hunk} />,
     );
     const diffStyle = () =>
       container
@@ -134,14 +104,7 @@ describe("narrative walkthrough diff block", () => {
   });
 
   it("honors appearance and diff-theme events", () => {
-    render(
-      <NarrativeWalkthroughDiff
-        blockId="block-theme"
-        hunkIds={[hunk.id]}
-        hunks={[hunk]}
-        allHunks={[hunk]}
-      />,
-    );
+    render(<NarrativeWalkthroughDiff blockId="block-theme" hunk={hunk} />);
     const event = new CustomEvent("patchdesk:appearance", { detail: "light" });
     window.dispatchEvent(event);
     const themeEvent = new CustomEvent("patchdesk:diff-theme", {

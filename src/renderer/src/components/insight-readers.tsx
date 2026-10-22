@@ -13,7 +13,9 @@ import { BriefReader } from "./brief-reader";
 import { renderAnalysisReviewSummary } from "#src/renderer/src/analysis-review-summary";
 import { AnalysisReader, type FindingRestoreOutcome } from "./analysis-reader";
 import { projectReadOnlyConversationAnnotations } from "#src/renderer/src/inline-conversation-mapping";
-import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
+import { PagedWalkthroughReader } from "./paged-walkthrough-reader";
+import { WalkthroughActiveRunControls } from "./walkthrough-active-run-controls";
+import type { WalkthroughSummaryState } from "#src/renderer/src/hooks/use-walkthrough-summary";
 import { requestJson } from "#src/renderer/src/api-client";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { AnalysisFinding } from "#src/renderer/src/flows/use-analysis-review-actions";
@@ -22,7 +24,6 @@ import type { LocalApplyControls } from "#src/renderer/src/flows/use-local-apply
 import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-drafts";
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "#src/renderer/src/hooks/use-analysis-verification";
-import type { WalkthroughProgressControls } from "#src/renderer/src/hooks/use-walkthrough-progress";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 type InsightReaderBuilderInput = {
@@ -44,7 +45,8 @@ type InsightReaderBuilderInput = {
     finding: AnalysisFinding,
   ) => Promise<FindingRestoreOutcome>;
   readonly analysisVerification: AnalysisVerificationControls;
-  readonly walkthroughProgress: WalkthroughProgressControls;
+  readonly walkthroughSummaryState: WalkthroughSummaryState;
+  readonly refreshWalkthrough: () => void;
   readonly walkthroughFocused: boolean;
   readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
@@ -58,6 +60,7 @@ type InsightReaderBuilderInput = {
   readonly onOpenScopeBucketInDiff?: (bucket: ChangeScopeBucket) => void;
   /** Starts a Guide from the empty state; absent when the Review can no longer run one. */
   readonly onRunGuide?: () => void;
+  readonly onRunWalkthrough?: () => void;
 } & (
   | {
       readonly selectedInsight: Exclude<InsightRunDialogType, "guide">;
@@ -87,10 +90,9 @@ export function walkthroughDiscussionState(
     readonly patchHash: string;
   },
 ): "available" | "stale" | "loading" {
-  const walkthrough = workbench.insights.walkthrough;
   if (
-    walkthrough.status !== "current" ||
-    walkthrough.artifactStatus !== "verified" ||
+    workbench.insights.walkthrough.status === "outdated" ||
+    workbench.insights.walkthrough.artifactStatus === "mismatch" ||
     snapshot.profileId !== workbench.session.key.profileId ||
     snapshot.sessionId !== workbench.session.id ||
     snapshot.headSha !== workbench.revision.reviewedHeadSha ||
@@ -141,7 +143,8 @@ export function buildInsightReaders({
   dismissFinding,
   restoreFinding,
   analysisVerification,
-  walkthroughProgress,
+  walkthroughSummaryState,
+  refreshWalkthrough,
   onOpenFindingInDiff,
   onOpenFileInDiff,
   onOpenScopeBucketInDiff,
@@ -150,6 +153,7 @@ export function buildInsightReaders({
   onRegenerateBrief,
   runEnabled,
   onRunGuide,
+  onRunWalkthrough,
   guideSummaryState,
   refreshGuide,
   guideActiveRun,
@@ -293,26 +297,8 @@ export function buildInsightReaders({
           : {})}
       />
     ) : null;
-  const walkthroughRetained = workbench.insights.walkthrough.retained;
-  const walkthroughRevision =
-    walkthroughRetained === undefined
-      ? undefined
-      : walkthroughDiscussionState(
-          workbench,
-          walkthroughRetained.value.snapshot,
-        );
-  const walkthroughDiscussion = pullRequestReview
-    ? walkthroughRevision
-    : undefined;
-  // A Walkthrough of an older revision numbers the lines of another diff, so it takes no notes or comments (#598).
-  const walkthroughAuthoring =
-    walkthroughRevision === undefined ||
-    walkthroughRevision === "stale" ||
-    workbench.fullPatch === undefined
-      ? undefined
-      : walkthroughDiffAuthoring;
   const walkthroughAnnotations =
-    walkthroughDiscussion === "available" && workbench.fullPatch !== undefined
+    pullRequestReview && workbench.fullPatch !== undefined
       ? projectReadOnlyConversationAnnotations(
           patchFiles,
           workbench.conversation.inline?.threads ?? [],
@@ -320,34 +306,41 @@ export function buildInsightReaders({
       : undefined;
   const firstDiffPath = patchFiles[0]?.newPath;
   const retainedWalkthrough =
-    selectedInsight === "walkthrough" &&
-    workbench.insights.walkthrough.retained !== undefined ? (
-      <WalkthroughProgressReader
-        key={JSON.stringify({
-          sessionId: workbench.session.id,
-          runId: workbench.insights.walkthrough.retained.runId,
-          headSha: workbench.revision.reviewedHeadSha,
-        })}
-        walkthrough={workbench.insights.walkthrough.retained.value}
-        controls={walkthroughProgress}
-        {...(workbench.insights.walkthrough.status === "current" &&
-        workbench.fullPatch !== undefined
-          ? { rawPatch: workbench.fullPatch }
-          : {})}
-        {...(walkthroughAnnotations === undefined
-          ? {}
-          : { annotations: walkthroughAnnotations })}
-        {...definedProps({ diffAuthoring: walkthroughAuthoring })}
-        {...(walkthroughDiscussion === undefined ||
-        walkthroughDiscussion === "available"
-          ? {}
-          : { discussionUnavailable: walkthroughDiscussion })}
-        focused={walkthroughFocused}
-        onFocusedChange={setWalkthroughFocused}
-        {...(onOpenFileInDiff === undefined || firstDiffPath === undefined
-          ? {}
-          : { onOpenDiff: () => onOpenFileInDiff(firstDiffPath) })}
-      />
+    selectedInsight === "walkthrough" ? (
+      <>
+        <WalkthroughActiveRunControls
+          run={
+            walkthroughSummaryState.status === "loaded"
+              ? walkthroughSummaryState.summary.run
+              : null
+          }
+          profileId={workbench.session.key.profileId}
+          reviewId={workbench.review.id}
+          reviewOpen={workbench.review.status === "open"}
+          refresh={refreshWalkthrough}
+        />
+        <PagedWalkthroughReader
+          workbench={workbench}
+          state={walkthroughSummaryState}
+          refresh={refreshWalkthrough}
+          empty={
+            <InsightEmpty
+              type="walkthrough"
+              disabled={!runEnabled}
+              {...definedProps({ onRun: onRunWalkthrough })}
+            />
+          }
+          {...(walkthroughAnnotations === undefined
+            ? {}
+            : { annotations: walkthroughAnnotations })}
+          {...definedProps({ diffAuthoring: walkthroughDiffAuthoring })}
+          focused={walkthroughFocused}
+          onFocusedChange={setWalkthroughFocused}
+          {...(onOpenFileInDiff === undefined || firstDiffPath === undefined
+            ? {}
+            : { onOpenDiff: () => onOpenFileInDiff(firstDiffPath) })}
+        />
+      </>
     ) : null;
   const briefRetained = workbench.insights.brief?.retained;
   const briefRunId = briefRetained?.runId;

@@ -1,4 +1,5 @@
 import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
+import { walkthroughSummarySchema } from "#src/domain/walkthrough-progress";
 import { guideInsightSchema } from "./guide-contracts";
 import * as v from "valibot";
 
@@ -621,51 +622,6 @@ const reviewResultSchema = v.strictObject({
   ),
 });
 
-const narrativeHunkSchema = v.strictObject({
-  id: v.pipe(v.string(), v.minLength(1)),
-  path: repoRelativePathSchema,
-  header: v.pipe(v.string(), v.minLength(1)),
-  raw: v.pipe(v.string(), v.minLength(1)),
-  filePrefix: v.optional(v.pipe(v.string(), v.minLength(1))),
-  oldStart: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  oldLines: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  newStart: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  newLines: v.pipe(v.number(), v.integer(), v.minValue(0)),
-});
-const narrativeWalkthroughSchema = v.strictObject({
-  snapshot: v.strictObject({
-    profileId: v.pipe(v.string(), v.minLength(1)),
-    sessionId: v.pipe(v.string(), v.minLength(1)),
-    headSha: v.pipe(v.string(), v.minLength(7)),
-    patchHash: v.pipe(v.string(), v.minLength(1)),
-  }),
-  citationVersion: v.optional(v.literal(2)),
-  citationStatus: v.picklist(["verified", "partially_verified", "unverified"]),
-  title: v.pipe(v.string(), v.minLength(1)),
-  focus: v.pipe(v.string(), v.minLength(1)),
-  chapters: v.array(
-    v.strictObject({
-      id: v.pipe(v.string(), v.minLength(1)),
-      title: v.pipe(v.string(), v.minLength(1)),
-      sections: v.array(
-        v.strictObject({
-          id: v.pipe(v.string(), v.minLength(1)),
-          title: v.pipe(v.string(), v.minLength(1)),
-          prose: v.pipe(v.string(), v.minLength(1)),
-          hunkIds: v.array(v.pipe(v.string(), v.minLength(1))),
-          hunks: v.array(narrativeHunkSchema),
-        }),
-      ),
-    }),
-  ),
-  support: v.strictObject({
-    id: v.literal("support"),
-    title: v.literal("Support"),
-    hunkIds: v.array(v.pipe(v.string(), v.minLength(1))),
-    hunks: v.array(narrativeHunkSchema),
-  }),
-});
-
 const insightScopeSchema = v.strictObject({
   baseShort: v.string(),
   headShort: v.string(),
@@ -697,7 +653,7 @@ const walkthroughInsightSchema = v.strictObject({
   retained: v.optional(
     v.strictObject({
       ...retainedInsightFields,
-      value: narrativeWalkthroughSchema,
+      value: walkthroughSummarySchema.options[1],
     }),
   ),
 });

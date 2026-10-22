@@ -32,6 +32,7 @@ import {
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
+import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import {
@@ -242,6 +243,24 @@ export function insightCoordinatorFactory({
       { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
       resources.ownership.forScope(paths.dataDirectory()),
       guide,
+      guideInvoker === undefined
+        ? undefined
+        : new WalkthroughGenerationService(
+            paths,
+            new ExplanationPreparationService(
+              paths,
+              paths,
+              resources,
+              operations,
+              pack,
+              now,
+              slots,
+            ),
+            slots,
+            resources,
+            guideInvoker,
+            now,
+          ),
     );
   };
 }

@@ -36,6 +36,8 @@ import type { Result } from "#src/domain/result";
 import {
   walkthroughSummaryRequestSchema,
   walkthroughPageRequestSchema,
+  walkthroughProgressMutationRequestSchema,
+  walkthroughResumeRequestSchema,
 } from "#src/domain/walkthrough-progress";
 import { definedProps } from "#src/domain/defined-props";
 import {
@@ -328,6 +330,44 @@ export function registerInsightRoutes(
       expectedGeneration: parsed.output.expectedGeneration,
       acknowledgedDispatches: parsed.output.acknowledgedDispatches,
       lastRequestHash: parsed.output.lastRequestHash,
+    });
+    return resumed._tag === "ok"
+      ? context.json({ status: "resumed" }, 202)
+      : context.json(
+          { error: resumed.error },
+          insightFailureStatus(resumed.error),
+        );
+  });
+  app.post(
+    "/v1/reviews/insights/walkthrough/reading-progress",
+    async (context) => {
+      const parsed = safeParse(
+        walkthroughProgressMutationRequestSchema,
+        await jsonBody(context),
+      );
+      if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+      return guideReadResponse(
+        context,
+        await container.walkthroughProgress.mutate(parsed.output),
+      );
+    },
+  );
+  app.post("/v1/reviews/insights/walkthrough/resume", async (context) => {
+    const parsed = safeParse(
+      walkthroughResumeRequestSchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profileId = parseWorkspaceProfileId(parsed.output.profileId);
+    const reviewId = parseReviewId(parsed.output.reviewId);
+    if (profileId._tag === "err" || reviewId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    if (insights?.resumeWalkthrough === undefined)
+      return context.json({ error: "workflow_unavailable" }, 503);
+    const resumed = await insights.resumeWalkthrough({
+      ...parsed.output,
+      profileId: profileId.value,
+      reviewId: reviewId.value,
     });
     return resumed._tag === "ok"
       ? context.json({ status: "resumed" }, 202)

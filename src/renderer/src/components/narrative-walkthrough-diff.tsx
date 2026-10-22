@@ -10,7 +10,7 @@ import {
 } from "./review-diff-view";
 import { definedProps } from "#src/domain/defined-props";
 import { parseGitHubThreadId } from "#src/domain/ids";
-import { filterNarrativePatchToHunks } from "#src/domain/narrative-walkthrough";
+import type { NarrativeHunk as CapturedNarrativeHunk } from "#src/domain/narrative-walkthrough";
 import {
   citedHunkRelation,
   type ReadOnlyConversationAnnotation,
@@ -20,81 +20,33 @@ import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReadOnlyConversationAnnotation> = [];
 
-export type NarrativeHunk = {
-  readonly id: string;
+/** One captured hunk crosses the page transport with a string path and its mandatory original file prefix. */
+export type NarrativeHunk = Omit<
+  CapturedNarrativeHunk,
+  "path" | "filePrefix"
+> & {
   readonly path: string;
-  readonly header: string;
-  readonly raw: string;
-  readonly filePrefix?: string | undefined;
-  readonly oldStart: number;
-  readonly oldLines: number;
-  readonly newStart: number;
-  readonly newLines: number;
+  readonly filePrefix: string;
 };
-
-function fallbackFilePrefix(hunk: NarrativeHunk): string {
-  const path = hunk.path;
-  const oldPath = hunk.oldLines === 0 ? "/dev/null" : `a/${path}`;
-  const newPath = hunk.newLines === 0 ? "/dev/null" : `b/${path}`;
-  return `diff --git a/${path} b/${path}\n--- ${oldPath}\n+++ ${newPath}`;
-}
-
-function orderedHunks(
-  hunks: ReadonlyArray<NarrativeHunk>,
-): ReadonlyArray<NarrativeHunk> {
-  return [...hunks].sort(
-    (left, right) => Number(left.id.slice(1)) - Number(right.id.slice(1)),
-  );
-}
-
-function buildFallbackPatch(hunks: ReadonlyArray<NarrativeHunk>): string {
-  return orderedHunks(hunks)
-    .map(
-      (hunk) => `${hunk.filePrefix ?? fallbackFilePrefix(hunk)}\n${hunk.raw}`,
-    )
-    .join("\n");
-}
 
 /** Renders a bounded, reparsed section of the immutable walkthrough patch. */
 export function NarrativeWalkthroughDiff({
   blockId,
-  patch,
-  hunkIds,
-  hunks,
-  allHunks,
+  hunk,
   sourceSession,
   preferences,
   annotations = EMPTY_ANNOTATIONS,
   diffAuthoring,
 }: {
   readonly blockId: string;
-  readonly patch?: string;
-  readonly hunkIds: ReadonlyArray<string>;
-  readonly hunks: ReadonlyArray<NarrativeHunk>;
-  readonly allHunks?: ReadonlyArray<NarrativeHunk>;
+  readonly hunk: NarrativeHunk;
   readonly sourceSession?: ReviewDiffSourceSession;
   readonly preferences?: ReviewViewPreferences;
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
   /** Opens the Diff tab's composers on these hunks and shows its notes and pending comments there. */
   readonly diffAuthoring?: WalkthroughDiffAuthoring;
 }): React.JSX.Element {
-  const sourcePatch = useMemo(
-    () => patch ?? buildFallbackPatch(allHunks ?? hunks),
-    [allHunks, hunks, patch],
-  );
-  const fallbackHunks = allHunks ?? hunks;
-  const filteredPatch = useMemo(() => {
-    const requestedIds =
-      patch === undefined
-        ? hunkIds.flatMap((id) => {
-            const index = orderedHunks(fallbackHunks).findIndex(
-              (hunk) => hunk.id === id,
-            );
-            return index < 0 ? [] : [`h${index + 1}`];
-          })
-        : hunkIds;
-    return filterNarrativePatchToHunks(sourcePatch, requestedIds);
-  }, [fallbackHunks, hunkIds, patch, sourcePatch]);
+  const filteredPatch = `${hunk.filePrefix}${hunk.filePrefix.endsWith("\n") ? "" : "\n"}${hunk.raw}${hunk.raw.endsWith("\n") ? "" : "\n"}`;
   const parsedDiff = useMemo(
     () => parseReviewDiff(filteredPatch),
     [filteredPatch],
@@ -108,12 +60,10 @@ export function NarrativeWalkthroughDiff({
   const visibleConversation = useMemo(
     () =>
       annotations.flatMap((annotation) => {
-        const relation = hunks
-          .flatMap((hunk) => citedHunkRelation(annotation, hunk) ?? [])
-          .at(0);
+        const relation = citedHunkRelation(annotation, hunk);
         return relation === undefined ? [] : [{ annotation, relation }];
       }),
-    [annotations, hunks],
+    [annotations, hunk],
   );
   const publishedAnnotations: ReadonlyArray<ReviewInlineAnnotation> = useMemo(
     () =>
@@ -147,26 +97,23 @@ export function NarrativeWalkthroughDiff({
     () =>
       deriveConversationThreadEntries(
         publishedAnnotations,
-        (authoredAnnotations ?? []).filter((annotation) =>
-          hunks.some(
-            (hunk) => citedHunkRelation(annotation, hunk) !== undefined,
-          ),
+        (authoredAnnotations ?? []).filter(
+          (annotation) => citedHunkRelation(annotation, hunk) !== undefined,
         ),
       ),
-    [authoredAnnotations, hunks, publishedAnnotations],
+    [authoredAnnotations, hunk, publishedAnnotations],
   );
-  const selectedPath = hunks[0]?.path;
+  const selectedPath = hunk.path;
   // The file header inside the diff names the path, so the toolbar carries only the hunk ids.
-  const hunkLabel = `${hunks.map((hunk) => hunk.id).join(", ")} · ${hunks.length} hunk${hunks.length === 1 ? "" : "s"}`;
-  const citedPaths = [...new Set(hunks.map((hunk) => hunk.path))].join(", ");
+  const hunkLabel = `${hunk.id} · 1 hunk`;
 
   return (
     <div
       role="group"
       tabIndex={-1}
-      aria-label={`Walkthrough evidence ${hunks.map((hunk) => `${hunk.id} · ${hunk.path}`).join(", ")}`}
+      aria-label={`Walkthrough evidence ${hunk.id} · ${hunk.path}`}
       data-walkthrough-diff-block={blockId}
-      data-walkthrough-hunk-id={hunks.length === 1 ? hunks[0]?.id : undefined}
+      data-walkthrough-hunk-id={hunk.id}
       className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-card outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       {visibleConversation.some(({ relation }) => relation === "partial") ? (
@@ -178,7 +125,7 @@ export function NarrativeWalkthroughDiff({
       {filteredPatch.length === 0 || parsedDiff.files.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">
           Stored patch unavailable for{" "}
-          <span className="font-mono">{citedPaths}</span>.
+          <span className="font-mono">{hunk.path}</span>.
         </p>
       ) : (
         <div

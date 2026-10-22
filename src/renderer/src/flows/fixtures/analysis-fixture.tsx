@@ -59,12 +59,11 @@ export function AnalysisFixture(): React.ReactNode {
               return next;
             }),
         },
-        walkthroughProgress: {
-          progress: { reviewedSectionIds: [], supportReviewed: false },
-          saveFailed: false,
-          toggleSectionReviewed: () => undefined,
-          selectSection: () => undefined,
+        walkthroughSummaryState: {
+          status: "loaded",
+          summary: { _tag: "none", run: null, failure: null },
         },
+        refreshWalkthrough: () => undefined,
         walkthroughFocused: false,
         setWalkthroughFocused: () => undefined,
         onRegenerateBrief: () => undefined,

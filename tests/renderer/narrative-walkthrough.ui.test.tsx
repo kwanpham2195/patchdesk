@@ -5,13 +5,110 @@ import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  NarrativeWalkthrough,
+  NarrativeWalkthrough as PagedNarrativeWalkthrough,
   type NarrativeWalkthroughActions,
 } from "#src/renderer/src/components/narrative-walkthrough";
 import type {
   NarrativeWalkthrough as NarrativeWalkthroughModel,
   NarrativeSnapshot,
 } from "#src/domain/narrative-walkthrough";
+import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
+import { PagedWalkthroughReader } from "#src/renderer/src/components/paged-walkthrough-reader";
+import { projection } from "./review-workbench-fixtures";
+
+function NarrativeWalkthrough({
+  walkthrough,
+  reviewedSectionIds,
+  currentSectionId,
+  actions,
+  ...props
+}: {
+  readonly walkthrough: NarrativeWalkthroughModel;
+  readonly reviewedSectionIds: ReadonlyArray<string>;
+  readonly currentSectionId?: string;
+  readonly actions: NarrativeWalkthroughActions;
+  readonly focused?: boolean;
+  readonly onFocusedChange?: (focused: boolean) => void;
+  readonly onOpenDiff?: () => void;
+}): React.JSX.Element {
+  const [selected, setSelected] = useState(currentSectionId);
+  const sections = walkthrough.chapters.flatMap((chapter) =>
+    chapter.sections.map((section) => ({
+      ...section,
+      chapter: { id: chapter.id, title: chapter.title },
+    })),
+  );
+  const index = Math.max(
+    0,
+    sections.findIndex((section) => section.id === selected),
+  );
+  const active = sections[index];
+  const cited = sections.reduce(
+    (total, section) => total + section.hunks.length,
+    0,
+  );
+  return (
+    <PagedNarrativeWalkthrough
+      {...props}
+      counts={{
+        sections: sections.length,
+        reviewed: reviewedSectionIds.length,
+        citedHunks: cited,
+        hunks: cited + walkthrough.support.hunks.length,
+        uncited: walkthrough.support.hunks.length,
+      }}
+      navigation={{
+        kind: "navigation",
+        items: sections.map((section, ordinal) => ({
+          sectionId: section.id,
+          title: section.title,
+          chapter: section.chapter,
+          ordinal,
+          reviewed: reviewedSectionIds.includes(section.id),
+        })),
+        next: null,
+        previous: null,
+      }}
+      activeSection={
+        active === undefined
+          ? null
+          : {
+              kind: "section",
+              sectionId: active.id,
+              title: active.title,
+              prose: active.prose,
+              ordinal: index,
+              chapter: active.chapter,
+              citationCount: active.hunks.length,
+              previous: sections[index - 1]?.id ?? null,
+              next: sections[index + 1]?.id ?? null,
+              reviewed: reviewedSectionIds.includes(active.id),
+              navigationCursor: null,
+            }
+      }
+      evidence={active?.hunks.map((hunk) => (
+        <NarrativeWalkthroughDiff
+          key={hunk.id}
+          blockId={`${active.id}:${hunk.id}`}
+          hunk={{
+            ...hunk,
+            filePrefix:
+              hunk.filePrefix ??
+              `diff --git a/${hunk.path} b/${hunk.path}\n--- a/${hunk.path}\n+++ b/${hunk.path}`,
+          }}
+        />
+      ))}
+      onNavigationPage={() => undefined}
+      actions={{
+        ...actions,
+        onSelectSection: (id) => {
+          setSelected(id);
+          actions.onSelectSection(id);
+        },
+      }}
+    />
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -396,19 +493,22 @@ describe("narrative walkthrough takeover", () => {
     expect(onOpenDiff).toHaveBeenCalledTimes(1);
   });
 
-  it("withholds legacy unverified citations", () => {
-    const walkthrough = {
-      ...buildWalkthrough(),
-      citationStatus: "unverified" as const,
-    };
+  it("withholds legacy results with regeneration guidance", () => {
     render(
-      <NarrativeWalkthrough
-        walkthrough={walkthrough}
-        reviewedSectionIds={[]}
-        actions={buildActions()}
+      <PagedWalkthroughReader
+        workbench={projection()}
+        state={{
+          status: "loaded",
+          summary: { _tag: "none", run: null, failure: null },
+        }}
+        focused={false}
+        onFocusedChange={() => undefined}
+        refresh={() => undefined}
       />,
     );
-    expect(screen.getByText("Diff links need regeneration")).toBeTruthy();
+    expect(
+      screen.getByText(/Walkthrough unavailable. Regenerate/),
+    ).toBeTruthy();
     expect(screen.queryByText("@@ -1 +1 @@")).toBeNull();
   });
 

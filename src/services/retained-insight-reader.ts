@@ -35,11 +35,9 @@ import type { WorkbenchProjectionFailure } from "./review-workbench-projection";
 type StoredInsightRecords = {
   readonly guide?: InsightRecord<RetainedInsight<RetainedGuide>>;
   readonly analysis?: InsightRecord<RetainedInsight<ReviewResult>>;
-  readonly walkthrough?: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;
   readonly brief?: InsightRecord<RetainedInsight<NormalizedBrief>>;
   readonly analysisScope?: InsightScopeProjection;
   readonly analysisArtifactStatus?: InsightArtifactStatus;
-  readonly walkthroughArtifactStatus?: InsightArtifactStatus;
   readonly briefArtifactStatus?: InsightArtifactStatus;
 };
 
@@ -56,10 +54,7 @@ export class RetainedInsightReader {
   async loadStoredInsights(
     session: ReviewSession,
   ): Promise<Result<StoredInsightRecords, WorkbenchProjectionFailure>> {
-    // A retained Walkthrough belongs to the Session that produced it. Never
-    // validate it against the currently represented Session's patch: Refresh
-    // intentionally changes that artifact while old reading evidence remains.
-    const [analysis, walkthrough, guide, brief] = await Promise.all([
+    const [analysis, guide, brief] = await Promise.all([
       this.insights.loadTyped(
         session.key.profileId,
         createReviewId(session.key),
@@ -71,7 +66,6 @@ export class RetainedInsightReader {
         // envelope around it is already parsed -- see `parseRetainedInsight`.
         (input) => parseReviewResult(input),
       ),
-      this.loadWalkthroughRecord(session),
       this.insights.loadTyped(
         session.key.profileId,
         createReviewId(session.key),
@@ -93,12 +87,6 @@ export class RetainedInsightReader {
       analysis._tag === "err" &&
       analysis.error.reason !== "not_found" &&
       analysis.error.reason !== "invalid_stored_value"
-    )
-      return err({ _tag: "SessionStorageUnavailable" });
-    if (
-      walkthrough._tag === "err" &&
-      walkthrough.error.reason !== "not_found" &&
-      walkthrough.error.reason !== "invalid_stored_value"
     )
       return err({ _tag: "SessionStorageUnavailable" });
     if (
@@ -130,16 +118,10 @@ export class RetainedInsightReader {
     const records: StoredInsightRecords = definedProps({
       guide: guide._tag === "ok" ? guide.value : undefined,
       analysis: analysis._tag === "ok" ? analysis.value : undefined,
-      walkthrough:
-        walkthrough._tag === "ok" ? walkthrough.value.record : undefined,
       brief: brief._tag === "ok" ? brief.value : undefined,
       briefArtifactStatus,
       analysisScope: analysisArtifact?.scope,
       analysisArtifactStatus: analysisArtifact?.artifactStatus,
-      walkthroughArtifactStatus:
-        walkthrough._tag === "ok"
-          ? walkthrough.value.artifactStatus
-          : undefined,
     });
     return ok(records);
   }
@@ -211,7 +193,8 @@ export class RetainedInsightReader {
       : "verified";
   }
 
-  private async loadWalkthroughRecord(session: ReviewSession): Promise<
+  /** Retired whole-result helper, retained only until the separately approved slice 2e removal. */
+  async loadLegacyWalkthroughRecord(session: ReviewSession): Promise<
     Result<
       {
         readonly record: InsightRecord<RetainedInsight<NarrativeWalkthrough>>;

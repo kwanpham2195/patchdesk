@@ -12,7 +12,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseGitHubThreadId, parseRepoRelativePath } from "#src/domain/ids";
 import type { Result } from "#src/domain/result";
-import type { NarrativeHunk } from "#src/domain/narrative-walkthrough";
+import type { NarrativeHunk } from "#src/renderer/src/components/narrative-walkthrough-diff";
+import { walkthroughRoutes } from "./paged-walkthrough-fixtures";
+import {
+  installDesktopDouble,
+  success,
+  type DesktopDouble,
+} from "./fake-desktop-response";
 import type { LocalNoteControls } from "#src/renderer/src/flows/use-local-drafts";
 import type { PendingReviewDrafts } from "#src/renderer/src/hooks/use-pending-review-drafts";
 import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
@@ -29,10 +35,28 @@ import { dragDiffGutter, hoveredGutterButton } from "./pierre-gutter";
 import { projection, withWalkthrough } from "./review-workbench-fixtures";
 
 const stubbedReplaceSync = CSSStyleSheet.prototype.replaceSync === undefined;
+let desktop: DesktopDouble | undefined;
 beforeEach(() => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(
+        private readonly callback: (
+          entries: ReadonlyArray<{ readonly isIntersecting: boolean }>,
+        ) => void,
+      ) {}
+      observe(): void {
+        this.callback([{ isIntersecting: true }]);
+      }
+      disconnect(): void {}
+    },
+  );
   if (stubbedReplaceSync) CSSStyleSheet.prototype.replaceSync = () => undefined;
 });
 afterEach(() => {
+  vi.unstubAllGlobals();
+  desktop?.restore();
+  desktop = undefined;
   cleanup();
   window.localStorage.clear();
   if (stubbedReplaceSync)
@@ -71,7 +95,8 @@ const h1: NarrativeHunk = {
   id: "h1",
   path: parsed(parseRepoRelativePath("src/a.ts")),
   header: "@@ -10,10 +10,10 @@",
-  raw: "",
+  raw: PATCH.slice(PATCH.indexOf("@@"), PATCH.indexOf("@@ -40")).trimEnd(),
+  filePrefix: PATCH.slice(0, PATCH.indexOf("@@")).trimEnd(),
   oldStart: 10,
   oldLines: 10,
   newStart: 10,
@@ -81,6 +106,7 @@ const h2: NarrativeHunk = {
   ...h1,
   id: "h2",
   header: "@@ -40,3 +40,3 @@",
+  raw: PATCH.slice(PATCH.indexOf("@@ -40")).trimEnd(),
   oldStart: 40,
   oldLines: 3,
   newStart: 40,
@@ -115,16 +141,21 @@ function renderBlock(
   diffAuthoring: WalkthroughDiffAuthoring,
 ): void {
   render(
-    <NarrativeWalkthroughDiff
-      blockId="block"
-      patch={PATCH}
-      hunkIds={hunks.map((hunk) => hunk.id)}
-      hunks={hunks}
-      allHunks={[h1, h2]}
-      // Split view keeps every row inside what Pierre renders in jsdom.
-      preferences={{ ...DEFAULT_REVIEW_VIEW_PREFERENCES, diffStyle: "split" }}
-      diffAuthoring={diffAuthoring}
-    />,
+    <>
+      {hunks.map((hunk) => (
+        <NarrativeWalkthroughDiff
+          key={hunk.id}
+          blockId={`block:${hunk.id}`}
+          hunk={hunk}
+          // Split view keeps every row inside what Pierre renders in jsdom.
+          preferences={{
+            ...DEFAULT_REVIEW_VIEW_PREFERENCES,
+            diffStyle: "split",
+          }}
+          diffAuthoring={diffAuthoring}
+        />
+      ))}
+    </>,
   );
 }
 
@@ -137,20 +168,17 @@ function walkthroughOf(revision: "current" | "older"): WorkbenchResponse {
   const base = withWalkthrough();
   const retained = base.insights.walkthrough.retained;
   if (retained === undefined) throw new Error("expected a Walkthrough");
-  const { snapshot } = retained.value;
-  const section = {
-    id: "section-1",
-    title: "Range section",
-    prose: "Read the range.",
-    hunkIds: ["h1"],
-    hunks: [h1],
+  const snapshot = {
+    sessionId: retained.value.sessionId,
+    headSha: retained.value.revision.headSha,
+    patchHash: retained.value.revision.patchHash,
   };
   const current = revision === "current";
   return {
     ...base,
     session: current
       ? { ...base.session, id: snapshot.sessionId }
-      : base.session,
+      : { ...base.session, id: "older-session" },
     revision: current
       ? {
           ...base.revision,
@@ -167,9 +195,9 @@ function walkthroughOf(revision: "current" | "older"): WorkbenchResponse {
           ...retained,
           value: {
             ...retained.value,
-            chapters: [
-              { id: "chapter-1", title: "Chapter", sections: [section] },
-            ],
+            citedHunks: 1,
+            hunks: 2,
+            uncited: 1,
           },
         },
       },
@@ -181,6 +209,14 @@ function renderInsights(
   workbench: WorkbenchResponse,
   diffAuthoring: WalkthroughDiffAuthoring,
 ): void {
+  const summary = workbench.insights.walkthrough.retained?.value;
+  if (summary === undefined) throw new Error("Expected paged summary");
+  desktop = installDesktopDouble({
+    ...walkthroughRoutes(summary, [h1]),
+    "/v1/reviews/insights/guide/summary": () =>
+      success({ _tag: "none", run: null, failure: null }),
+    "/v1/insight-providers": () => success({ models: [], providers: [] }),
+  });
   render(
     <WalkthroughDiffAuthoringContext.Provider value={diffAuthoring}>
       <InsightsSlot
@@ -203,6 +239,13 @@ describe("Walkthrough diff authoring", () => {
       }),
     );
 
+    await screen.findByRole(
+      "heading",
+      { name: "Fixture section" },
+      {
+        timeout: 1000,
+      },
+    );
     await dragDiffGutter({ line: 15 });
 
     expect(
@@ -262,10 +305,7 @@ describe("Walkthrough diff authoring", () => {
     render(
       <NarrativeWalkthroughDiff
         blockId="block"
-        patch={PATCH}
-        hunkIds={["h1"]}
-        hunks={[h1]}
-        allHunks={[h1, h2]}
+        hunk={h1}
         preferences={{ ...DEFAULT_REVIEW_VIEW_PREFERENCES, diffStyle: "split" }}
         annotations={[
           {

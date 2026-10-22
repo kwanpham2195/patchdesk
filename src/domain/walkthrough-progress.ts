@@ -10,6 +10,7 @@ import {
 import {
   guideSummarySchema,
   guideSummaryRequestSchema,
+  guideResumeRequestSchema,
 } from "./guide-progress";
 import {
   walkthroughSectionIdSchema as SectionId,
@@ -41,6 +42,10 @@ const walkthroughPageSelectorSchema = v.variant("kind", [
 ]);
 /** Summary requires only the owning Review. */
 export const walkthroughSummaryRequestSchema = v.strictObject(scope);
+/** Resume names the paused generation and explicitly acknowledges unknown spend. */
+export const walkthroughResumeRequestSchema = v.strictObject(
+  guideResumeRequestSchema.entries,
+);
 /** Pages always bind the exact published digest. */
 export const walkthroughPageRequestSchema = v.strictObject({
   ...scope,
@@ -61,7 +66,7 @@ const mutation = v.variant("action", [
   v.strictObject({ action: v.literal("set_current"), sectionId: SectionId }),
 ]);
 /** One optimistic progress intent, fenced by result and version. */
-const walkthroughProgressMutationRequestSchema = v.strictObject({
+export const walkthroughProgressMutationRequestSchema = v.strictObject({
   ...scope,
   digest: Hash,
   expectedVersion: U,
@@ -97,7 +102,7 @@ export const walkthroughProgressPointerSchema = v.strictObject({
 });
 
 /** Bounded metadata, counts and progress. It contains no result arrays or captured patch. */
-const walkthroughSummarySchema = v.variant("_tag", [
+export const walkthroughSummarySchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("none"),
     run: metadata.run,
@@ -142,7 +147,7 @@ const citation = v.strictObject({
   newLines: U,
 });
 /** One bounded page. Hunk text continues without losing original coordinates. */
-const walkthroughPageSchema = v.variant("kind", [
+export const walkthroughPageSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("navigation"),
     items: v.array(
@@ -155,6 +160,7 @@ const walkthroughPageSchema = v.variant("kind", [
       }),
     ),
     next: cursor,
+    previous: cursor,
   }),
   v.strictObject({
     kind: v.literal("section"),
@@ -167,12 +173,14 @@ const walkthroughPageSchema = v.variant("kind", [
     previous: v.nullable(SectionId),
     next: v.nullable(SectionId),
     reviewed: v.boolean(),
+    navigationCursor: cursor,
   }),
   v.strictObject({
     kind: v.literal("citations"),
     sectionId: SectionId,
     items: v.array(citation),
     next: cursor,
+    previous: cursor,
   }),
   v.strictObject({
     kind: v.literal("uncited"),
