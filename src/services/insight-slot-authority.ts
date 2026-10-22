@@ -36,7 +36,7 @@ import {
   type InsightProcessRuns,
 } from "./insight-slot-admission";
 import { reconcilePublishedGuide } from "./guide-publication-recovery";
-import { GuideRunTransactions } from "./guide-run-transactions";
+import { ExplanationRunTransactions } from "./explanation-run-transactions";
 import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -69,7 +69,7 @@ export class InsightSlotAuthority {
     typeof reconcilePublishedGuide
   >[0];
   /** The Guide begin, produce, resume and publish transitions over this authority's own locks and stores. */
-  readonly guide: GuideRunTransactions;
+  readonly explanation: ExplanationRunTransactions;
 
   constructor(
     paths: PatchdeskPaths,
@@ -89,7 +89,7 @@ export class InsightSlotAuthority {
       legacy,
       now,
     );
-    this.guide = new GuideRunTransactions({
+    this.explanation = new ExplanationRunTransactions({
       locked: (key, operation) => this.locked(key, operation),
       withJournal: (journal, operation) => this.withJournal(journal, operation),
       advanceActive: (run, guard, decide) =>
@@ -108,7 +108,7 @@ export class InsightSlotAuthority {
         this.artifacts,
         insightArtifactReader,
       ),
-      guide: this.guide,
+      explanation: this.explanation,
     };
     this.admission = new InsightSlotAdmission(
       this.slots,

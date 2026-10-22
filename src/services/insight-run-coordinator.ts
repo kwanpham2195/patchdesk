@@ -34,7 +34,6 @@ import type { InsightStore } from "#src/adapters/storage/insight-store";
 import {
   parseContentHash,
   parseInsightRunId,
-  type ContentHash,
   parseIsoTimestamp,
   type FindingId,
   type InsightRunId,
@@ -64,7 +63,6 @@ import {
 } from "#src/domain/insight-provider";
 import { parseReviewResult } from "#src/domain/review-result";
 import type { Review } from "#src/domain/review";
-import type { ReviewSession } from "#src/domain/review-session";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
@@ -84,11 +82,11 @@ import { isTerminalStatus } from "./insight-slot-records";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
+import type { GuideResumeRequest } from "./guide-generation-resume";
 import {
-  guideResumeFailure,
-  type GuideResumeRequest,
-} from "./guide-generation-resume";
-import { guideStartFailure } from "./guide-preparation-runtime";
+  ExplanationRunAdmission,
+  type InsightStartResolution,
+} from "./explanation-run-admission";
 import type { GuideGenerationStarter } from "./guide-generation-service";
 import {
   InsightActivityBuffer,
@@ -225,6 +223,7 @@ export class InsightRunCoordinator {
   private readonly executor: InsightRunExecutor;
   private readonly preparation: InsightRunPreparation;
   private readonly findings: InsightFindingCommands;
+  private readonly explanation: ExplanationRunAdmission;
 
   constructor(
     private readonly reviews: Pick<ReviewStore, "load" | "findOwner" | "list">,
@@ -256,9 +255,15 @@ export class InsightRunCoordinator {
      * Tool-driven Guide generation. When present, every Guide start runs through it: only the API-key `pi` route is
      * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
      */
-    private readonly guide?: GuideGenerationStarter,
+    guide?: GuideGenerationStarter,
   ) {
     this.active = owned;
+    this.explanation = new ExplanationRunAdmission(
+      guide,
+      this.operations,
+      (input, hooks) => this.resolveStart(input, hooks),
+      (profileId, reviewId) => this.ensureMutableOwned(profileId, reviewId),
+    );
     this.preparation = new InsightRunPreparation(
       this.paths,
       this.contextPack,
@@ -305,10 +310,7 @@ export class InsightRunCoordinator {
     const began = performance.now();
     const result =
       input.type === "guide"
-        ? // Production Guide generation has one route; without its service the Guide is unavailable.
-          this.guide === undefined
-          ? err("not_available" as const)
-          : await this.startGuide(this.guide, input, hooks)
+        ? await this.explanation.start(input, hooks)
         : await this.operations.withReviewLock(
             input.profileId,
             input.reviewId,
@@ -325,68 +327,11 @@ export class InsightRunCoordinator {
     return result;
   }
 
-  /**
-   * Admission checks run under one short Review lock; the run itself is admitted by the Guide service, which takes
-   * its own short locks, so nothing here is held across preparation, the worker or the provider.
-   */
-  private async startGuide(
-    guide: GuideGenerationStarter,
-    input: InsightCoordinatorInput,
-    hooks: InsightStartHooks | undefined,
-  ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
-    if (
-      (input.provider ?? "pi") !== "pi" ||
-      input.reasoning === "minimal" ||
-      input.reasoning === "xhigh"
-    )
-      return err("not_available");
-    const admitted = await this.operations.withReviewLock(
-      input.profileId,
-      input.reviewId,
-      () => this.resolveStart(input, hooks),
-    );
-    if (admitted._tag === "err") return admitted;
-    const { review, model, session, hash } = admitted.value;
-    const started = await guide.start({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      revision: review.updatedAt,
-      sessionId: session.id,
-      expectedHash: hash,
-      headSha: session.key.headSha,
-      baseSha: session.key.baseSha,
-      reasoning: input.reasoning,
-      selection: {
-        provider: "pi",
-        model,
-        reasoning: input.reasoning,
-        language: input.language,
-      },
-    });
-    if (started._tag === "err") return err(guideStartFailure(started.error));
-    const runId = parseInsightRunId(started.value.run.runId);
-    if (runId._tag === "err") return err("storage_unavailable");
-    // Request linkage cannot strand a run that already has a durable identity.
-    await hooks?.started(review, runId.value).catch(() => undefined);
-    return ok({ runId: runId.value, type: input.type, status: "queued" });
-  }
-
   /** The Review, selection and session identity a start is admitted against; run under the Review lock. */
   private async resolveStart(
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
-  ): Promise<
-    Result<
-      {
-        readonly review: Review;
-        readonly provider: InsightProvider;
-        readonly model: string;
-        readonly session: ReviewSession;
-        readonly hash: ContentHash;
-      },
-      InsightCoordinatorFailure
-    >
-  > {
+  ): Promise<Result<InsightStartResolution, InsightCoordinatorFailure>> {
     const review = await this.reviews.load(input.profileId, input.reviewId);
     if (review._tag === "err") {
       if (review.error.reason !== "not_found")
@@ -611,16 +556,7 @@ export class InsightRunCoordinator {
   async resumeGuide(
     input: GuideResumeRequest,
   ): Promise<Result<void, InsightCoordinatorFailure>> {
-    if (this.guide === undefined) return err("not_available");
-    const ownership = await this.ensureMutableOwned(
-      input.profileId,
-      input.reviewId,
-    );
-    if (ownership._tag === "err") return ownership;
-    const resumed = await this.guide.resume(input);
-    return resumed._tag === "ok"
-      ? resumed
-      : err(guideResumeFailure(resumed.error));
+    return this.explanation.resumeGuide(input);
   }
 
   async cancel(input: {

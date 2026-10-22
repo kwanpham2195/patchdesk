@@ -15,7 +15,7 @@ import type {
   InsightArtifactIndexDescriptor,
   InsightArtifactReference,
 } from "#src/domain/insight-artifact-scalars";
-import type { GuideResultStore } from "./guide-result-store";
+import type { InsightResultStore } from "./insight-result-store";
 import type { InsightArtifactStore } from "./insight-artifact-store";
 
 const MAX_INVENTORY_BYTES = 64 * 1024 * 1024;
@@ -29,7 +29,7 @@ type InventoryEntry = v.InferOutput<typeof guideInventoryEntrySchema>;
 export class GuideGraphWriter {
   constructor(
     private readonly artifacts: InsightArtifactStore,
-    private readonly store: GuideResultStore,
+    private readonly store: InsightResultStore,
     private readonly profile: WorkspaceProfileId,
     private readonly review: ReviewId,
     private readonly identity: {

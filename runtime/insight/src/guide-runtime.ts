@@ -21,17 +21,14 @@ import {
 } from "#app/domain/guide-protocol";
 import { loadInsightEvidenceReference } from "#app/services/insight-evidence-reference";
 import { composeGuideSessionPrompt } from "#app/services/guide-operation";
+import { openGuideChannel, type GuideChannel } from "./guide-child-channel";
+import { ExplanationChannelError } from "./explanation-child-channel";
 import {
-  GuideChannelError,
-  openGuideChannel,
-  type GuideChannel,
-} from "./guide-child-channel";
-import {
-  GUIDE_FETCH_APIS,
-  GuideDispatchRefused,
+  EXPLANATION_FETCH_APIS,
+  ExplanationDispatchRefused,
   createRecordedFetch,
-  type GuideSessionState,
-} from "./guide-request-dispatch";
+  type ExplanationSessionState,
+} from "./explanation-request-dispatch";
 import {
   createEvidenceTools,
   jsonSchemaFor,
@@ -70,7 +67,7 @@ function textContent(text: string) {
 /** Builds the four mutation/lookup tools; every one is a request on the private channel. */
 function createGuideSessionTools(
   channel: GuideChannel,
-  state: GuideSessionState,
+  state: ExplanationSessionState,
   onStop: () => void,
 ): ReadonlyArray<AgentTool> {
   const tool = <TSchema extends v.GenericSchema>(
@@ -100,7 +97,7 @@ function createGuideSessionTools(
         });
       } catch (cause: unknown) {
         if (
-          cause instanceof GuideChannelError &&
+          cause instanceof ExplanationChannelError &&
           cause.reason === "frame_too_large"
         )
           throw new Error(REFUSAL_GUIDANCE.too_large);
@@ -204,14 +201,14 @@ export async function runGuideSession(
     models.setProvider(provider);
   const model = resolveGuideModel(models, invocation.model);
   if (model === undefined) return { ok: false, reason: "runtime_unavailable" };
-  if (!GUIDE_FETCH_APIS.has(model.api))
+  if (!EXPLANATION_FETCH_APIS.has(model.api))
     return {
       ok: false,
       reason: "runtime_unavailable",
       detail: "unsupported_route",
     };
   const channel = (options.openChannel ?? openGuideChannel)(invocation.channel);
-  const state: GuideSessionState = {
+  const state: ExplanationSessionState = {
     finished: false,
     halted: false,
     unconfirmed: false,
@@ -239,7 +236,7 @@ export async function runGuideSession(
           try {
             return await recordedFetch(input, init);
           } catch (cause: unknown) {
-            if (cause instanceof GuideDispatchRefused)
+            if (cause instanceof ExplanationDispatchRefused)
               dispatchRefusal = cause.reason;
             throw cause;
           }

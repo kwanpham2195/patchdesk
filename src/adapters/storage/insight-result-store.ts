@@ -23,23 +23,23 @@ import type { StorageFailure } from "./json-file";
 const MAX_INDEX_DEPTH = 16;
 
 /** A position inside a TextRoot: block ordinal and UTF-16 unit offset within that block. */
-export type GuideTextPosition = {
+export type InsightTextPosition = {
   readonly block: number;
   readonly unit: number;
 };
 
 /** One index entry: its ordinal key and the object it names. */
-export type GuideIndexEntry = {
+export type InsightIndexEntry = {
   readonly key: string;
   readonly value: InsightArtifactReference;
 };
 
 /**
- * Bounded traversal of typed indexes and TextRoots for the Guide graph. Every read verifies the object hash through
+ * Bounded traversal of typed indexes and TextRoots. Every read verifies the object hash through
  * the artifact store and checks node counts against the parent's claim; the traversal retains no more than one
  * requested window, so a root that names thousands of entries or many blocks is read page by page, not whole.
  */
-export class GuideResultStore {
+export class InsightResultStore {
   constructor(
     private readonly artifacts: InsightArtifactStore,
     private readonly profileId: WorkspaceProfileId,
@@ -67,9 +67,9 @@ export class GuideResultStore {
     index: InsightArtifactIndexDescriptor,
     position: number,
     limit: number,
-  ): Promise<Result<ReadonlyArray<GuideIndexEntry>, StorageFailure>> {
+  ): Promise<Result<ReadonlyArray<InsightIndexEntry>, StorageFailure>> {
     if (position < 0 || position > index.count || limit < 0) return invalid();
-    const out: GuideIndexEntry[] = [];
+    const out: InsightIndexEntry[] = [];
     const walked = await this.walk(
       element,
       index.root,
@@ -89,7 +89,7 @@ export class GuideResultStore {
   readWholeIndex(
     element: InsightIndexElement,
     index: InsightArtifactIndexDescriptor,
-  ): Promise<Result<ReadonlyArray<GuideIndexEntry>, StorageFailure>> {
+  ): Promise<Result<ReadonlyArray<InsightIndexEntry>, StorageFailure>> {
     return this.readIndex(element, index, 0, index.count);
   }
 
@@ -99,7 +99,7 @@ export class GuideResultStore {
     expected: number,
     skip: number,
     take: number,
-    out: GuideIndexEntry[],
+    out: InsightIndexEntry[],
     depth: number,
   ): Promise<Result<void, StorageFailure>> {
     if (depth >= MAX_INDEX_DEPTH) return invalid();
@@ -185,11 +185,11 @@ export class GuideResultStore {
   /** One window of at most `maxUnits` units starting at `position`, without surrogate splitting. */
   async readTextPart(
     root: InsightTextRootDescriptor,
-    position: GuideTextPosition,
+    position: InsightTextPosition,
     maxUnits: number,
   ): Promise<
     Result<
-      { readonly text: string; readonly next: GuideTextPosition | null },
+      { readonly text: string; readonly next: InsightTextPosition | null },
       StorageFailure
     >
   > {
@@ -215,7 +215,7 @@ export class GuideResultStore {
     const last = text.charCodeAt(end - 1);
     if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
     if (end <= position.unit && text.length > position.unit) return invalid();
-    const next: GuideTextPosition | null =
+    const next: InsightTextPosition | null =
       end < text.length
         ? { block: position.block, unit: end }
         : position.block + 1 < root.data.blocks.count

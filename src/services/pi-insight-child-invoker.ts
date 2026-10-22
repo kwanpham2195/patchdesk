@@ -11,11 +11,12 @@ import { resolveWalkthroughTimeoutMs } from "./child-invocation";
 import { join } from "node:path";
 
 import { providerEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
-import {
-  runGuideChild,
-  type GuideChannelHandler,
-  type GuideChannelIdentity,
-} from "#src/adapters/process/guide-child-channel";
+import { runGuideChild } from "#src/adapters/process/guide-child-channel";
+import type { ExplanationConnectionIdentity } from "#src/domain/explanation-channel";
+import type {
+  GuideAppOutcome,
+  GuideChildFrame,
+} from "#src/domain/guide-protocol";
 import { whenLoginShellEnvironmentImported } from "#src/adapters/process/login-shell-import";
 
 import type {
@@ -287,8 +288,8 @@ export class PiInsightChildInvoker implements InsightInvoker {
     readonly reasoning: "low" | "medium" | "high";
     readonly language: InsightLanguage;
     readonly evidence: InsightEvidenceReference;
-    readonly identity: GuideChannelIdentity;
-    readonly handler: GuideChannelHandler;
+    readonly identity: ExplanationConnectionIdentity;
+    readonly handler: (frame: GuideChildFrame) => Promise<GuideAppOutcome>;
     readonly signal: AbortSignal;
   }): Promise<PiGuideChildOutcome> {
     const unknown = (

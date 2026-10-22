@@ -5,7 +5,7 @@ import {
   GuideReceiptReplay,
   type ReplayedOperation,
 } from "#src/adapters/storage/guide-result-job";
-import { GuideResultStore } from "#src/adapters/storage/guide-result-store";
+import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import type { InsightJournalSnapshot } from "#src/adapters/storage/insight-run-journal-reader";
 import { guideInventoryEntrySchema } from "#src/domain/guide";
@@ -35,7 +35,7 @@ import {
   type InsightTextRootDescriptor,
 } from "#src/domain/insight-artifact-scalars";
 import { err, ok, type Result } from "#src/domain/result";
-import type { GuideRunTransactions } from "./guide-run-transactions";
+import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type {
   InsightJournalChange,
   InsightRunRef,
@@ -89,7 +89,7 @@ export class GuideRunOperations {
   private readonly memory = new Map<string, RunMemory>();
 
   constructor(
-    private readonly authority: Pick<GuideRunTransactions, "produce">,
+    private readonly authority: Pick<ExplanationRunTransactions, "produce">,
     private readonly artifacts: InsightArtifactStore,
   ) {}
 
@@ -275,7 +275,7 @@ export class GuideRunOperations {
     },
   ): Promise<Result<InsightJournalChange, GuideRefusalReason>> {
     const { profileId, reviewId } = context.run;
-    const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+    const store = new InsightResultStore(this.artifacts, profileId, reviewId);
     const result = await this.artifacts.writeTextRoot(
       profileId,
       reviewId,
@@ -405,7 +405,7 @@ export class GuideRunOperations {
     const cached = this.memory.get(context.run.runId);
     if (cached !== undefined && cached.count === runtime.receipts.count)
       return ok(cached);
-    const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+    const store = new InsightResultStore(this.artifacts, profileId, reviewId);
     const prepared = await this.artifacts.readObject(
       profileId,
       reviewId,

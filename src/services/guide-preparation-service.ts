@@ -28,10 +28,8 @@ import { sessionRepresentsReview } from "#src/domain/review";
 import type { ReviewSession } from "#src/domain/review-session";
 import { err, ok, type Result } from "#src/domain/result";
 import { stageGuideContext } from "./guide-context-capture";
-import {
-  guideEvidenceReference,
-  guideSettleCode,
-} from "./guide-preparation-runtime";
+import { guideSettleCode } from "./guide-preparation-runtime";
+import { explanationEvidenceReference } from "./explanation-evidence-reference";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
 import type {
   InsightAdmissionInput,
@@ -387,7 +385,7 @@ export class GuidePreparationService {
     sessionId: ReviewSessionId,
     run: Pick<AdmittedRun, "profileId" | "reviewId" | "runId">,
   ): Promise<InsightEvidenceReference | undefined> {
-    return guideEvidenceReference(
+    return explanationEvidenceReference(
       this.artifacts,
       this.destination,
       prepared,
