@@ -15,7 +15,7 @@ import {
   type InsightArtifactReference,
 } from "#src/domain/insight-artifact-scalars";
 import { err, ok, type Result } from "#src/domain/result";
-import type { GuideRunTransactions } from "./guide-run-transactions";
+import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuideStartRequest } from "./guide-generation-service";
 import type { PiGuideChildOutcome } from "./pi-insight-child-invoker";
 import type { GuidePreparationService } from "./guide-preparation-service";
@@ -61,7 +61,7 @@ export function slotPointerDigest(
  */
 export class GuidePublisher {
   constructor(
-    private readonly authority: Pick<GuideRunTransactions, "publish">,
+    private readonly authority: Pick<ExplanationRunTransactions, "publish">,
     private readonly artifacts: InsightArtifactStore,
     private readonly now: () => IsoTimestamp,
   ) {}
@@ -227,7 +227,7 @@ export class GuidePassConclusion {
     private readonly isStopping: (runId: string) => boolean,
     now: () => IsoTimestamp,
   ) {
-    this.publisher = new GuidePublisher(authority.guide, artifacts, now);
+    this.publisher = new GuidePublisher(authority.explanation, artifacts, now);
   }
 
   /** Decides the pass's end from the journal, never from the child's word alone. */
@@ -238,7 +238,7 @@ export class GuidePassConclusion {
     baseline: GuideBaseline,
   ): Promise<void> {
     const ref = pass.run;
-    const read = await this.authority.guide.produce(ref, async () =>
+    const read = await this.authority.explanation.produce(ref, async () =>
       ok(undefined),
     );
     if (read._tag === "err") return;
@@ -351,13 +351,15 @@ export class GuidePassConclusion {
       await this.settle(ref, "storage_unavailable", "validation");
       return;
     }
-    const marked = await this.authority.guide.produce(ref, async ({ state }) =>
-      state.status === "running" &&
-      state.generation === pass.generation &&
-      state.cancelEpoch === pass.cancelEpoch &&
-      state.guideRuntime?.hash === runtimeRoot.hash
-        ? ok({ status: state.status, guideRuntime: advanced.value })
-        : err("not_active" as const),
+    const marked = await this.authority.explanation.produce(
+      ref,
+      async ({ state }) =>
+        state.status === "running" &&
+        state.generation === pass.generation &&
+        state.cancelEpoch === pass.cancelEpoch &&
+        state.guideRuntime?.hash === runtimeRoot.hash
+          ? ok({ status: state.status, guideRuntime: advanced.value })
+          : err("not_active" as const),
     );
     if (marked._tag === "err") {
       if (marked.error === "not_active")
@@ -420,7 +422,7 @@ export class GuidePassConclusion {
 
   private async pause(ref: InsightRunRef): Promise<boolean> {
     try {
-      const paused = await this.authority.guide.produce(
+      const paused = await this.authority.explanation.produce(
         ref,
         async ({ state }) =>
           state.status === "running" || state.status === "waiting"

@@ -13,8 +13,8 @@ import {
   insightBindingCodec,
   insightDomainIdentityCodec,
 } from "#src/domain/insight-run-binding-contract";
-import { guideEvidenceReference } from "#src/services/guide-preparation-runtime";
-import { GuideResultStore } from "./guide-result-store";
+import { explanationEvidenceReference } from "#src/services/explanation-evidence-reference";
+import { InsightResultStore } from "./insight-result-store";
 import type { InsightArtifactStore } from "./insight-artifact-store";
 import {
   evidencePathIsOwned,
@@ -86,14 +86,14 @@ export async function validateGuidePreparedEvidence(
     )
       return false;
   }
-  const store = new GuideResultStore(artifacts, profileId, reviewId);
+  const store = new InsightResultStore(artifacts, profileId, reviewId);
   const sessionText = await store.readText(identity.value.sessionId, 1_024);
   if (sessionText._tag === "err") return false;
   const session = parseReviewSessionId(sessionText.value);
   const runId = v.safeParse(insightArtifactIdSchema, run.runId);
   if (session._tag === "err" || !runId.success) return false;
   const [reference, entry] = await Promise.all([
-    guideEvidenceReference(artifacts, paths, prepared, session.value, {
+    explanationEvidenceReference(artifacts, paths, prepared, session.value, {
       ...run,
       runId: runId.output,
     }),

@@ -1,10 +1,6 @@
-import { createHash } from "node:crypto";
-
-import { GuideResultStore } from "#src/adapters/storage/guide-result-store";
+import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import {
-  GUIDE_MAX_REQUEST_BYTES,
-  GUIDE_REQUEST_CHUNK_BYTES,
   type GuideAppOutcome,
   type GuideChildFrame,
   type GuideRefusalReason,
@@ -19,14 +15,8 @@ import {
   outcomeForFailure,
   type GuideRunContext,
 } from "./guide-generation-operations";
-import type { GuideRunTransactions } from "./guide-run-transactions";
-
-type StagedRequest = {
-  readonly handle: number;
-  readonly totalBytes: number;
-  readonly chunks: Buffer[];
-  received: number;
-};
+import type { ExplanationRunTransactions } from "./explanation-run-transactions";
+import { ExplanationRequestStaging } from "./explanation-request-staging";
 
 /**
  * Per-connection staging of exact provider request bodies. The app issues the handle, so the child never names a
@@ -35,73 +25,38 @@ type StagedRequest = {
  * and no permission is granted once `finish` has closed writing, so no paid turn follows an accepted finish.
  */
 export class GuideRequestStaging {
-  private staged: StagedRequest | undefined;
-  private nextHandle = 1;
+  private readonly staging = new ExplanationRequestStaging();
 
   constructor(
-    private readonly authority: Pick<GuideRunTransactions, "produce">,
+    private readonly authority: Pick<ExplanationRunTransactions, "produce">,
     private readonly artifacts: InsightArtifactStore,
     private readonly now: () => IsoTimestamp,
   ) {}
 
   /** A new open discards an unfinished earlier body: only one request is in flight per connection. */
   open(totalBytes: number): GuideAppOutcome {
-    if (totalBytes > GUIDE_MAX_REQUEST_BYTES)
-      return { status: "refused", reason: "too_large" };
-    const handle = this.nextHandle;
-    this.nextHandle += 1;
-    this.staged = { handle, totalBytes, chunks: [], received: 0 };
-    return { status: "handle", handle };
+    return this.staging.open(totalBytes);
   }
 
   chunk(
     frame: Extract<GuideChildFrame, { kind: "request_chunk" }>,
   ): GuideAppOutcome {
-    const staged = this.staged;
-    if (staged === undefined || staged.handle !== frame.handle)
-      return { status: "refused", reason: "invalid_input" };
-    const bytes = Buffer.from(frame.data, "base64");
-    if (
-      frame.offset !== staged.received ||
-      bytes.length === 0 ||
-      bytes.length > GUIDE_REQUEST_CHUNK_BYTES ||
-      staged.received + bytes.length > staged.totalBytes
-    ) {
-      this.staged = undefined;
-      return { status: "refused", reason: "invalid_input" };
-    }
-    staged.chunks.push(bytes);
-    staged.received += bytes.length;
-    return { status: "stored" };
+    return this.staging.chunk(frame);
   }
 
   async commit(
     context: GuideRunContext,
     frame: Extract<GuideChildFrame, { kind: "request_commit" }>,
   ): Promise<GuideAppOutcome> {
-    const staged = this.staged;
-    this.staged = undefined;
-    if (
-      staged === undefined ||
-      staged.handle !== frame.handle ||
-      staged.received !== staged.totalBytes ||
-      frame.bytes !== staged.totalBytes
-    )
-      return { status: "refused", reason: "invalid_input" };
-    const body = Buffer.concat(staged.chunks);
-    if (createHash("sha256").update(body).digest("hex") !== frame.sha256)
-      return { status: "refused", reason: "invalid_input" };
-    let text: string;
-    try {
-      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
-        body,
-      );
-    } catch {
-      return { status: "refused", reason: "unsupported" };
-    }
+    const text = this.staging.take(frame);
+    if (text._tag === "err") return { status: "refused", reason: text.error };
     const { profileId, reviewId } = context.run;
     // Sensitive content refuses dispatch; the recorded body is never a redacted variant of what would be sent.
-    const root = await this.artifacts.writeTextRoot(profileId, reviewId, text);
+    const root = await this.artifacts.writeTextRoot(
+      profileId,
+      reviewId,
+      text.value,
+    );
     if (root._tag === "err")
       return {
         status: "refused",
@@ -148,7 +103,7 @@ export class GuideRequestStaging {
           },
         );
         if (intent._tag === "err") return err("storage" as const);
-        const dispatches = await new GuideResultStore(
+        const dispatches = await new InsightResultStore(
           this.artifacts,
           profileId,
           reviewId,

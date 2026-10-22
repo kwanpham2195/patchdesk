@@ -34,7 +34,7 @@ type Outcome = {
 };
 
 /** The locks and stores of the one authority; the Guide transitions share them instead of adding an authority. */
-export type GuideAuthorityInternals = {
+export type ExplanationAuthorityInternals = {
   locked<T>(key: InsightSlotKey, operation: () => Promise<T>): Promise<T>;
   withJournal<T>(
     journal: InsightJournalKey,
@@ -57,7 +57,7 @@ export type GuideAuthorityInternals = {
 };
 
 /** What an explicit Resume names: the unresolved evidence it acknowledges and the Authorization it records. */
-export type GuideResumeInput = {
+export type ExplanationResumeInput = {
   readonly generation: number;
   readonly dispatchCount: number;
   readonly authorization: InsightArtifactReference;
@@ -68,8 +68,8 @@ export type GuideResumeInput = {
  * Guide-specific journal and slot transitions over the shared authority locks. Lock order is unchanged: producer
  * operations take the journal lock alone; begin, resume and publish take Review, slot, then journal.
  */
-export class GuideRunTransactions {
-  constructor(private readonly internals: GuideAuthorityInternals) {}
+export class ExplanationRunTransactions {
+  constructor(private readonly internals: ExplanationAuthorityInternals) {}
 
   /**
    * Moves a prepared Guide run to `running` with its GuideRuntime1 root and a fresh, empty GuideDispatchIntent1 index
@@ -119,7 +119,7 @@ export class GuideRunTransactions {
    */
   resume<E>(
     run: InsightRunRef,
-    input: GuideResumeInput,
+    input: ExplanationResumeInput,
     guard: () => Promise<Result<void, E>>,
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
     return this.internals.advanceActive(run, guard, ({ state }): Decision =>

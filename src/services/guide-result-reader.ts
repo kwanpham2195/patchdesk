@@ -1,5 +1,5 @@
 import type { GuideRunStatus, GuideSummary } from "#src/domain/guide-progress";
-import { GuideResultStore } from "#src/adapters/storage/guide-result-store";
+import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { InsightRunJournalReader } from "#src/adapters/storage/insight-run-journal-reader";
@@ -35,7 +35,7 @@ export type GuideResultView = {
   readonly runId: string;
   readonly rootReference: InsightArtifactReference;
   readonly root: GuideResultRoot;
-  readonly store: GuideResultStore;
+  readonly store: InsightResultStore;
   readonly artifacts: InsightArtifactStore;
 };
 
@@ -134,7 +134,7 @@ export class GuideResultReader {
       runId: publication.value.runId,
       rootReference: retained.root,
       root: root.value,
-      store: new GuideResultStore(this.artifacts, profileId, reviewId),
+      store: new InsightResultStore(this.artifacts, profileId, reviewId),
       artifacts: this.artifacts,
     });
   }
@@ -178,7 +178,7 @@ export class GuideResultReader {
     if (status === undefined) return ok(null);
     let lastRequestHash = null;
     if (status === "paused" && state.dispatches.count > 0) {
-      const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+      const store = new InsightResultStore(this.artifacts, profileId, reviewId);
       const newest = await store.readIndex(
         "GuideDispatchIntent1",
         state.dispatches,
@@ -221,7 +221,7 @@ export class GuideResultReader {
       slot.replacementFailure,
     );
     if (failure._tag === "err") return err("invalid_result");
-    const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+    const store = new InsightResultStore(this.artifacts, profileId, reviewId);
     const runId = await store.readText(failure.value.runId, 1_024);
     if (runId._tag === "err" || parseInsightRunId(runId.value)._tag === "err")
       return err("invalid_result");

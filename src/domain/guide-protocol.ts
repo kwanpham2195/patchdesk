@@ -8,23 +8,21 @@ import {
   guideTitleSchema,
 } from "./guide";
 import {
-  insightArtifactHashSchema,
   insightArtifactIdSchema,
   insightArtifactIndexDescriptorSchema,
   insightArtifactPositiveSchema,
-  insightArtifactRunIdSchema,
-  insightArtifactUnsignedSchema,
 } from "./insight-artifact-scalars";
-import { err, ok, type Result } from "./result";
+import {
+  explanationOperationIdentity,
+  explanationFrameIdentity,
+  explanationRequestOpenSchema,
+  explanationRequestChunkSchema,
+  explanationRequestCommitSchema,
+  explanationHandleSchema,
+  explanationStoredSchema,
+  explanationPermissionSchema,
+} from "./explanation-channel";
 
-/** Every channel frame, in either direction, including identity fields and JSON escaping, fits this many UTF-8 bytes. */
-export const GUIDE_MAX_FRAME_BYTES = 32 * 1024;
-/** Largest provider request body the app stages; a larger body refuses dispatch. */
-export const GUIDE_MAX_REQUEST_BYTES = 16 * 1024 * 1024;
-/** Raw bytes per staged body chunk; base64 of this size plus identity fields stays under the frame bound. */
-export const GUIDE_REQUEST_CHUNK_BYTES = 12 * 1024;
-
-const U = insightArtifactUnsignedSchema;
 const P = insightArtifactPositiveSchema;
 
 /** The model-facing inputs. The host adds run, generation and cancel-epoch identity. */
@@ -61,11 +59,7 @@ export type GuideAddMembersInput = v.InferOutput<
 export type GuideOperationKind = "open_group" | "add_members" | "finish";
 
 /** Canonical operation payload: the model input plus the identity it was accepted under. */
-const identityFields = {
-  runId: insightArtifactRunIdSchema,
-  generation: U,
-  cancelEpoch: U,
-};
+const identityFields = explanationOperationIdentity;
 export const guideOperationPayloadSchemas = {
   open_group: v.strictObject({
     ...guideOpenGroupInputSchema.entries,
@@ -101,13 +95,8 @@ const receiptResultUnion = v.union([
   guideReceiptResultSchemas.finish,
 ]);
 
-const connectionIdSchema = v.pipe(v.string(), v.regex(/^[A-Za-z0-9_-]{8,64}$/));
 /** Identity every frame binds; the app compares each field before any side effect. */
-const frameIdentity = {
-  ...identityFields,
-  connection: connectionIdSchema,
-  correlation: P,
-};
+const frameIdentity = explanationFrameIdentity;
 
 const toolCallSchema = v.variant("tool", [
   v.strictObject({
@@ -135,29 +124,9 @@ export const guideChildFrameSchema = v.variant("kind", [
     ...frameIdentity,
     call: toolCallSchema,
   }),
-  v.strictObject({
-    kind: v.literal("request_open"),
-    ...frameIdentity,
-    totalBytes: v.pipe(P, v.maxValue(GUIDE_MAX_REQUEST_BYTES)),
-  }),
-  v.strictObject({
-    kind: v.literal("request_chunk"),
-    ...frameIdentity,
-    handle: P,
-    offset: U,
-    data: v.pipe(
-      v.string(),
-      v.regex(/^[A-Za-z0-9+/]*={0,2}$/),
-      v.maxLength(Math.ceil(GUIDE_REQUEST_CHUNK_BYTES / 3) * 4),
-    ),
-  }),
-  v.strictObject({
-    kind: v.literal("request_commit"),
-    ...frameIdentity,
-    handle: P,
-    sha256: insightArtifactHashSchema,
-    bytes: P,
-  }),
+  explanationRequestOpenSchema,
+  explanationRequestChunkSchema,
+  explanationRequestCommitSchema,
 ]);
 export type GuideChildFrame = v.InferOutput<typeof guideChildFrameSchema>;
 
@@ -189,14 +158,9 @@ export const guideAppReplySchema = v.strictObject({
       result: receiptResultUnion,
     }),
     v.strictObject({ status: v.literal("not_found") }),
-    v.strictObject({ status: v.literal("handle"), handle: P }),
-    v.strictObject({ status: v.literal("stored") }),
-    v.strictObject({
-      status: v.literal("permission"),
-      requestOrdinal: P,
-      sha256: insightArtifactHashSchema,
-      bytes: P,
-    }),
+    explanationHandleSchema,
+    explanationStoredSchema,
+    explanationPermissionSchema,
     v.strictObject({
       status: v.literal("refused"),
       reason: v.picklist(GUIDE_REFUSAL_REASONS),
@@ -209,30 +173,5 @@ export const guideAppReplySchema = v.strictObject({
     v.strictObject({ status: v.literal("unknown") }),
   ]),
 });
-export type GuideAppReply = v.InferOutput<typeof guideAppReplySchema>;
+type GuideAppReply = v.InferOutput<typeof guideAppReplySchema>;
 export type GuideAppOutcome = GuideAppReply["outcome"];
-
-/** Parses one newline-free frame line; the byte bound is checked before any JSON parse. */
-export function parseGuideFrameLine<TSchema extends v.GenericSchema>(
-  schema: TSchema,
-  line: string,
-): Result<v.InferOutput<TSchema>, "frame_too_large" | "invalid_frame"> {
-  if (new TextEncoder().encode(line).length > GUIDE_MAX_FRAME_BYTES)
-    return err("frame_too_large");
-  try {
-    const parsed = v.safeParse(schema, JSON.parse(line));
-    return parsed.success ? ok(parsed.output) : err("invalid_frame");
-  } catch {
-    return err("invalid_frame");
-  }
-}
-
-/** Encodes one frame; a frame over the bound is a programming error in the sender, never truncated. */
-export function encodeGuideFrameLine(
-  frame: GuideChildFrame | GuideAppReply,
-): Result<string, "frame_too_large"> {
-  const line = JSON.stringify(frame);
-  return new TextEncoder().encode(line).length > GUIDE_MAX_FRAME_BYTES
-    ? err("frame_too_large")
-    : ok(line);
-}

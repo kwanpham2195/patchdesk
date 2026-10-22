@@ -29,7 +29,7 @@ import {
 } from "#src/domain/insight-artifact-scalars";
 import { err, type Result } from "#src/domain/result";
 import { GuideGraphWriter } from "./guide-result-validation";
-import { GuideResultStore } from "./guide-result-store";
+import { InsightResultStore } from "./insight-result-store";
 import { validateGuidePreparedEvidence } from "./guide-prepared-evidence-validation";
 import { readBoundedInsightArtifactFile } from "./insight-artifact-files";
 import { InsightArtifactStore } from "./insight-artifact-store";
@@ -150,7 +150,7 @@ export async function validateGuideResult(
     return await new Validation(
       artifacts,
       paths,
-      new GuideResultStore(artifacts, profile.value, review.value),
+      new InsightResultStore(artifacts, profile.value, review.value),
       profile.value,
       review.value,
       input,
@@ -177,7 +177,7 @@ export type ReplayedOperations = ReadonlyMap<string, ReplayedOperation>;
 export class GuideReceiptReplay {
   constructor(
     private readonly artifacts: InsightArtifactStore,
-    private readonly store: GuideResultStore,
+    private readonly store: InsightResultStore,
     private readonly profile: WorkspaceProfileId,
     private readonly review: ReviewId,
     private readonly identity: {
@@ -346,7 +346,7 @@ class Validation {
   constructor(
     private readonly artifacts: InsightArtifactStore,
     private readonly paths: PatchdeskPaths,
-    private readonly store: GuideResultStore,
+    private readonly store: InsightResultStore,
     private readonly profile: WorkspaceProfileId,
     private readonly review: ReviewId,
     private readonly input: GuideValidationInput,

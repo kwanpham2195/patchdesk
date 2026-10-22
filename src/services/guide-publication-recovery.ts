@@ -9,7 +9,7 @@ import {
   guideRuntimeCodec,
 } from "#src/domain/guide-result";
 import { ok, type Result } from "#src/domain/result";
-import type { GuideRunTransactions } from "./guide-run-transactions";
+import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type {
   InsightRunRef,
   InsightSlotFailure,
@@ -29,7 +29,7 @@ export async function reconcilePublishedGuide(
     readonly artifacts: InsightArtifactStore;
     readonly slots: InsightSlotStore;
     readonly journals: InsightRunJournalReader;
-    readonly guide: Pick<GuideRunTransactions, "recordPublication">;
+    readonly explanation: Pick<ExplanationRunTransactions, "recordPublication">;
   },
   key: InsightSlotKey,
 ): Promise<Result<void, InsightSlotFailure>> {
@@ -96,7 +96,7 @@ export async function reconcilePublishedGuide(
       runId: publication.value.runId,
       journalId,
     };
-    const completed = await deps.guide.recordPublication(
+    const completed = await deps.explanation.recordPublication(
       run,
       slot.value.publication,
     );

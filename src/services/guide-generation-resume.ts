@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { GuideResultStore } from "#src/adapters/storage/guide-result-store";
+import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { guidePreparedInputCodec } from "#src/domain/guide-preparation";
 import {
@@ -24,7 +24,7 @@ import {
 import { err, ok, type Result } from "#src/domain/result";
 import * as v from "valibot";
 import type { GuidePass } from "./guide-result-publication";
-import type { GuideResumeInput } from "./guide-run-transactions";
+import type { ExplanationResumeInput } from "./explanation-run-transactions";
 import type { GuidePreparationService } from "./guide-preparation-service";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 
@@ -91,7 +91,7 @@ export class GuideResumePreparation {
     request: GuideResumeRequest,
   ): Promise<
     Result<
-      { readonly pass: GuidePass; readonly resume: GuideResumeInput },
+      { readonly pass: GuidePass; readonly resume: ExplanationResumeInput },
       GuideResumeFailure
     >
   > {
@@ -105,7 +105,7 @@ export class GuideResumePreparation {
     const run = active.value;
     if (run === undefined || run.runId !== request.runId)
       return err("not_found");
-    const read = await this.authority.guide.produce(run, async () =>
+    const read = await this.authority.explanation.produce(run, async () =>
       ok(undefined),
     );
     if (read._tag === "err") return err("storage");
@@ -120,7 +120,7 @@ export class GuideResumePreparation {
       state.dispatches.count === 0
     )
       return err("stale");
-    const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+    const store = new InsightResultStore(this.artifacts, profileId, reviewId);
     const [failure, newest, binding, previous] = await Promise.all([
       this.artifacts.readObject(
         profileId,

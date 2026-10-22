@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { GuideResultStore } from "#src/adapters/storage/guide-result-store";
+import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { InsightSlotStore } from "#src/adapters/storage/insight-slot-store";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
@@ -98,7 +98,10 @@ export class GuideGenerationService implements GuideGenerationStarter {
       resources.authorityReader,
     );
     this.slots = new InsightSlotStore(destination, resources.authorityReader);
-    this.operations = new GuideRunOperations(authority.guide, this.artifacts);
+    this.operations = new GuideRunOperations(
+      authority.explanation,
+      this.artifacts,
+    );
     this.conclusion = new GuidePassConclusion(
       destination,
       authority,
@@ -151,7 +154,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
     const { run } = pass;
     if (this.owned.has(run.runId)) return err("busy");
     const controller = new AbortController();
-    const resumed = await this.authority.guide.resume(run, resume, () =>
+    const resumed = await this.authority.explanation.resume(run, resume, () =>
       this.preparation.representedInputs(pass.request, pass.request),
     );
     if (resumed._tag === "err")
@@ -224,7 +227,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
     if (active._tag === "err") return false;
     if (active.value === undefined || active.value.runId !== run.runId)
       return true;
-    const read = await this.authority.guide.produce(run, async () =>
+    const read = await this.authority.explanation.produce(run, async () =>
       ok(undefined),
     );
     if (read._tag === "err") return false;
@@ -261,7 +264,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
       await this.conclusion.settle(ref, "evidence_missing", "generation");
       return;
     }
-    const store = new GuideResultStore(this.artifacts, profileId, reviewId);
+    const store = new InsightResultStore(this.artifacts, profileId, reviewId);
     const [receipts, dispatches] = await Promise.all([
       store.emptyIndex("GuideReceipt1"),
       store.emptyIndex("GuideDispatchIntent1"),
@@ -286,7 +289,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
       await this.conclusion.settle(ref, "storage_unavailable", "generation");
       return;
     }
-    const began = await this.authority.guide.begin(
+    const began = await this.authority.explanation.begin(
       {
         ...ref,
         generation: 1,
@@ -349,7 +352,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
         cancelEpoch: pass.cancelEpoch,
       };
       const staging = new GuideRequestStaging(
-        this.authority.guide,
+        this.authority.explanation,
         this.artifacts,
         this.now,
       );
