@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { definedProps } from "#src/domain/defined-props";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 import type {
   AccountInsightProvider,
   InsightLanguage,
@@ -112,7 +113,7 @@ export function useRunInsightsDialog({
     const seed = (type: InsightRunType): RunInsightsRowOptions => {
       runs[type].dismissStartRefusal();
       return {
-        ...seedInsightRunOptions(preferencesRef.current[type], catalog),
+        ...seedInsightRunOptions(type, preferencesRef.current[type], catalog),
         // A current result for this revision is not paid for again unless the reviewer checks it.
         checked: !isRunning(type) && statuses[type] !== "current",
       };
@@ -150,7 +151,7 @@ export function useRunInsightsDialog({
     if (rows === undefined || checkedTypes.length === 0) return;
     const planned = checkedTypes.flatMap((type) => {
       const { provider, model, reasoning, language } = rows[type];
-      return model === null
+      return model === null || !supportsInsightProvider(type, provider)
         ? []
         : [{ type, preference: { provider, model, reasoning, language } }];
     });
@@ -189,15 +190,18 @@ export function useRunInsightsDialog({
     open,
     close,
     setChecked: (type, checked) => updateRow(type, { checked }),
-    changeProvider: (type, provider) =>
+    changeProvider: (type, provider) => {
+      if (!supportsInsightProvider(type, provider)) return;
       updateRow(
         type,
         insightRunOptionsForProvider(
+          type,
           provider,
           preferencesRef.current[type],
           catalog,
         ),
-      ),
+      );
+    },
     changeModel: (type, model) => {
       const row = options?.[type];
       if (row === undefined) return;
@@ -217,6 +221,7 @@ export function useRunInsightsDialog({
               ? {
                   ...current[type],
                   ...insightRunOptionsForProvider(
+                    type,
                     provider,
                     preferencesRef.current[type],
                     nextCatalog,

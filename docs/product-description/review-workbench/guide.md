@@ -6,7 +6,7 @@ Guide is an optional Insight in the Review workbench. It groups changed files by
 
 ## The simple case
 
-Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose API key, a model, reasoning, and language, then start the run. This paged generation path currently refuses Codex CLI account and pi CLI account selections.
+Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose a model, reasoning, and language, then start the run. API key is the only provider offered. Codex CLI account and pi CLI account are not supported for Guide.
 
 The result shows a distinct file count, a group count, and Reviewed progress. Numbered groups have an explanation and expandable file rows. Others holds changed files outside the groups. Expanding a row shows that file's complete retained diff, including changes the group explanation does not discuss. Repeated appearances expand independently.
 
@@ -44,6 +44,8 @@ Reading a retained Guide starts no provider work or GitHub write. Scrolling save
 ### Begin an action
 
 Generate Guide, Regenerate, or the Guide row in Run Insights opens the run controls. Only confirming the run starts generation. The run uses the represented revision and its complete changed-file inventory.
+
+Every entry point, including Try again and agent-request approval, offers API key only. An unsupported saved account preference stays stored but the dialog displays API key without saving that change. With no API-key model available, Run is disabled and the controls explain that Guide requires an API key. A refused unsupported-provider start says to choose API key rather than reporting a generic start failure.
 
 Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview destinations before Enter or Space activates one. Tab enters preview actions. Escape closes the preview and returns focus to a navigation control. The opened narrow group list wraps long names; its closed trigger can truncate them.
 
@@ -132,6 +134,7 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 - The paged API-key path generated a real Guide with DeepSeek on the 516-file PR #140. CDP checks confirmed its 12 groups and 258 Others, file expansion, Open in Diff selecting the same file, saved Reviewed and expansion marks, tab-return position restoration, and reopening after a full dev-app restart without another provider dispatch. The source context completeness notice was inspected after it loaded.
 - The new cancellation, terminal-failure, unknown-request Resume, and interrupted-generation recovery paths have source-review evidence, not live lifecycle proof. Earlier native and legacy-fixture checks do not verify these changed owners. Provider transport parity and the remaining Review-source checks are pending.
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
+- Per-Insight provider filtering is revised in the provider-filter slice of #821 and awaits the parent's live check.
 
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
 

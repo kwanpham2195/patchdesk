@@ -3,6 +3,7 @@ import { useGuideReadingTransition } from "#src/renderer/src/hooks/use-guide-rea
 import { XIcon } from "lucide-react";
 import { useContext, useMemo, type RefObject } from "react";
 import { definedProps } from "#src/domain/defined-props";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 import type { LocalPatchView } from "#src/domain/local-patch-view";
 import { parseUnifiedPatch, type ParsedPatchFile } from "#src/domain/patch";
 
@@ -39,7 +40,10 @@ import { useInsightSelection } from "#src/renderer/src/hooks/use-insight-selecti
 import { useWalkthroughFocusTransition } from "#src/renderer/src/hooks/use-walkthrough-focus-transition";
 import type { InsightRunConfiguration } from "#src/renderer/src/hooks/use-insight-configuration";
 import { useInsightRunControls } from "#src/renderer/src/hooks/use-insight-run-controls";
-import type { RunInsightsDialogController } from "#src/renderer/src/hooks/use-run-insights-dialog";
+import {
+  RUN_INSIGHTS_ORDER,
+  type RunInsightsDialogController,
+} from "#src/renderer/src/hooks/use-run-insights-dialog";
 import { useAnalysisVerification } from "#src/renderer/src/hooks/use-analysis-verification";
 import { walkthroughRevisionMatches } from "#src/renderer/src/hooks/use-walkthrough-summary";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
@@ -69,6 +73,8 @@ function insightRequestFailureMessage(
   requestFailure: InsightRunController["requestFailure"],
 ): string | undefined {
   if (requestFailure === undefined) return undefined;
+  if (requestFailure === "unsupported_provider")
+    return `${insightName} does not support this provider. Choose API key in the run options.`;
   if (requestFailure === "guide_input_too_large")
     return `${insightName} input exceeds the complete-input size limit. The existing ${insightName} is retained.`;
   if (requestFailure === "guide_patch_empty")
@@ -155,51 +161,64 @@ function InsightDocumentMeta({
 function insightRunEnabled(
   configuration: InsightRunConfiguration,
   reviewOpen: boolean,
+  type: InsightRunDialogType,
 ): boolean {
   return (
     !configuration.catalogError &&
-    hasAvailableInsightProvider(configuration) &&
+    hasAvailableInsightProvider(configuration, type) &&
     reviewOpen
   );
 }
 
 function hasAvailableInsightProvider(
   configuration: InsightRunConfiguration,
+  type: InsightRunDialogType,
 ): boolean {
   return (
-    configuration.catalog?.providers.some((candidate) => candidate.available) ??
-    false
+    configuration.catalog?.providers.some(
+      (candidate) =>
+        candidate.available &&
+        candidate.supportedTypes.includes(type) &&
+        supportsInsightProvider(type, candidate.id),
+    ) ?? false
   );
+}
+
+function insightAvailabilityMessage(
+  configuration: InsightRunConfiguration,
+  type: InsightRunDialogType,
+): string | undefined {
+  if (configuration.catalogError)
+    return "Could not load the model list. Reopen the Review to try again.";
+  if (!hasAvailableInsightProvider(configuration, type))
+    return type === "guide" || type === "walkthrough"
+      ? `${INSIGHT_NOUNS[type]} requires an API-key model. Configure a provider API key, then relaunch Patchdesk. CLI accounts are not supported for this Insight.`
+      : "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk.";
+  if (configuration.provider === "pi" && configuration.models.length === 0)
+    return "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account.";
+  return undefined;
 }
 
 function InsightAvailabilityErrors({
   reviewOpen,
+  type,
   configuration,
   requestFailureMessage,
 }: {
   /** A merged or closed Review hides every run control, so a provider error would name a fix that enables nothing. */
   readonly reviewOpen: boolean;
+  readonly type: InsightRunDialogType;
   readonly configuration: InsightRunConfiguration;
   readonly requestFailureMessage: string | undefined;
 }): React.JSX.Element {
-  const { catalogError, provider, models } = configuration;
-  const hasAvailableProvider = hasAvailableInsightProvider(configuration);
-  const unavailable =
-    reviewOpen &&
-    (catalogError ||
-      !hasAvailableProvider ||
-      (provider === "pi" && models.length === 0));
+  const message = reviewOpen
+    ? insightAvailabilityMessage(configuration, type)
+    : undefined;
   return (
     <>
-      {unavailable ? (
-        <InlineError className="py-2">
-          {catalogError
-            ? "Could not load the model list. Reopen the Review to try again."
-            : !hasAvailableProvider
-              ? "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk."
-              : "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account."}
-        </InlineError>
-      ) : null}
+      {message === undefined ? null : (
+        <InlineError className="py-2">{message}</InlineError>
+      )}
       {requestFailureMessage === undefined ? null : (
         <InlineError className="py-2">{requestFailureMessage}</InlineError>
       )}
@@ -328,7 +347,9 @@ export function InsightsSlot({
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
   const guideRun = guideSnapshot?.run;
   const reviewOpen = workbench.review.status === "open";
-  const runEnabled = insightRunEnabled(configuration, reviewOpen);
+  const canRun = (type: InsightRunDialogType): boolean =>
+    insightRunEnabled(configuration, reviewOpen, type);
+  const runEnabled = canRun(selectedInsight);
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
       analysis: workbench.insights.analysis.retained?.runId,
@@ -409,7 +430,7 @@ export function InsightsSlot({
           onWorkbenchPatch={onWorkbenchPatch}
           {...definedProps({ profileLabel })}
           runBlockedReason={(type) =>
-            agentRunBlockedReason(runEnabled, runs[type], type)
+            agentRunBlockedReason(canRun(type), runs[type], type)
           }
           onRun={(request) => {
             setSelectedInsight(request.type);
@@ -427,7 +448,7 @@ export function InsightsSlot({
             guideStatus={guideStatus}
             walkthroughStatus={walkthroughStatus}
             onRunInsights={reviewOpen ? runInsights.open : undefined}
-            runInsightsDisabled={!runEnabled}
+            runInsightsDisabled={!RUN_INSIGHTS_ORDER.some(canRun)}
             trailing={
               <div className="flex min-w-0 items-center gap-2 pb-1 empty:hidden">
                 <InsightDocumentMeta
@@ -444,7 +465,7 @@ export function InsightsSlot({
                       readyWalkthrough !== undefined &&
                       walkthroughRevisionMatches(workbench, readyWalkthrough)
                     }
-                    runEnabled={runEnabled}
+                    runEnabled={canRun("walkthrough")}
                     onOpen={() => setSelectedInsight("walkthrough")}
                     onGenerate={() => openRunDialog("run", "walkthrough")}
                   />
@@ -577,6 +598,7 @@ function InsightDocument({
       )}
       <InsightAvailabilityErrors
         reviewOpen={reviewOpen}
+        type={selectedInsight}
         configuration={configuration}
         requestFailureMessage={requestFailureMessage}
       />

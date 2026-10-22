@@ -67,6 +67,9 @@ const insightProviderCatalogSchema = v.strictObject({
       id: v.picklist(INSIGHT_PROVIDERS),
       label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
       available: v.boolean(),
+      supportedTypes: v.array(
+        v.picklist(["brief", "analysis", "guide", "walkthrough"]),
+      ),
       guidance: v.pipe(
         v.string(),
         v.minLength(1),

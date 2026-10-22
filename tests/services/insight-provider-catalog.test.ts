@@ -55,6 +55,7 @@ describe("InsightProviderCatalog", () => {
         providers: [
           {
             id: "pi",
+            supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
             label: "API key",
             available: true,
             guidance:
@@ -62,12 +63,14 @@ describe("InsightProviderCatalog", () => {
           },
           {
             id: "codex-cli-account",
+            supportedTypes: ["brief", "analysis"],
             label: "Codex CLI account",
             available: true,
             guidance: "Use the existing local Codex CLI login.",
           },
           {
             id: "pi-cli-account",
+            supportedTypes: ["brief", "analysis"],
             label: "pi CLI account",
             available: true,
             guidance: "Use the existing local pi login.",
@@ -110,6 +113,7 @@ describe("InsightProviderCatalog", () => {
           providers: [
             {
               id: "codex-cli-account",
+              supportedTypes: ["brief", "analysis"],
               label: "Codex CLI account",
               available: true,
               guidance: "Use the existing local Codex CLI login.",
@@ -184,6 +188,7 @@ describe("InsightProviderCatalog", () => {
         providers: [
           {
             id: "pi",
+            supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
             label: "API key",
             available: false,
             guidance:
@@ -191,6 +196,7 @@ describe("InsightProviderCatalog", () => {
           },
           {
             id: "codex-cli-account",
+            supportedTypes: ["brief", "analysis"],
             label: "Codex CLI account",
             available: false,
             guidance:
@@ -198,6 +204,7 @@ describe("InsightProviderCatalog", () => {
           },
           {
             id: "pi-cli-account",
+            supportedTypes: ["brief", "analysis"],
             label: "pi CLI account",
             available: false,
             guidance:
@@ -309,6 +316,7 @@ describe("InsightProviderCatalog", () => {
         providers: [
           {
             id: "pi-cli-account",
+            supportedTypes: ["brief", "analysis"],
             label: "pi CLI account",
             available: true,
             guidance: "Use the existing local pi login.",

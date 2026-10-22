@@ -8,7 +8,7 @@ Walkthrough is a generated, guided reading sequence for one represented Review r
 
 The maintainer opens the Walkthrough. If none exists, a borderless empty state centers the Walkthrough icon, the heading "No walkthrough yet", a one-line explanation, and the Generate walkthrough action in the available reader space. With a retained Walkthrough, they read the active section and its cited diff hunks, move with Previous section, Next section, the chapter rail, the arrow keys, or plain `j` and `k`, and mark sections reviewed, or unmark one by pressing Section reviewed again. When they want fewer distractions they choose Focus section, and Escape brings the docked layout back. The chapter rail shows how many hunks the reading path does not explain and links to the full Diff.
 
-Generation needs an API key. Codex CLI account and pi CLI account selections are currently refused, even though the shared run dialog still offers them. Opening a saved Walkthrough needs no provider. Earlier-format Walkthroughs show unavailable with Regenerate rather than an older reader.
+Generation needs an API key. The run dialogs offer API key only for Walkthrough, not Codex CLI account or pi CLI account. Opening a saved Walkthrough needs no provider. Earlier-format Walkthroughs show unavailable with Regenerate rather than an older reader.
 
 ## The task, event by event
 
@@ -58,6 +58,8 @@ Focus section hides the Insight tab strip with its meta line, the Walkthrough ti
 Regenerate opens the shared Insight run dialog described in [Brief](brief.md#begin-an-action). Choose API key and a model. A Walkthrough run in Vietnamese writes its chapter titles, section titles, and prose in Vietnamese. For every language, the prompt asks the model to keep repository domain names, technical terms, paths, and identifiers as written. Regenerate appears in the docked layout for a readable result on an open Review when no run is active, including after cancellation or a failed replacement and for an older revision. Provider availability can disable it.
 
 Run Insights… beside the tab strip starts the Walkthrough together with Brief and Analysis, from one dialog with a row per Insight; see [Brief](brief.md#begin-an-action). The Walkthrough row is seeded from the saved Walkthrough preference, is checked by default only when no current Walkthrough stands for this revision, and is disabled while a Walkthrough runs. Generate walkthrough, Regenerate, Try again, and Run for latest revision keep the single-Insight dialog.
+
+Both dialogs and agent-request approval offer API key only for Walkthrough. A saved account preference stays stored but the active dialog displays API key without saving that change. With no API-key model available, Run is disabled and the controls explain the missing configuration. An unsupported-provider refusal says to choose API key instead of reporting a generic start failure.
 
 ### While the action runs
 
@@ -149,6 +151,7 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - The [Walkthrough checklist](../verification/insights-and-cross-cutting.md#review-workbenchwalkthroughmd) distinguishes those checks from pending focused/narrow layout, complete keyboard boundaries, native quit/restoration and inline-write checks. Account-provider parity, Local/MCP live acceptance and pinned W1 acceptance remain pending under #821.
 - Outdated Walkthrough wording changed after [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed), but is not live-verified.
 - Confirm layout fade, scroll and focus, section and reviewed state after quit, and highlighting fallback.
+- Per-Insight provider filtering is revised in the provider-filter slice of #821 and awaits the parent's live check.
 
 Baseline drafted from Patchdesk application source commit `3100615`; earlier reader checked against `737c515c`. Notes, comments and thread replies on cited hunks from #598 remain unverified live on the paged reader.
 

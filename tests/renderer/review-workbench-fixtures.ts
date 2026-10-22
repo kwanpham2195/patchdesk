@@ -237,6 +237,7 @@ export const providerCatalog = {
       id: "pi",
       label: "API key",
       available: true,
+      supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
       guidance: "Available for local review.",
     },
   ],

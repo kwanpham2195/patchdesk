@@ -8,6 +8,8 @@ import type {
   InsightProviderCatalogModel,
 } from "./insight-catalog-contracts";
 import type { InsightRunPreference } from "./insight-run-preferences";
+import type { InsightType } from "#src/domain/insight-record";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 
 /** The options one Insight run starts with, as a run dialog shows them. */
 export type InsightRunOptions = {
@@ -19,9 +21,20 @@ export type InsightRunOptions = {
 };
 
 function providerModels(
+  type: InsightType,
   catalog: InsightProviderCatalog | undefined,
   provider: InsightProvider,
 ): InsightProviderCatalogModel[] {
+  if (
+    !supportsInsightProvider(type, provider) ||
+    !catalog?.providers.some(
+      (candidate) =>
+        candidate.id === provider &&
+        candidate.available &&
+        candidate.supportedTypes.includes(type),
+    )
+  )
+    return [];
   return (
     catalog?.models.filter((candidate) => candidate.provider === provider) ?? []
   );
@@ -36,31 +49,46 @@ function firstModelReasoning(
 
 /** The options a run dialog opens with: the type's saved choice where the catalog still offers its model. */
 export function seedInsightRunOptions(
+  type: InsightType,
   preference: InsightRunPreference | undefined,
   catalog: InsightProviderCatalog | undefined,
 ): InsightRunOptions {
-  const provider = preference?.provider ?? "pi";
-  const models = providerModels(catalog, provider);
+  const saved =
+    preference !== undefined &&
+    supportsInsightProvider(type, preference.provider)
+      ? preference
+      : undefined;
+  const provider =
+    saved?.provider ??
+    catalog?.providers.find(
+      (candidate) =>
+        candidate.available &&
+        candidate.supportedTypes.includes(type) &&
+        supportsInsightProvider(type, candidate.id),
+    )?.id ??
+    "pi";
+  const models = providerModels(type, catalog, provider);
   return {
     provider,
     models,
     model:
-      preference !== undefined &&
-      models.some((candidate) => candidate.id === preference.model)
-        ? preference.model
+      saved !== undefined &&
+      models.some((candidate) => candidate.id === saved.model)
+        ? saved.model
         : (models[0]?.id ?? null),
-    reasoning: preference?.reasoning ?? "medium",
+    reasoning: saved?.reasoning ?? firstModelReasoning(models),
     language: preference?.language ?? "en",
   };
 }
 
 /** The options after the provider changes: the saved choice when it was for that provider, else its first model. */
 export function insightRunOptionsForProvider(
+  type: InsightType,
   provider: InsightProvider,
   preference: InsightRunPreference | undefined,
   catalog: InsightProviderCatalog | undefined,
 ): Pick<InsightRunOptions, "provider" | "models" | "model" | "reasoning"> {
-  const models = providerModels(catalog, provider);
+  const models = providerModels(type, catalog, provider);
   return {
     provider,
     models,

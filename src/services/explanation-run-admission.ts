@@ -5,6 +5,7 @@ import {
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import type { InsightProvider } from "#src/domain/insight-provider";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 import type { Review } from "#src/domain/review";
 import type { ReviewSession } from "#src/domain/review-session";
 import { err, ok, type Result } from "#src/domain/result";
@@ -55,14 +56,12 @@ export class ExplanationRunAdmission {
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    if (!supportsInsightProvider(input.type, input.provider ?? "pi"))
+      return err("unsupported_provider");
     const generator =
       input.type === "walkthrough" ? this.walkthrough : this.guide;
     if (generator === undefined) return err("not_available");
-    if (
-      (input.provider ?? "pi") !== "pi" ||
-      input.reasoning === "minimal" ||
-      input.reasoning === "xhigh"
-    )
+    if (input.reasoning === "minimal" || input.reasoning === "xhigh")
       return err("not_available");
     const admitted = await this.operations.withReviewLock(
       input.profileId,
