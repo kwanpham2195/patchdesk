@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { walkthroughPageSelectorSchema } from "#src/domain/walkthrough-selectors.js";
 
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
 
@@ -116,10 +117,16 @@ export const mcpToolManifest = {
   },
   get_insight: {
     description:
-      "Read one Insight of a local Review: its status, and the retained result with the session it describes. awaiting_approval and declined answer a run_insight request on the current session. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries outdated: true.",
+      "Read one Insight of a local Review: its status, and the retained result with the session it describes. awaiting_approval and declined answer a run_insight request on the current session. An Analysis lists its Findings with whether the maintainer dismissed, drafted, or applied each. A result from an earlier session carries outdated: true. Walkthrough without page returns status and a bounded summary. Pass page with its digest and a selector to return just the requested navigation, section, citations, uncited evidence, or continued hunk text page. Follow returned cursors without changing the digest. A stale digest is refused stale_result; read the summary again. page is valid only for Walkthrough.",
     inputSchema: v.strictObject({
       reviewId,
       type: v.picklist(["analysis", "walkthrough", "brief"]),
+      page: v.optional(
+        v.strictObject({
+          digest: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+          selector: walkthroughPageSelectorSchema,
+        }),
+      ),
     }),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },

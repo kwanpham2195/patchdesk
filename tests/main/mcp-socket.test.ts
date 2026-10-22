@@ -427,6 +427,7 @@ describe("MCP tool dispatcher", () => {
       agentExplanations: { explain: unavailable },
       agentRunRequests: { request: unavailable },
       reviewWorkbench: { load: unavailable },
+      walkthroughPages: { page: async () => err("storage_unavailable") },
       sessions: { load: unreadable },
       reviews: { load: unreadable },
     });

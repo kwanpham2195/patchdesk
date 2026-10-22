@@ -26,11 +26,12 @@ import {
 } from "./walkthrough-result-records";
 import type { WalkthroughProgressService } from "./walkthrough-result-progress";
 
-// Measure the MCP text-content envelope too, not only its unescaped JSON payload.
+// MCP sends both escaped text and structured content, so both must fit the reply budget.
 function replyBytes<T>(value: T): number {
   return Buffer.byteLength(
     JSON.stringify({
       content: [{ type: "text", text: JSON.stringify(value) }],
+      structuredContent: value,
     }),
   );
 }
@@ -138,14 +139,13 @@ export class WalkthroughPageService {
       kind: "navigation",
       scope: "",
     });
-    if (at === undefined || at.p > view.root.sections.count || at.u !== 0)
+    if (at === undefined || at.p > view.root.sections.count || at.u > 1)
       return err("invalid_cursor");
+    const backwards = at.u === 1;
     const items: Extract<WalkthroughPage, { kind: "navigation" }>["items"] = [];
-    for (
-      let ordinal = at.p;
-      ordinal < Math.min(at.p + 10, view.root.sections.count);
-      ordinal += 1
-    ) {
+    for (let offset = 0; offset < 10; offset += 1) {
+      const ordinal = backwards ? at.p - offset - 1 : at.p + offset;
+      if (ordinal < 0 || ordinal >= view.root.sections.count) break;
       const section = await walkthroughRecordAt(
         view,
         "WalkthroughSection1",
@@ -189,20 +189,23 @@ export class WalkthroughPageService {
           24576
       )
         break;
-      items.push(item);
+      if (backwards) items.unshift(item);
+      else items.push(item);
     }
-    const consumed = at.p + items.length;
+    const start = backwards ? at.p - items.length : at.p;
+    const consumed = backwards ? at.p : at.p + items.length;
     return ok({
       kind: "navigation",
       items,
       previous:
-        at.p === 0
+        start === 0
           ? null
           : encodeCursor({
               d: view.digest,
               k: "navigation",
               s: "",
-              p: Math.max(0, at.p - 10),
+              p: start,
+              u: 1,
             }),
       next:
         consumed < view.root.sections.count
@@ -254,13 +257,13 @@ export class WalkthroughPageService {
       next: ordinal + 1 < view.root.sections.count ? `s${ordinal + 2}` : null,
       reviewed: reviewed.value,
       navigationCursor:
-        ordinal < 10
+        ordinal === 0
           ? null
           : encodeCursor({
               d: view.digest,
               k: "navigation",
               s: "",
-              p: Math.floor(ordinal / 10) * 10,
+              p: ordinal,
             }),
     });
   }

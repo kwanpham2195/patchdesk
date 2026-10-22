@@ -109,6 +109,11 @@ describe("readReviewStatus", () => {
       { load: async () => ok(shown) },
       new ReviewSessionStore(harness.paths),
       harness.reviews,
+      {
+        page: async () => {
+          throw new Error("Status does not read Walkthrough pages");
+        },
+      },
     );
     await writeFile(probe, probeContent(2));
     const prepared = value(
@@ -197,6 +202,11 @@ describe("readReviewStatus", () => {
       },
       new ReviewSessionStore(harness.paths),
       harness.reviews,
+      {
+        page: async () => {
+          throw new Error("Status does not read Walkthrough pages");
+        },
+      },
     );
 
     const status = value(
