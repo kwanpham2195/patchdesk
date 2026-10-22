@@ -1,3 +1,8 @@
+import { ProfileStore } from "#src/adapters/storage/profile-store";
+import { GuideGenerationService } from "#src/services/guide-generation-service";
+import { GuidePreparationService } from "#src/services/guide-preparation-service";
+import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
+import type { PiInsightChildInvoker } from "#src/services/pi-insight-child-invoker";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -130,6 +135,7 @@ export function contextPackFixture(
 }
 
 type FixtureOptions = {
+  guideInvoker?: Pick<PiInsightChildInvoker, "invokeGuide">;
   insightStore?: (paths: PatchdeskPaths) => InsightStore;
   operations?: ReviewOperationCoordinator;
   recordDiagnostics?: boolean;
@@ -150,6 +156,7 @@ export async function fixture(
   invoker: InsightInvoker,
   {
     insightStore,
+    guideInvoker,
     operations = new ReviewOperationCoordinator(),
     recordDiagnostics = false,
     reach,
@@ -255,6 +262,41 @@ export async function fixture(
     operations,
     () => now,
   );
+  const resources =
+    guideInvoker === undefined
+      ? undefined
+      : createInProcessInsightResourceBundle();
+  if (resources !== undefined) {
+    must(
+      await new ProfileStore(paths).save({
+        id: profileId,
+        label: "Fixture",
+        githubHost: "github.com",
+        ghAccount: "fixture",
+        rulePaths: [],
+        repos: [],
+      }),
+    );
+  }
+  const guide =
+    resources === undefined || guideInvoker === undefined
+      ? undefined
+      : new GuideGenerationService(
+          paths,
+          new GuidePreparationService(
+            paths,
+            paths,
+            resources,
+            operations,
+            contextPack.service,
+            () => now,
+            slots,
+          ),
+          slots,
+          resources,
+          guideInvoker,
+          () => now,
+        );
   const coordinator = new InsightRunCoordinator(
     reviews,
     sessions,
@@ -276,8 +318,11 @@ export async function fixture(
     notifier === undefined
       ? undefined
       : { notifier, profiles: { list: async () => ok(profiles) } },
+    resources?.ownership.forScope(paths.dataDirectory()),
+    guide,
   );
   stopFixtures.push(async () => {
+    await resources?.dispose();
     for (const type of ["analysis", "brief", "walkthrough", "guide"] as const) {
       await coordinator.recover({ profileId, reviewId: review.id, type });
       const record = await insights.load(profileId, review.id, type);
@@ -300,6 +345,7 @@ export async function fixture(
     slots,
     contextPack: contextPack.counted,
     diagnostics,
+    resources,
   };
 }
 
