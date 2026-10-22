@@ -89,10 +89,20 @@ const provenanceSchema = v.strictObject({
   legacySourceHash: v.exactOptional(insightArtifactHashSchema),
 });
 
-// The contract's legacy variant carries a migrated deadline and has no producer yet, so only the new policy is accepted.
-const runPolicySchema = v.strictObject({
-  kind: v.literal("no-total-deadline/1"),
-});
+const runPolicySchema = v.variant("kind", [
+  v.strictObject({ kind: v.literal("no-total-deadline/1") }),
+  v.pipe(
+    v.strictObject({
+      kind: v.literal("walkthrough-deadline/1"),
+      startedAt: insightArtifactTimeSchema,
+      deadlineAt: insightArtifactTimeSchema,
+    }),
+    v.check(
+      (policy) => Date.parse(policy.deadlineAt) > Date.parse(policy.startedAt),
+      "Deadline must follow begin.",
+    ),
+  ),
+]);
 
 const authorizationSchema = v.strictObject({
   id: insightArtifactIdSchema,
@@ -203,7 +213,7 @@ export const insightProvenanceCodec: InsightArtifactCodec<
   typeof provenanceSchema
 > = { name: "Provenance", schema: provenanceSchema };
 
-/** RunPolicy: only `no-total-deadline/1`; the legacy variant waits for the slice that migrates a deadline. */
+/** Guide has no total deadline; Walkthrough preserves its size-scaled generation budget. */
 export const insightRunPolicyCodec: InsightArtifactCodec<
   typeof runPolicySchema
 > = { name: "RunPolicy", schema: runPolicySchema };

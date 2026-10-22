@@ -10,6 +10,7 @@ import {
 import { prepareGuideInputs } from "./guide-preparation-job";
 import { prepareWalkthroughInputs } from "./walkthrough-preparation-job";
 import { validateGuideResult } from "./guide-result-job";
+import { validateWalkthroughResult } from "./walkthrough-result-job";
 import { captureInsightPatch } from "./insight-patch-capture-job";
 
 if (parentPort === null)
@@ -49,9 +50,13 @@ async function runJob(
               ? await validateGuideResult(request.input, {
                   signal: controller.signal,
                 })
-              : await captureInsightPatch(request.input, {
-                  signal: controller.signal,
-                });
+              : request.kind === "validate_walkthrough"
+                ? await validateWalkthroughResult(request.input, {
+                    signal: controller.signal,
+                  })
+                : await captureInsightPatch(request.input, {
+                    signal: controller.signal,
+                  });
     const reply = v.safeParse(insightArtifactJobReplySchema, {
       kind: request.kind,
       id: request.id,

@@ -25,7 +25,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import * as v from "valibot";
 import type { GuidePass } from "./guide-result-publication";
 import type { ExplanationResumeInput } from "./explanation-run-transactions";
-import type { GuidePreparationService } from "./guide-preparation-service";
+import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 
 /** The explicit acknowledgment a Resume carries: the run, generation and the unresolved dispatch evidence it names. */
@@ -83,7 +83,7 @@ export class GuideResumePreparation {
   constructor(
     private readonly artifacts: InsightArtifactStore,
     private readonly authority: InsightSlotAuthority,
-    private readonly preparation: GuidePreparationService,
+    private readonly preparation: ExplanationPreparationService,
     private readonly now: () => IsoTimestamp,
   ) {}
 

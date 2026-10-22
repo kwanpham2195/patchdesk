@@ -464,7 +464,7 @@ function isRefusal(
  * A refusal promises no side effect. Only a definite failure is one; an unknown journal outcome is reported as such so
  * the producer stops instead of treating a possibly recorded mutation as rejected.
  */
-export function outcomeForFailure(
+function outcomeForFailure(
   error: GuideRefusalReason | InsightSlotFailure,
 ): GuideAppOutcome {
   if (error === "outcome_unknown") return { status: "unknown" };

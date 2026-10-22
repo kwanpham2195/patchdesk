@@ -13,6 +13,7 @@ import type {
 } from "#src/domain/insight-artifact-scalars";
 import type { InsightSlotRecord3 } from "#src/domain/insight-slot-contract";
 import { err, ok, type Result } from "#src/domain/result";
+import { definedProps } from "#src/domain/defined-props";
 import {
   failed,
   journalKey,
@@ -61,26 +62,37 @@ export type ExplanationResumeInput = {
   readonly generation: number;
   readonly dispatchCount: number;
   readonly authorization: InsightArtifactReference;
-  readonly guideRuntime: InsightArtifactReference;
-};
+} & (
+  | {
+      readonly guideRuntime: InsightArtifactReference;
+      readonly walkthroughRuntime?: never;
+    }
+  | {
+      readonly walkthroughRuntime: InsightArtifactReference;
+      readonly guideRuntime?: never;
+    }
+);
 
 /**
- * Guide-specific journal and slot transitions over the shared authority locks. Lock order is unchanged: producer
+ * Guide and Walkthrough journal and slot transitions over the shared authority locks. Lock order is unchanged: producer
  * operations take the journal lock alone; begin, resume and publish take Review, slot, then journal.
  */
 export class ExplanationRunTransactions {
   constructor(private readonly internals: ExplanationAuthorityInternals) {}
 
   /**
-   * Moves a prepared Guide run to `running` with its GuideRuntime1 root and a fresh, empty GuideDispatchIntent1 index
-   * in place of the admission-time one. The journal must still be at the admitted generation and cancel epoch.
+   * Begins the bound explanation family with its own runtime and dispatch index; Walkthrough also installs its
+   * begin-time deadline and linked authorization atomically before dispatch.
    */
   begin<E>(
     input: InsightRunRef & {
       readonly generation: number;
       readonly cancelEpoch: number;
-      readonly guideRuntime: InsightArtifactReference;
+      readonly guideRuntime?: InsightArtifactReference;
+      readonly walkthroughRuntime?: InsightArtifactReference;
       readonly dispatches: InsightArtifactIndexDescriptor;
+      readonly policy?: InsightArtifactReference;
+      readonly authorization?: InsightArtifactReference;
     },
     guard: () => Promise<Result<void, E>>,
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
@@ -88,12 +100,27 @@ export class ExplanationRunTransactions {
       state.generation === input.generation &&
       state.cancelEpoch === input.cancelEpoch &&
       state.status === "preparing" &&
-      state.guidePreparation !== undefined &&
-      state.guideRuntime === undefined &&
+      (input.type === "guide"
+        ? state.guidePreparation !== undefined &&
+          state.guideRuntime === undefined &&
+          input.guideRuntime !== undefined &&
+          input.walkthroughRuntime === undefined
+        : input.type === "walkthrough" &&
+          state.walkthroughPreparation !== undefined &&
+          state.walkthroughRuntime === undefined &&
+          input.walkthroughRuntime !== undefined &&
+          input.guideRuntime === undefined &&
+          input.policy !== undefined &&
+          input.authorization !== undefined) &&
       state.dispatches.count === 0
         ? ok({
             status: "running",
-            guideRuntime: input.guideRuntime,
+            ...definedProps({
+              guideRuntime: input.guideRuntime,
+              walkthroughRuntime: input.walkthroughRuntime,
+              policy: input.policy,
+              authorization: input.authorization,
+            }),
             dispatches: input.dispatches,
           })
         : err("not_active"),
@@ -124,8 +151,14 @@ export class ExplanationRunTransactions {
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
     return this.internals.advanceActive(run, guard, ({ state }): Decision =>
       state.status === "paused" &&
-      state.guidePreparation !== undefined &&
-      state.guideRuntime !== undefined &&
+      (run.type === "guide"
+        ? state.guidePreparation !== undefined &&
+          state.guideRuntime !== undefined &&
+          input.guideRuntime !== undefined
+        : run.type === "walkthrough" &&
+          state.walkthroughPreparation !== undefined &&
+          state.walkthroughRuntime !== undefined &&
+          input.walkthroughRuntime !== undefined) &&
       state.generation === input.generation &&
       state.dispatches.count === input.dispatchCount &&
       input.dispatchCount > 0
@@ -134,7 +167,10 @@ export class ExplanationRunTransactions {
             generation: state.generation + 1,
             cancelEpoch: state.cancelEpoch + 1,
             authorization: input.authorization,
-            guideRuntime: input.guideRuntime,
+            ...definedProps({
+              guideRuntime: input.guideRuntime,
+              walkthroughRuntime: input.walkthroughRuntime,
+            }),
             clearFailure: true,
             usageUnknown: true,
           })
@@ -246,6 +282,8 @@ function samePublished(
     actual.version === expected.version &&
     actual.retained?.tag === expected.retained?.tag &&
     actual.retained?.root.hash === expected.retained?.root.hash &&
-    actual.publication?.hash === expected.publication?.hash
+    actual.retained?.root.bytes === expected.retained?.root.bytes &&
+    actual.publication?.hash === expected.publication?.hash &&
+    actual.publication?.bytes === expected.publication?.bytes
   );
 }

@@ -24,7 +24,7 @@ import { verifyInsightStreamTextRoot } from "./insight-stream-root-reader";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /** Rechecks captured dependencies after generation without loading the patch, context or evidence files into memory. */
-export async function validateGuidePreparedEvidence(
+export async function validateExplanationPreparedEvidence(
   artifacts: InsightArtifactStore,
   paths: PatchdeskPaths,
   run: {
@@ -34,6 +34,7 @@ export async function validateGuidePreparedEvidence(
   },
   prepared: GuidePreparedInput,
   options: { readonly signal?: AbortSignal },
+  kind: "guide" | "walkthrough",
 ): Promise<boolean> {
   const { profileId, reviewId } = run;
   for (const root of [
@@ -58,7 +59,7 @@ export async function validateGuidePreparedEvidence(
   );
   if (
     binding._tag === "err" ||
-    binding.value.kind !== "guide" ||
+    binding.value.kind !== kind ||
     binding.value.patchHash !== prepared.patch.data.sha256
   )
     return false;
@@ -108,7 +109,7 @@ export async function validateGuidePreparedEvidence(
     reference.identity.reviewId !== reviewId ||
     reference.identity.sessionId !== session.value ||
     reference.identity.runId !== run.runId ||
-    reference.identity.type !== "guide" ||
+    reference.identity.type !== kind ||
     reference.identity.headSha !== binding.value.headSha ||
     reference.identity.baseSha !== binding.value.baseSha ||
     String(reference.identity.patchHash) !== binding.value.patchHash ||

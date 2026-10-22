@@ -4,6 +4,7 @@ import type * as v from "valibot";
 
 import {
   encodeExplanationFrameLine,
+  EXPLANATION_MAX_FRAME_BYTES,
   parseExplanationFrameLine,
   type ExplanationConnectionIdentity,
   type ExplanationFrameIdentity,
@@ -76,6 +77,10 @@ export function openExplanationChannel<
       }
       pending.delete(reply.value.correlation);
       waiter.resolve(reply.value.outcome);
+    }
+    if (Buffer.byteLength(buffered) > EXPLANATION_MAX_FRAME_BYTES) {
+      failAll("protocol");
+      socket.destroy();
     }
   });
   socket.on("close", () => failAll("closed"));

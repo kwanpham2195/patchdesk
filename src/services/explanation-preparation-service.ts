@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
+import { walkthroughPreparedInputCodec } from "#src/domain/walkthrough-preparation";
 
-import type { GuideScope } from "#src/adapters/storage/guide-preparation-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import {
   guidePreparationFailure,
@@ -8,7 +8,7 @@ import {
 } from "#src/adapters/storage/insight-artifact-job-protocol";
 import { InsightStore } from "#src/adapters/storage/insight-store";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
-import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import { ReviewStore } from "#src/adapters/storage/review-store";
 import {
@@ -88,11 +88,11 @@ type Observation = {
 export type AdmittedRun = InsightSlotKey & InsightAdmittedRun;
 
 /**
- * Prepares the immutable Guide inputs for one Review in a destination scope: admits a current-format run, captures run
+ * Prepares immutable Guide or Walkthrough inputs in a destination scope: admits a current-format run, captures run
  * owned context outside the Review lock, lets the job worker build and verify everything, then installs the verified
  * root with one short fenced transaction. No provider is reachable from here.
  */
-export class GuidePreparationService {
+export class ExplanationPreparationService {
   private readonly reviews: ReviewStore;
   private readonly sessions: ReviewSessionStore;
   private readonly profiles: ProfileStore;
@@ -132,7 +132,10 @@ export class GuidePreparationService {
   }
 
   /** Starts one preparation; the caller owns the returned operation until its result settles. */
-  begin(request: GuidePreparationRequest): GuidePreparationOperation {
+  begin(
+    request: GuidePreparationRequest,
+    kind: "guide" | "walkthrough" = "guide",
+  ): GuidePreparationOperation {
     const controller = new AbortController();
     let admitted: AdmittedRun | undefined;
     let cancelled = false;
@@ -168,7 +171,7 @@ export class GuidePreparationService {
       }
       return false;
     };
-    const result = this.prepare(request, controller, (run) => {
+    const result = this.prepare(request, kind, controller, (run) => {
       admitted = run;
       announce(ok(run));
     })
@@ -222,6 +225,7 @@ export class GuidePreparationService {
 
   private async prepare(
     request: GuidePreparationRequest,
+    kind: "guide" | "walkthrough",
     controller: AbortController,
     onAdmitted: (run: AdmittedRun) => void,
   ): Promise<GuidePreparationResult> {
@@ -235,7 +239,7 @@ export class GuidePreparationService {
     const key = {
       profileId: request.profileId,
       reviewId: request.reviewId,
-      type: "guide",
+      type: kind,
     } as const;
     // Both guards run under the authority's Review lock, so they must not take that lock again.
     const unchanged = async (): Promise<
@@ -287,10 +291,16 @@ export class GuidePreparationService {
     if (signal.aborted) return guidePreparationFailure("aborted");
     const prepared = await this.runJob(request, run, before.value, signal);
     if (prepared._tag === "err") return prepared;
-    const installed = await this.slots.installGuidePreparation(
-      { ...run, guidePreparation: prepared.value.root },
-      unchanged,
-    );
+    const installed =
+      kind === "guide"
+        ? await this.slots.installGuidePreparation(
+            { ...run, guidePreparation: prepared.value.root },
+            unchanged,
+          )
+        : await this.slots.installWalkthroughPreparation(
+            { ...run, walkthroughPreparation: prepared.value.root },
+            unchanged,
+          );
     if (installed._tag === "err")
       return guidePreparationFailure(
         installed.error === "not_active"
@@ -331,7 +341,7 @@ export class GuidePreparationService {
       // Acquisition above was joined, not cancelled; a stop requested meanwhile takes effect here.
       if (signal.aborted) return guidePreparationFailure("aborted");
       const permit = await this.resources.permits.capture(
-        `guide-preparation:${request.profileId}:${request.reviewId}`,
+        `${run.type}-preparation:${request.profileId}:${request.reviewId}`,
         signal,
       );
       if (permit._tag === "err")
@@ -339,7 +349,11 @@ export class GuidePreparationService {
           permit.error === "aborted" ? "aborted" : "busy",
         );
       try {
-        const job = await this.resources.jobs.prepareGuide(
+        const job = await (
+          run.type === "guide"
+            ? this.resources.jobs.prepareGuide
+            : this.resources.jobs.prepareWalkthrough
+        )(
           {
             sourceRoot: this.source.dataDirectory(),
             sourcePath: before.sourcePath,
@@ -361,12 +375,20 @@ export class GuidePreparationService {
         );
         if (job._tag === "err") return job;
         // The job verified what it stored; the host confirms the root it will install names this run's Binding.
-        const stored = await this.artifacts.readObject(
-          request.profileId,
-          request.reviewId,
-          guidePreparedInputCodec,
-          job.value.root,
-        );
+        const stored =
+          run.type === "guide"
+            ? await this.artifacts.readObject(
+                request.profileId,
+                request.reviewId,
+                guidePreparedInputCodec,
+                job.value.root,
+              )
+            : await this.artifacts.readObject(
+                request.profileId,
+                request.reviewId,
+                walkthroughPreparedInputCodec,
+                job.value.root,
+              );
         return stored._tag === "ok" &&
           stored.value.binding.hash === run.binding.hash
           ? job
@@ -465,32 +487,4 @@ export class GuidePreparationService {
       return err("stale_source");
     return ok({ session: session.value, sourcePath });
   }
-}
-
-/**
- * Settles the Guide run an earlier process left active in a registered diagnostic scope, with the same authority that
- * admitted it. A run this process owns is skipped. It reads and writes only the scope, never the source Review or
- * session, and it never dispatches or generates.
- */
-export async function recoverGuideScope(
-  scope: GuideScope,
-  resources: InsightResourceBundle,
-  operations: ReviewOperationCoordinator,
-  now: () => IsoTimestamp,
-): Promise<Result<void, InsightSlotFailure>> {
-  const destination = PatchdeskPaths.fromEnvironment({
-    PATCHDESK_CONFIG_DIRECTORY: scope.path,
-    PATCHDESK_DATA_DIRECTORY: scope.path,
-    PATCHDESK_CACHE_DIRECTORY: scope.path,
-  });
-  return new InsightSlotAuthority(
-    destination,
-    resources.authorityReader,
-    new InsightStore(destination, resources.authorityReader),
-    operations,
-    now,
-  ).recover(
-    { profileId: scope.profileId, reviewId: scope.reviewId, type: "guide" },
-    resources.ownership.forScope(destination.dataDirectory()),
-  );
 }

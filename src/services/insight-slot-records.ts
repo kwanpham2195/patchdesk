@@ -78,6 +78,9 @@ export type InsightJournalChange = {
   readonly guidePreparation?: InsightArtifactReference;
   /** R<GuideRuntime1> the transaction sets as the journal's specialized Guide state. */
   readonly guideRuntime?: InsightArtifactReference;
+  readonly walkthroughPreparation?: InsightArtifactReference;
+  readonly walkthroughRuntime?: InsightArtifactReference;
+  readonly policy?: InsightArtifactReference;
   /** An accepted Guide operation: the journal's receipts index gains its receipt, and the intent names both objects. */
   readonly operation?: {
     readonly operation: InsightArtifactReference;
@@ -124,7 +127,11 @@ export function isTerminalStatus(status: InsightJournalStatus): boolean {
 export function phaseOf(
   state: InsightJournalState,
 ): InsightFailureRecord["phase"] {
-  return state.candidate === null ? "capture" : "generation";
+  return state.candidate === null &&
+    state.guideRuntime === undefined &&
+    state.walkthroughRuntime === undefined
+    ? "capture"
+    : "generation";
 }
 
 /** D4: `insight-<type>-<token>-<sha12>-review-<12hex>`, disjoint from legacy IDs (which embed the full Review ID with `__`). */

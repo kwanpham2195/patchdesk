@@ -1,6 +1,6 @@
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
-import { GuidePreparationService } from "#src/services/guide-preparation-service";
+import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { PiInsightChildInvoker } from "#src/services/pi-insight-child-invoker";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
@@ -283,7 +283,7 @@ export async function fixture(
       ? undefined
       : new GuideGenerationService(
           paths,
-          new GuidePreparationService(
+          new ExplanationPreparationService(
             paths,
             paths,
             resources,
