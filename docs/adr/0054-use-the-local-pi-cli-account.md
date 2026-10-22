@@ -2,6 +2,8 @@
 
 > Superseded in part by [ADR 0055](0055-read-captured-insight-evidence-on-demand.md). The historical input, inspection, and permission descriptions below remain as the record of the earlier decision.
 
+> The Walkthrough contract in ADR 0055 also supersedes account-provider availability below. New Walkthrough generation is API-key only until account-provider parity is implemented.
+
 > **Status: Accepted** (2026-09-30, maintainer on #551). Extends ADR 0016 to a
 > third Insight provider. ADR 0043's activity trace stays Codex-only. Terms in
 > bold are defined in [the product glossary](../product-description/glossary.md).

@@ -176,7 +176,7 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 **Insight.** A revision-bound aid that helps a maintainer understand or evaluate a represented change. Brief, Guide, Walkthrough, and Analysis are Insight types on both pull request and local Reviews; none can publish to GitHub on completion.
 
-**Insight provider.** The execution source selected for an Insight run: API key (`pi` internally), Codex CLI account, or pi CLI account. See [Brief](review-workbench/brief.md#begin-an-action) for the run controls.
+**Insight provider.** The execution source selected for an Insight run: API key (`pi` internally), Codex CLI account, or pi CLI account. New Guide and Walkthrough generation currently accepts API keys only. See [Brief](review-workbench/brief.md#begin-an-action) for the shared run controls.
 
 **Codex CLI account provider.** The Insight provider that uses the maintainer's local Codex CLI account without Patchdesk storing its credentials. It inspects only the represented-review worktree with bounded read-only tools.
 
@@ -214,7 +214,7 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 **Focused layout.** The Walkthrough layout that Focus section switches to, hiding the tab strip, header, and chapter rail for one reading column. Exit focus or Escape returns to the Docked layout.
 
-**Support.** The Walkthrough's retained set of changed hunks that no section cites. The reader counts these hunks as not explained in the reading path and links to the full Diff; it does not list or mark them reviewed in the Walkthrough.
+**Support.** Historical name for the Walkthrough's changed hunks that no section cites. The paged reader calls them uncited hunks, counts them as not explained in the reading path, and links to the full Diff. It has no Support list or group-reviewed state.
 
 **Analysis run.** One optional model execution that can produce an Analysis for a represented Review session.
 

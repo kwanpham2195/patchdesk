@@ -85,6 +85,8 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 
 **Local persistence and recovery.** Cache is rebuildable. Local Review data includes sessions, retained Insights, receipts, journals, and related artifacts; cleanup protects active work and quarantines invalid entries.
 
+Walkthrough's captured hunks, generated result and per-result reading progress are durable Local data, not rebuildable Cache. Earlier-format results remain stored even though the reader requires regeneration. Their unavailability does not remove the existing legacy-slot cleanup protection. See [persistence and recovery](../foundations/persistence-and-recovery.md#settle) for result replacement and progress recovery.
+
 **GitHub permissions and write authority.** Both actions are local and perform no GitHub write. They do not reconcile or retry an uncertain GitHub write.
 
 **Network, local tools, and Insight providers.** No network or provider is needed to confirm cleanup, though local recovery checks inspect active work state.
@@ -116,3 +118,5 @@ If cleanup fails, the confirmation stays open with `Cleanup failed` and `Could n
 - Confirm whether a failed retention sweep has any visible Settings indication beyond redacted activity.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`; local session retention from `ed32b718` (#474); pull request session retention from `6fd0fbf6` (#478).
+
+Walkthrough storage description revised through source commit `95ded64c` for #821. No destructive cleanup check was performed for this revision.

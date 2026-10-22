@@ -1,5 +1,7 @@
 # Recover from invalid local data by rebuilding
 
+> [ADR 0055](0055-read-captured-insight-evidence-on-demand.md#walkthrough-production-and-retained-reading) supersedes silent empty-state recovery for current-format Walkthrough results and reading progress. Malformed explicit state is an error; old-format results are unavailable without import or rewriting. The historical recovery rules below remain for their other owners.
+
 > **Status: Accepted.** Extends the fail-closed posture of the ADR "Keep model runs bounded and non-authoritative": Patchdesk stays the authority over local review state, but invalid stored data is never a blocker.
 
 Patchdesk treats local stored data as a rebuildable cache of the pull request authority. When stored data fails schema validation, Patchdesk recovers by rebuilding from the pull request instead of refusing to load.

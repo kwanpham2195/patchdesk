@@ -147,6 +147,8 @@ The list is read once, when Patchdesk prepares the session, so it changes only w
 
 Brief, Walkthrough, and Analysis run on a local Review from the same run dialog, with the same provider, model, effort, and language choices, as on a pull request Review. Each run is bound to the local session's head, base, and patch hash, so a run on a shared Review analyzes the Local snapshot, including untracked files. A result is retained and read back the same way; a later session makes it Outdated.
 
+Walkthrough currently requires an API key on both local and pull request Reviews. The shared dialog still offers Codex CLI account and pi CLI account, but a Walkthrough start with either is refused. See [Walkthrough](../review-workbench/walkthrough.md) for paged reading and explicit Resume. Local/MCP live acceptance of this path remains pending under #821.
+
 What differs is what a local Review has no source for:
 
 - The model's context carries the repository's rule files and the changed-file list, but no pull request comments and no check results. Patchdesk makes no GitHub read to start the run.
@@ -424,3 +426,5 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - The Resolved badge, agent reply, and Resolve note on the inline note card (#688) are covered by card and hook tests; see LOCAL-59 for the live check on the Diff tab and a current Walkthrough.
 
 Drafted from Patchdesk application source commits `502acfd8`, `7d9a660a`, `d893476a`, `8cb71ffa`, and `de713f03`. Note recovery was checked against `fce8d4d7`, Viewed save queues against `d2df8aca`, and Viewed carry against `501871ef`. The checkout update check (#611) was drafted from `cc6bbc56` with its implementation, and remote-tracking bases (#591) from `1447906d` with theirs. Since last Refresh (#604) was drafted with its implementation.
+
+Walkthrough's API-key-only restriction is documented through source commit `95ded64c` for #821. The paged Local/MCP flow has not been verified live.
