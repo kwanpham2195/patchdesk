@@ -156,6 +156,11 @@ export const insightArtifactJobRequestSchema = v.pipe(
       input: guidePreparationInputSchema,
     }),
     v.strictObject({
+      kind: v.literal("prepare_walkthrough"),
+      id: requestId,
+      input: guidePreparationInputSchema,
+    }),
+    v.strictObject({
       kind: v.literal("validate_guide"),
       id: requestId,
       input: guideValidationInputSchema,
@@ -166,7 +171,8 @@ export const insightArtifactJobRequestSchema = v.pipe(
     const strings =
       request.kind === "capture_patch"
         ? Object.values(request.input)
-        : request.kind === "prepare_guide"
+        : request.kind === "prepare_guide" ||
+            request.kind === "prepare_walkthrough"
           ? [
               request.input.sourceRoot,
               request.input.sourcePath,
@@ -228,6 +234,11 @@ export const insightArtifactJobReplySchema = v.union([
   }),
   v.strictObject({
     kind: v.literal("prepare_guide"),
+    id: requestId,
+    result: guidePreparationResultSchema,
+  }),
+  v.strictObject({
+    kind: v.literal("prepare_walkthrough"),
     id: requestId,
     result: guidePreparationResultSchema,
   }),

@@ -121,6 +121,7 @@ export type InsightIndexElement =
   | "GuideMember1"
   | "GuideReceipt1"
   | "GuideReviewedGroup1"
+  | "WalkthroughHunk1"
   | "ObjectDigest"
   | "Receipt"
   | "TransactionEntry"

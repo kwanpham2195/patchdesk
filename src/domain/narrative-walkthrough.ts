@@ -4,7 +4,6 @@ import { definedProps } from "./defined-props";
 import {
   parseContentHash,
   parseGitSha,
-  parseRepoRelativePath,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
@@ -15,10 +14,9 @@ import {
 } from "./ids";
 import { err, ok, type Result } from "./result";
 import {
-  tokenizeUnifiedPatchLines,
-  type UnifiedHunkRange,
-  type UnifiedPatchToken,
-} from "./unified-patch";
+  parseNarrativePatch,
+  type NarrativePatchHunk,
+} from "./narrative-patch";
 
 /** The immutable identity that binds a walkthrough to one stored patch. */
 export type NarrativeSnapshot = {
@@ -102,13 +100,7 @@ const MAX_SECTIONS = 32;
 const MAX_HUNKS_PER_SECTION = 32;
 const MAX_HUNK_ALIAS_LENGTH = 32;
 const MAX_SNAPSHOT_ID_LENGTH = 400;
-const MAX_PATCH_LINE_COORDINATE = 1_000_000;
-const MAX_HUNK_LINE_COUNT = 100_000;
-const MAX_HUNK_RAW_LENGTH = 200_000;
-/** Keeps patch file metadata safe and aligned with the renderer projection boundary. */
-const MAX_NARRATIVE_FILE_PREFIX_LENGTH = 8_192;
 const HUNK_ALIAS_SYNTAX = /^h[1-9]\d*$/;
-const NO_NEWLINE_MARKER = "\\ No newline at end of file";
 
 const boundedText = (maxLength: number) =>
   v.pipe(v.string(), v.maxLength(maxLength));
@@ -144,19 +136,6 @@ const rawWalkthroughSchema = v.object({
 });
 
 type RawWalkthrough = v.InferOutput<typeof rawWalkthroughSchema>;
-type ParsedHunk = NarrativeHunk & {
-  readonly filePrefix: string;
-};
-
-type ParsedPatchFile = {
-  readonly prefix: string;
-  readonly hunks: ReadonlyArray<ParsedHunk>;
-};
-
-type ParsedPatch = {
-  readonly files: ReadonlyArray<ParsedPatchFile>;
-  readonly hunks: ReadonlyArray<ParsedHunk>;
-};
 
 function invalid(
   reason: NarrativeWalkthroughError["reason"],
@@ -228,194 +207,9 @@ function normalizeText(value: string): string {
   return value.trim();
 }
 
-function parseDiffPath(
-  value: string,
-): Result<RepoRelativePath, NarrativeWalkthroughError> {
-  const path = parseRepoRelativePath(
-    value === "/dev/null" ? "dev/null" : value,
-  );
-  return path._tag === "err" ? invalid("invalid_patch") : ok(path.value);
-}
-
-function validHunkRange(range: UnifiedHunkRange): boolean {
-  const coordinates = [
-    range.oldStart,
-    range.oldLines,
-    range.newStart,
-    range.newLines,
-  ];
-  if (!coordinates.every(Number.isSafeInteger)) return false;
-  return (
-    validRange(range.oldStart, range.oldLines) &&
-    validRange(range.newStart, range.newLines)
-  );
-}
-
-function validRange(start: number, lines: number): boolean {
-  if (
-    start < 0 ||
-    lines < 0 ||
-    start > MAX_PATCH_LINE_COORDINATE ||
-    lines > MAX_HUNK_LINE_COUNT
-  ) {
-    return false;
-  }
-  return lines === 0 || start > 0;
-}
-
-function countHunkBody(
-  tokens: ReadonlyArray<UnifiedPatchToken>,
-  start: number,
-  end: number,
-): { readonly oldLines: number; readonly newLines: number } | undefined {
-  let oldLines = 0;
-  let newLines = 0;
-  let sawContent = false;
-  for (let index = start; index < end; index += 1) {
-    const token = tokens[index];
-    if (token === undefined || token.kind !== "body") return undefined;
-    if (token.marker === "no_newline") {
-      if (token.raw !== NO_NEWLINE_MARKER || !sawContent) return undefined;
-      continue;
-    }
-    if (token.marker === "other") return undefined;
-    if (token.marker !== "added") oldLines += 1;
-    if (token.marker !== "removed") newLines += 1;
-    sawContent = true;
-  }
-  return { oldLines, newLines };
-}
-
-function validHunkBody(
-  tokens: ReadonlyArray<UnifiedPatchToken>,
-  start: number,
-  end: number,
-  range: UnifiedHunkRange,
-): boolean {
-  const counted = countHunkBody(tokens, start, end);
-  return (
-    counted !== undefined &&
-    counted.oldLines === range.oldLines &&
-    counted.newLines === range.newLines
-  );
-}
-
-function parseNarrativePatch(
-  patch: string,
-): Result<ParsedPatch, NarrativeWalkthroughError> {
-  if (patch.length === 0) return invalid("invalid_patch");
-  const lines = (patch.endsWith("\n") ? patch.slice(0, -1) : patch).split("\n");
-  const tokens = tokenizeUnifiedPatchLines(lines);
-  const files: Array<{
-    readonly start: number;
-    prefixEnd: number | undefined;
-    hunks: Array<{
-      readonly start: number;
-      end: number;
-      header: string;
-      range: UnifiedHunkRange;
-      path: RepoRelativePath;
-    }>;
-  }> = [];
-  let current: (typeof files)[number] | undefined;
-  let currentPath: RepoRelativePath | undefined;
-  let currentHunkStart: number | undefined;
-
-  const finishHunk = (end: number): boolean => {
-    if (
-      current === undefined ||
-      currentHunkStart === undefined ||
-      currentPath === undefined
-    )
-      return true;
-    const header = lines[currentHunkStart];
-    const opener = tokens[currentHunkStart];
-    if (header === undefined || opener?.kind !== "hunk_header") return false;
-    if (!validHunkBody(tokens, currentHunkStart + 1, end, opener.range))
-      return false;
-    const raw = lines.slice(currentHunkStart, end).join("\n");
-    if (raw.length > MAX_HUNK_RAW_LENGTH) return false;
-    current.hunks.push({
-      start: currentHunkStart,
-      end,
-      header,
-      range: opener.range,
-      path: currentPath,
-    });
-    currentHunkStart = undefined;
-    return true;
-  };
-
-  for (const token of tokens) {
-    if (token.kind === "file_header") {
-      if (!finishHunk(token.index)) return invalid("invalid_patch");
-      const path = parseDiffPath(token.newPath ?? "");
-      if (path._tag === "err") return path;
-      current = { start: token.index, prefixEnd: undefined, hunks: [] };
-      files.push(current);
-      currentPath = path.value;
-      continue;
-    }
-    // Git emits bare submodule-change lines without a diff header (for example
-    // "Submodule yim-proto-hub 00000000...4619420d (new submodule)"). They are
-    // metadata, not hunk body; close any open hunk and skip the line.
-    if (token.kind === "submodule") {
-      if (!finishHunk(token.index)) return invalid("invalid_patch");
-      continue;
-    }
-    if (current === undefined) continue;
-    if (token.kind === "hunk_header") {
-      if (!validHunkRange(token.range)) return invalid("invalid_patch");
-      if (!finishHunk(token.index)) return invalid("invalid_patch");
-      current.prefixEnd ??= token.index;
-      currentHunkStart = token.index;
-      continue;
-    }
-    if (token.raw.startsWith("@@ ")) return invalid("invalid_patch");
-  }
-  if (!finishHunk(lines.length)) return invalid("invalid_patch");
-
-  const parsedFiles: Array<ParsedPatchFile> = [];
-  const parsedHunks: Array<ParsedHunk> = [];
-  let nextAlias = 1;
-  for (const file of files) {
-    if (file.hunks.length === 0) continue;
-    const prefixEnd = file.prefixEnd ?? file.hunks[0]?.start ?? file.start;
-    const prefix = lines.slice(file.start, prefixEnd).join("\n");
-    if (prefix.length > MAX_NARRATIVE_FILE_PREFIX_LENGTH)
-      return invalid("invalid_patch");
-    const hunks: Array<ParsedHunk> = [];
-    for (const hunk of file.hunks) {
-      const raw = lines
-        .slice(hunk.start, hunk.end)
-        .join("\n")
-        .replace(/\n+$/, "");
-      const parsed: ParsedHunk = {
-        id: `h${nextAlias}`,
-        path: hunk.path,
-        header: hunk.header,
-        raw,
-        oldStart: hunk.range.oldStart,
-        oldLines: hunk.range.oldLines,
-        newStart: hunk.range.newStart,
-        newLines: hunk.range.newLines,
-        filePrefix: prefix,
-      };
-      nextAlias += 1;
-      hunks.push(parsed);
-      parsedHunks.push(parsed);
-    }
-    parsedFiles.push({ prefix, hunks });
-  }
-
-  return parsedHunks.length === 0
-    ? invalid("invalid_patch")
-    : ok({ files: parsedFiles, hunks: parsedHunks });
-}
-
 function hunkMap(
-  hunks: ReadonlyArray<ParsedHunk>,
-): ReadonlyMap<string, ParsedHunk> {
+  hunks: ReadonlyArray<NarrativePatchHunk>,
+): ReadonlyMap<string, NarrativePatchHunk> {
   return new Map(hunks.map((hunk) => [hunk.id, hunk]));
 }
 
@@ -469,7 +263,7 @@ function isWithinBounds(raw: RawWalkthrough): boolean {
   return true;
 }
 
-function normalizedHunk(hunk: ParsedHunk): NarrativeHunk {
+function normalizedHunk(hunk: NarrativePatchHunk): NarrativeHunk {
   return {
     id: hunk.id,
     path: hunk.path,
