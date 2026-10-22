@@ -21,6 +21,7 @@ import {
 } from "#src/domain/insight-evidence-fragments";
 import { InsightEvidencePages } from "#src/domain/insight-evidence-pages";
 import { narrativeHunkManifest } from "#src/domain/narrative-walkthrough";
+import type { NarrativePatchHunk } from "#src/domain/narrative-patch";
 import { err, ok, type Result } from "#src/domain/result";
 import { iterateUnifiedPatch } from "#src/domain/unified-patch";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
@@ -35,6 +36,8 @@ export function buildInsightEvidenceBundle(input: {
   readonly directory: string;
   /** Inventory the caller already built from `patch`; absent builds it here. */
   readonly inventory?: ReadonlyArray<GuideInventoryEntry>;
+  /** Exact hunks already parsed by Walkthrough preparation; avoids a second patch parse. */
+  readonly narrativeHunks?: ReadonlyArray<NarrativePatchHunk>;
 }): Result<InsightEvidenceBundle, InsightEvidenceFailure> {
   let hasFiles = false;
   for (const token of iterateUnifiedPatch(input.patch)) {
@@ -67,7 +70,21 @@ export function buildInsightEvidenceBundle(input: {
     allowedContext.push(addSource(input.reviewInput));
   const identitySource = addSource(JSON.stringify(input.identity));
   const briefCitations = briefManifest({ patch: input.patch });
-  const narrativeCitations = narrativeHunkManifest(input.patch);
+  const narrativeCitations =
+    input.narrativeHunks === undefined
+      ? narrativeHunkManifest(input.patch)
+      : ok(
+          input.narrativeHunks.map(({ id, path, header }) => ({
+            id,
+            path,
+            header,
+          })),
+        );
+  if (
+    input.identity.type === "walkthrough" &&
+    narrativeCitations._tag === "err"
+  )
+    return err({ _tag: "InsightEvidenceFailure", reason: "evidence_mismatch" });
   const citationText = JSON.stringify(
     input.identity.type === "brief"
       ? briefCitations
