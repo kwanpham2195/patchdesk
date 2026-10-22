@@ -30,6 +30,7 @@ import {
 import { err, type Result } from "#src/domain/result";
 import { GuideGraphWriter } from "./guide-result-validation";
 import { GuideResultStore } from "./guide-result-store";
+import { validateGuidePreparedEvidence } from "./guide-prepared-evidence-validation";
 import { readBoundedInsightArtifactFile } from "./insight-artifact-files";
 import { InsightArtifactStore } from "./insight-artifact-store";
 import { PatchdeskPaths } from "./patchdesk-paths";
@@ -148,6 +149,7 @@ export async function validateGuideResult(
   try {
     return await new Validation(
       artifacts,
+      paths,
       new GuideResultStore(artifacts, profile.value, review.value),
       profile.value,
       review.value,
@@ -343,6 +345,7 @@ export class GuideReceiptReplay {
 class Validation {
   constructor(
     private readonly artifacts: InsightArtifactStore,
+    private readonly paths: PatchdeskPaths,
     private readonly store: GuideResultStore,
     private readonly profile: WorkspaceProfileId,
     private readonly review: ReviewId,
@@ -383,6 +386,16 @@ class Validation {
     );
     if (prepared._tag === "err") return this.stopped("io");
     if (prepared.value.binding.hash !== input.binding.hash)
+      return this.stopped("rejected");
+    if (
+      !(await validateGuidePreparedEvidence(
+        this.artifacts,
+        this.paths,
+        { profileId: this.profile, reviewId: this.review, runId: input.runId },
+        prepared.value,
+        this.options,
+      ))
+    )
       return this.stopped("rejected");
     const inventoryText = await this.store.readText(
       prepared.value.inventory,
