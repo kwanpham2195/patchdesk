@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { WalkthroughSummary } from "#src/domain/walkthrough-progress";
-import { requestJson } from "#src/renderer/src/api-client";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
 import { parseWalkthroughSummaryReply } from "#src/renderer/src/walkthrough-contracts";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { InsightRunController } from "./use-insight-run";
@@ -9,6 +9,7 @@ import type { InsightRunController } from "./use-insight-run";
 export type WalkthroughSummaryState =
   | { readonly status: "loading" }
   | { readonly status: "failed" }
+  | { readonly status: "unavailable" }
   | { readonly status: "loaded"; readonly summary: WalkthroughSummary };
 type WalkthroughNavigationStatus = {
   readonly status: WorkbenchResponse["insights"]["walkthrough"]["status"];
@@ -42,8 +43,8 @@ export function walkthroughSummaryStatus(
     return { status: "running", label: undefined, activeStatus: run.status };
   if (state.status !== "loaded")
     return {
-      status: state.status === "failed" ? "failed" : "current",
-      label: state.status === "failed" ? "Unavailable" : "Loading",
+      status: state.status === "loading" ? "current" : "failed",
+      label: state.status === "loading" ? "Loading" : "Unavailable",
       activeStatus: undefined,
     };
   const summary = state.summary;
@@ -108,10 +109,15 @@ export function useWalkthroughSummary(
   }>({ key: "", scope: "", state: { status: "loading" } });
   useEffect(() => {
     let cancelled = false;
-    void requestJson("/v1/reviews/insights/walkthrough/summary", {
-      method: "POST",
-      body: { profileId, reviewId },
-    })
+    const controller = new AbortController();
+    void requestJson(
+      "/v1/reviews/insights/walkthrough/summary",
+      {
+        method: "POST",
+        body: { profileId, reviewId },
+      },
+      { signal: controller.signal },
+    )
       .then((body) => {
         if (cancelled) return;
         const summary = parseWalkthroughSummaryReply(body);
@@ -124,12 +130,21 @@ export function useWalkthroughSummary(
               : { status: "loaded", summary },
         });
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
         if (!cancelled)
-          setSnapshot({ key, scope, state: { status: "failed" } });
+          setSnapshot({
+            key,
+            scope,
+            state: {
+              status: isApiErrorCode(cause, "not_available")
+                ? "unavailable"
+                : "failed",
+            },
+          });
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [key, profileId, reviewId, scope, nonce]);
   const state: WalkthroughSummaryState =

@@ -1,4 +1,8 @@
-import type { LocalApiDesktopRequest } from "#src/main/ipc-contract";
+import type {
+  DesktopResponse,
+  LocalApiDesktopRequest,
+} from "#src/main/ipc-contract";
+import { definedProps } from "#src/domain/defined-props";
 import type { RawJsonValue } from "#src/domain/json";
 import { REFUSAL_CAUSES } from "#src/domain/github-write-refusal";
 import { appLog } from "./lib/logger";
@@ -95,6 +99,7 @@ export function untrustedWriteResponseError(
 export async function requestJson(
   path: string,
   init: Omit<LocalApiDesktopRequest, "path"> = {},
+  options?: { readonly signal?: AbortSignal },
 ): Promise<RawJsonValue | undefined> {
   const startedAt = performance.now();
   // Compare the pathname so the Logs panel's query-string poll is skipped too.
@@ -109,7 +114,29 @@ export async function requestJson(
       "Patchdesk desktop services are unavailable.",
     );
   }
-  const response = await window.patchdesk.request({ path, ...init });
+  const signal = options?.signal;
+  signal?.throwIfAborted();
+  const readRequestId = signal === undefined ? undefined : crypto.randomUUID();
+  const abortRead = (): void => {
+    if (readRequestId !== undefined)
+      void window.patchdesk
+        .request({ operation: "cancelReadRequest", readRequestId })
+        .catch(() => {
+          appLog.warn("api", "Read cancellation could not be delivered");
+        });
+  };
+  signal?.addEventListener("abort", abortRead, { once: true });
+  let response: DesktopResponse;
+  try {
+    response = await window.patchdesk.request({
+      path,
+      ...init,
+      ...definedProps({ readRequestId }),
+    });
+  } finally {
+    signal?.removeEventListener("abort", abortRead);
+  }
+  signal?.throwIfAborted();
   const durationMs = Math.round(performance.now() - startedAt);
   if (!skipLogging) {
     const method = init.method ?? "GET";

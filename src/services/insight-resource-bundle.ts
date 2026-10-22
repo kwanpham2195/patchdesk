@@ -3,6 +3,7 @@ import {
   type InsightArtifactJobWorker,
 } from "#src/adapters/storage/insight-artifact-job-worker";
 import { resolve } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 import { prepareGuideInputs } from "#src/adapters/storage/guide-preparation-job";
 import { prepareWalkthroughInputs } from "#src/adapters/storage/walkthrough-preparation-job";
@@ -20,10 +21,15 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { Active } from "./insight-run-coordinator";
 import type { AppLogService } from "./app-log-service";
 
-type Reader = typeof readBoundedInsightArtifactFile;
+type Reader = (
+  ownedRoot: string,
+  path: string,
+  options?: { readonly signal?: AbortSignal },
+) => ReturnType<typeof readBoundedInsightArtifactFile>;
 
-// Concurrent reads a caller class may have in flight; overload returns read/io like the reader's own cap.
+// UI overload waits; authority and run callers retain their existing read/io refusal.
 const uiReadQuota = 4;
+const uiWaiterQuota = 64;
 const authorityReadQuota = 4;
 const runReadQuota = 2;
 const totalReadQuota = 16;
@@ -39,8 +45,10 @@ type PermitWaiter = {
 
 /** Process-owned reader quotas, permits and both artifact workers. */
 export type InsightResourceBundle = {
-  /** Status and listing reads for the local API, at most 4 in flight. */
+  /** At most 4 active UI reads and 64 FIFO waiters; cancellation returns read/io. */
   readonly uiReader: Reader;
+  /** Propagates a request's lifetime through the storage graph without changing stored-value APIs. */
+  withReadSignal<T>(signal: AbortSignal, action: () => Promise<T>): Promise<T>;
   /** Run-authority and coordinator reads, at most 4 in flight. */
   readonly authorityReader: Reader;
   /** Reads for one run, at most 2 in flight per run id; all callers share 16. */
@@ -130,11 +138,12 @@ export async function acquireInsightResourceBundle(
 /** Test seam: runs the physical reader and hash in-process behind the same quotas; the desktop uses `acquireInsightResourceBundle`. */
 export function createInProcessInsightResourceBundle(
   logs?: Pick<AppLogService, "write">,
+  reader: Reader = readBoundedInsightArtifactFile,
 ): InsightResourceBundle {
   const disposed = () => Promise.resolve(ok(undefined));
   return createBundle(
     {
-      reader: { read: readBoundedInsightArtifactFile, dispose: disposed },
+      reader: { read: reader, dispose: disposed },
       jobs: {
         hashFile: hashUtf8FileSha256,
         capturePatch: captureInsightPatch,
@@ -164,6 +173,10 @@ function createBundle(
   let closed = false;
   let totalReads = 0;
   const ui: Counter = { count: 0, limit: uiReadQuota };
+  const readSignal = new AsyncLocalStorage<AbortSignal>();
+  const uiWaiters: Array<{
+    readonly settle: (release: (() => void) | undefined) => void;
+  }> = [];
   const authority: Counter = { count: 0, limit: authorityReadQuota };
   const runs = new Map<string, Counter>();
   const holders = new Set<string>();
@@ -190,7 +203,35 @@ function createBundle(
       released = true;
       counter.count -= 1;
       totalReads -= 1;
+      grantUiWaiters();
     };
+  }
+
+  function grantUiWaiters(): void {
+    while (!closed && uiWaiters.length > 0) {
+      const release = lease(ui);
+      if (release === undefined) return;
+      uiWaiters.shift()?.settle(release);
+    }
+  }
+
+  function waitForUiLease(signal: AbortSignal | undefined) {
+    return new Promise<(() => void) | undefined>((resolve) => {
+      const waiter = {
+        settle(release: (() => void) | undefined) {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(release);
+        },
+      };
+      function onAbort(): void {
+        const index = uiWaiters.indexOf(waiter);
+        if (index < 0) return;
+        uiWaiters.splice(index, 1);
+        waiter.settle(undefined);
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+      uiWaiters.push(waiter);
+    });
   }
 
   function leasedReader(
@@ -198,10 +239,20 @@ function createBundle(
     caller: "ui" | "authority" | "run",
     onIdle?: () => void,
   ): Reader {
-    return async (ownedRoot, path) => {
+    return async (ownedRoot, path, options) => {
+      const signal = options?.signal ?? readSignal.getStore();
+      if (signal?.aborted) return err(storageIoFailure);
       const counter = counterFor();
-      const release = lease(counter);
+      let release = lease(counter);
+      if (
+        release === undefined &&
+        caller === "ui" &&
+        !closed &&
+        uiWaiters.length < uiWaiterQuota
+      )
+        release = await waitForUiLease(signal);
       if (release === undefined) {
+        if (signal?.aborted) return err(storageIoFailure);
         logs?.write({
           process: "main",
           level: "warn",
@@ -218,7 +269,10 @@ function createBundle(
         return err(storageIoFailure);
       }
       try {
+        if (signal?.aborted) return err(storageIoFailure);
+        // Worker reads cannot be interrupted; retain their lease until they finish.
         const result = await workers.reader.read(ownedRoot, path);
+        if (signal?.aborted) return err(storageIoFailure);
         if (result._tag === "err" && result.error.reason === "io")
           logs?.write({
             process: "main",
@@ -242,6 +296,7 @@ function createBundle(
 
   return {
     uiReader: leasedReader(() => ui, "ui"),
+    withReadSignal: (signal, action) => readSignal.run(signal, action),
     authorityReader: leasedReader(() => authority, "authority"),
     runReader(runId) {
       const counter = (): Counter => {
@@ -292,6 +347,7 @@ function createBundle(
     },
     async dispose() {
       closed = true;
+      for (const waiter of uiWaiters.splice(0)) waiter.settle(undefined);
       const joining = [...tracked];
       for (const entry of joining) entry.abort();
       await Promise.allSettled(joining.map((entry) => entry.work));

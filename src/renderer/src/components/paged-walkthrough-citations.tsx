@@ -35,13 +35,18 @@ async function capturedText(
   let cursor: string | null = null;
   let text = "";
   do {
-    const page: WalkthroughPage = await readWalkthroughPage(source, {
-      kind: "hunk_text",
-      sectionId,
-      hunkId,
-      field,
-      cursor,
-    });
+    signal.throwIfAborted();
+    const page: WalkthroughPage = await readWalkthroughPage(
+      source,
+      {
+        kind: "hunk_text",
+        sectionId,
+        hunkId,
+        field,
+        cursor,
+      },
+      { signal },
+    );
     if (signal.aborted) return "";
     if (page.kind !== "hunk_text")
       throw new Error("Invalid Walkthrough hunk text");
@@ -89,37 +94,21 @@ function CapturedCitation({
     }
     const controller = new AbortController();
     const identity = { profileId, reviewId, digest };
-    void Promise.all([
-      capturedText(
-        identity,
-        sectionId,
-        citation.hunkId,
-        "path",
-        controller.signal,
-      ),
-      capturedText(
-        identity,
-        sectionId,
-        citation.hunkId,
-        "header",
-        controller.signal,
-      ),
-      capturedText(
-        identity,
-        sectionId,
-        citation.hunkId,
-        "filePrefix",
-        controller.signal,
-      ),
-      capturedText(
-        identity,
-        sectionId,
-        citation.hunkId,
-        "raw",
-        controller.signal,
-      ),
-    ])
-      .then(([path, header, filePrefix, raw]) => {
+    void (async () => {
+      const text = { path: "", header: "", filePrefix: "", raw: "" };
+      // One visible card holds at most one request so it cannot exhaust the UI read pool alone.
+      for (const field of ["path", "header", "filePrefix", "raw"] as const)
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- serialize each card's fields to avoid exhausting the shared UI read pool
+        text[field] = await capturedText(
+          identity,
+          sectionId,
+          citation.hunkId,
+          field,
+          controller.signal,
+        );
+      return text;
+    })()
+      .then(({ path, header, filePrefix, raw }) => {
         if (!controller.signal.aborted)
           setState({
             status: "ready",

@@ -108,6 +108,8 @@ export type LocalApiDesktopRequest = {
   readonly path: string;
   readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly body?: unknown;
+  /** Renderer-owned cancellation identity, accepted only for Walkthrough read routes. */
+  readonly readRequestId?: string;
 };
 
 /** Privileged desktop operation accepted only from the owning renderer. */
@@ -152,6 +154,7 @@ type InstallAppUpdateDesktopRequest = {
 /** Closed renderer-to-main request union. */
 export type DesktopRequest =
   | LocalApiDesktopRequest
+  | { readonly operation: "cancelReadRequest"; readonly readRequestId: string }
   | SelectDirectoryDesktopRequest
   | SetNavigationStateDesktopRequest
   | SetNavigationDestinationDesktopRequest

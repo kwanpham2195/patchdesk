@@ -65,6 +65,16 @@ export function registerInsightRoutes(
   container: LocalApiContainer,
 ): void {
   const { configuration, insights } = container;
+  for (const path of [
+    "/v1/reviews/insights/walkthrough/summary",
+    "/v1/reviews/insights/walkthrough/page",
+  ])
+    app.use(path, (context, next) =>
+      configuration.insightResources.withReadSignal(
+        context.req.raw.signal,
+        next,
+      ),
+    );
   app.get("/v1/insight-providers", async (context) => {
     if (configuration.insightProviders === undefined)
       return context.json({ error: "provider_unavailable" }, 503);
@@ -485,6 +495,7 @@ async function insightCancelResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
   type: InsightType,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- raw route JSON is parsed by insightCancelSchema before use.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)
@@ -531,6 +542,7 @@ function insightResultResponse(
 async function analysisVerificationResponse(
   context: Context,
   coordinator: InsightCoordinatorSeam | undefined,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- raw route JSON is parsed by the verification schema before use.
   body: unknown,
 ): Promise<Response> {
   if (coordinator?.updateAnalysisVerification === undefined)
@@ -570,6 +582,7 @@ async function insightFindingResponse(
   coordinator: InsightCoordinatorSeam | undefined,
   action: "dismiss" | "restore",
   findingIdInput: string,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- raw route JSON is parsed by insightFindingSchema before use.
   body: unknown,
 ): Promise<Response> {
   if (coordinator === undefined)

@@ -32,6 +32,11 @@ const requestSchema = union([
     path: string(),
     method: optional(picklist(["GET", "POST", "PUT", "PATCH", "DELETE"])),
     body: optional(unknown()),
+    readRequestId: optional(pipe(string(), minLength(1), maxLength(128))),
+  }),
+  strictObject({
+    operation: literal("cancelReadRequest"),
+    readRequestId: pipe(string(), minLength(1), maxLength(128)),
   }),
   strictObject({
     operation: literal("selectDirectory"),
@@ -216,6 +221,7 @@ export function installDesktopRequestBridge(
     readonly installAppUpdate: () => void;
   },
 ): void {
+  const pendingReads = new Map<string, AbortController>();
   ipc.removeHandler(DESKTOP_REQUEST_CHANNEL);
   ipc.handle(
     DESKTOP_REQUEST_CHANNEL,
@@ -226,33 +232,45 @@ export function installDesktopRequestBridge(
       const request: DesktopRequest | undefined = !parsed.success
         ? undefined
         : "operation" in parsed.output
-          ? parsed.output.operation === "setNavigationState"
-            ? { operation: parsed.output.operation, state: parsed.output.state }
-            : parsed.output.operation === "setNavigationDestination"
+          ? parsed.output.operation === "cancelReadRequest"
+            ? {
+                operation: parsed.output.operation,
+                readRequestId: parsed.output.readRequestId,
+              }
+            : parsed.output.operation === "setNavigationState"
               ? {
                   operation: parsed.output.operation,
-                  destination: parsed.output.destination,
+                  state: parsed.output.state,
                 }
-              : parsed.output.operation === "openExternalHttps"
-                ? { operation: parsed.output.operation, url: parsed.output.url }
-                : parsed.output.operation === "dismissAppUpdate"
+              : parsed.output.operation === "setNavigationDestination"
+                ? {
+                    operation: parsed.output.operation,
+                    destination: parsed.output.destination,
+                  }
+                : parsed.output.operation === "openExternalHttps"
                   ? {
                       operation: parsed.output.operation,
-                      notice: parsed.output.notice,
+                      url: parsed.output.url,
                     }
-                  : parsed.output.operation === "installAppUpdate"
-                    ? { operation: parsed.output.operation }
-                    : {
+                  : parsed.output.operation === "dismissAppUpdate"
+                    ? {
                         operation: parsed.output.operation,
-                        ...definedProps({
-                          defaultPath: parsed.output.defaultPath,
-                        }),
+                        notice: parsed.output.notice,
                       }
+                    : parsed.output.operation === "installAppUpdate"
+                      ? { operation: parsed.output.operation }
+                      : {
+                          operation: parsed.output.operation,
+                          ...definedProps({
+                            defaultPath: parsed.output.defaultPath,
+                          }),
+                        }
           : {
               path: parsed.output.path,
               ...definedProps({
                 method: parsed.output.method,
                 body: parsed.output.body,
+                readRequestId: parsed.output.readRequestId,
               }),
             };
       if (request === undefined || event.sender.id !== senderId) {
@@ -265,6 +283,10 @@ export function installDesktopRequestBridge(
       }
 
       if ("operation" in request) {
+        if (request.operation === "cancelReadRequest") {
+          pendingReads.get(request.readRequestId)?.abort();
+          return { ok: true, status: 200, body: {}, correlationId };
+        }
         if (request.operation === "setNavigationState") {
           operations.setNavigationState(request.state);
           return { ok: true, status: 200, body: {}, correlationId };
@@ -335,6 +357,23 @@ export function installDesktopRequestBridge(
 
       const method = request.method ?? "GET";
       const controller = new AbortController();
+      if (request.readRequestId !== undefined) {
+        if (
+          method !== "POST" ||
+          ![
+            "/v1/reviews/insights/walkthrough/page",
+            "/v1/reviews/insights/walkthrough/summary",
+          ].includes(request.path) ||
+          pendingReads.has(request.readRequestId)
+        )
+          return {
+            ok: false,
+            status: 400,
+            body: { error: "invalid_input" },
+            correlationId,
+          };
+        pendingReads.set(request.readRequestId, controller);
+      }
       const timeout = setTimeout(() => controller.abort(), 60_000);
       try {
         const requestInit: RequestInit = {
@@ -381,6 +420,8 @@ export function installDesktopRequestBridge(
         };
       } finally {
         clearTimeout(timeout);
+        if (request.readRequestId !== undefined)
+          pendingReads.delete(request.readRequestId);
       }
     },
   );
