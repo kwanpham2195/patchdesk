@@ -523,8 +523,7 @@ describe("narrative walkthrough takeover", () => {
       <PagedWalkthroughReader
         workbench={projection()}
         state={{
-          status: "loaded",
-          summary: { _tag: "none", run: null, failure: null },
+          status: "unavailable",
         }}
         focused={false}
         onFocusedChange={() => undefined}

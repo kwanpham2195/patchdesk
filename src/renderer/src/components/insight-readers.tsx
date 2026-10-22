@@ -330,6 +330,8 @@ export function buildInsightReaders({
               {...definedProps({ onRun: onRunWalkthrough })}
             />
           }
+          regenerateDisabled={!runEnabled}
+          {...definedProps({ onRegenerate: onRunWalkthrough })}
           {...(walkthroughAnnotations === undefined
             ? {}
             : { annotations: walkthroughAnnotations })}

@@ -105,6 +105,7 @@ export class WalkthroughResultReader {
   > {
     const slot = await this.slots.read(profileId, reviewId, "walkthrough");
     if (slot._tag === "err") return err(walkthroughReadFailure(slot.error));
+    if (slot.value?.retained?.tag === "historical") return err("not_available");
     const view = await this.published(profileId, reviewId, slot.value);
     if (view._tag === "err") return view;
     const run = await this.active(profileId, reviewId, slot.value);

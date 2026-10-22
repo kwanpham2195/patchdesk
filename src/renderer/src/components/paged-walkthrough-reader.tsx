@@ -10,6 +10,7 @@ import type { ReadOnlyConversationAnnotation } from "#src/renderer/src/inline-co
 import { WalkthroughProgressReader } from "./walkthrough-progress-reader";
 import { PagedWalkthroughCitations } from "./paged-walkthrough-citations";
 import { InlineError } from "./ui/inline-error";
+import { Button } from "./ui/button";
 
 type ReaderProps = {
   readonly workbench: WorkbenchResponse;
@@ -20,6 +21,8 @@ type ReaderProps = {
   readonly annotations?: ReadonlyArray<ReadOnlyConversationAnnotation>;
   readonly diffAuthoring?: WalkthroughDiffAuthoring;
   readonly empty?: React.ReactNode;
+  readonly onRegenerate?: () => void;
+  readonly regenerateDisabled?: boolean;
 };
 
 function ReadyWalkthroughReader({
@@ -141,15 +144,25 @@ export function PagedWalkthroughReader({
         reopen the Review to retry.
       </InlineError>
     );
-  if (state.summary._tag === "none")
+  if (state.status === "unavailable")
     return (
       <>
         <p role="status">
           Walkthrough unavailable. Regenerate to create a readable Walkthrough.
         </p>
-        {props.empty}
+        {props.onRegenerate === undefined ? null : (
+          <Button
+            size="sm"
+            onClick={props.onRegenerate}
+            disabled={props.regenerateDisabled}
+          >
+            Regenerate
+          </Button>
+        )}
       </>
     );
+  if (state.summary._tag === "none")
+    return <>{state.summary.run === null ? props.empty : null}</>;
   return (
     <ReadyWalkthroughReader
       key={state.summary.digest}

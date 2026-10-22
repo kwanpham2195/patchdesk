@@ -23,18 +23,23 @@ export type WalkthroughReaderSnapshot = {
 export async function readWalkthroughPage(
   source: WalkthroughSource,
   page: WalkthroughPageRequest["page"],
+  options?: { readonly signal?: AbortSignal },
 ): Promise<WalkthroughPage> {
   const parsed = parseWalkthroughPageReply(
-    await requestJson("/v1/reviews/insights/walkthrough/page", {
-      method: "POST",
-      body: { ...source, page },
-    }),
+    await requestJson(
+      "/v1/reviews/insights/walkthrough/page",
+      {
+        method: "POST",
+        body: { ...source, page },
+      },
+      options,
+    ),
   );
   if (parsed === undefined) throw new Error("Invalid Walkthrough page reply");
   return parsed;
 }
 
-/** Selection epochs fence bridge reads, whose IPC transport cannot abort an in-flight request. */
+/** Selection epochs fence replies while cancellation releases obsolete queued reads. */
 export class WalkthroughReaderController {
   private snapshot: WalkthroughReaderSnapshot = {
     section: null,
@@ -48,6 +53,9 @@ export class WalkthroughReaderController {
   private navigationRequest = 0;
   private citationRequest = 0;
   private disposed = false;
+  private sectionAbort: AbortController | undefined;
+  private navigationAbort: AbortController | undefined;
+  private citationAbort: AbortController | undefined;
   constructor(private readonly source: WalkthroughSource) {}
 
   /** React observes stable snapshots rather than an accumulating page cache. */
@@ -61,6 +69,9 @@ export class WalkthroughReaderController {
   dispose(): void {
     this.disposed = true;
     this.selection += 1;
+    this.sectionAbort?.abort();
+    this.navigationAbort?.abort();
+    this.citationAbort?.abort();
   }
 
   /** A confirmed mark updates only rows already in the bounded window. */
@@ -89,6 +100,10 @@ export class WalkthroughReaderController {
     const epoch = ++this.selection;
     this.navigationRequest += 1;
     this.citationRequest += 1;
+    this.sectionAbort?.abort();
+    this.navigationAbort?.abort();
+    this.citationAbort?.abort();
+    this.sectionAbort = new AbortController();
     this.update({
       ...this.snapshot,
       section: null,
@@ -96,7 +111,11 @@ export class WalkthroughReaderController {
       loading: true,
       failed: false,
     });
-    void readWalkthroughPage(this.source, { kind: "section", sectionId })
+    void readWalkthroughPage(
+      this.source,
+      { kind: "section", sectionId },
+      { signal: this.sectionAbort.signal },
+    )
       .then((page) => {
         if (this.disposed || epoch !== this.selection) return;
         if (page.kind !== "section" || page.sectionId !== sectionId)
@@ -119,7 +138,13 @@ export class WalkthroughReaderController {
   /** A window replaces the prior window; Previous/More never concatenate all navigation. */
   readonly loadNavigation = (cursor: string | null): void => {
     const epoch = ++this.navigationRequest;
-    void readWalkthroughPage(this.source, { kind: "navigation", cursor })
+    this.navigationAbort?.abort();
+    this.navigationAbort = new AbortController();
+    void readWalkthroughPage(
+      this.source,
+      { kind: "navigation", cursor },
+      { signal: this.navigationAbort.signal },
+    )
       .then((page) => {
         if (this.disposed || epoch !== this.navigationRequest) return;
         if (page.kind !== "navigation")
@@ -138,12 +163,18 @@ export class WalkthroughReaderController {
     if (sectionId === undefined) return;
     const selection = this.selection;
     const epoch = ++this.citationRequest;
+    this.citationAbort?.abort();
+    this.citationAbort = new AbortController();
     this.update({ ...this.snapshot, citations: null });
-    void readWalkthroughPage(this.source, {
-      kind: "citations",
-      sectionId,
-      cursor,
-    })
+    void readWalkthroughPage(
+      this.source,
+      {
+        kind: "citations",
+        sectionId,
+        cursor,
+      },
+      { signal: this.citationAbort.signal },
+    )
       .then((page) => {
         if (
           this.disposed ||
