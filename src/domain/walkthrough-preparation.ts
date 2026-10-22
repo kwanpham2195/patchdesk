@@ -9,13 +9,7 @@ import {
   insightTextRootDescriptorSchema,
 } from "./insight-artifact-scalars";
 
-/** Canonical producer alias, constrained to the prepared hunk namespace. */
-export const walkthroughHunkIdSchema = v.pipe(
-  v.string(),
-  v.maxLength(16),
-  v.regex(/^h[1-9]\d*$/),
-  v.check((id) => Number.isSafeInteger(Number(id.slice(1)))),
-);
+import { walkthroughHunkIdSchema } from "./walkthrough-selectors.js";
 
 const text = insightTextRootDescriptorSchema;
 const U = insightArtifactUnsignedSchema;

@@ -70,11 +70,11 @@ function insightRequestFailureMessage(
 ): string | undefined {
   if (requestFailure === undefined) return undefined;
   if (requestFailure === "guide_input_too_large")
-    return "Guide input exceeds the complete-input size limit. The existing Guide is retained.";
+    return `${insightName} input exceeds the complete-input size limit. The existing ${insightName} is retained.`;
   if (requestFailure === "guide_patch_empty")
-    return "Guide needs a nonempty patch with readable file headers.";
+    return `${insightName} needs a nonempty patch with readable file headers.`;
   if (requestFailure === "guide_artifact_unreadable")
-    return "Guide could not read its complete review evidence. Reprepare the Review and retry.";
+    return `${insightName} could not read its complete review evidence. Reprepare the Review and retry.`;
   if (requestFailure === "start")
     return `${insightName} could not start. Check the run options and try again.`;
   if (requestFailure === "cancel")

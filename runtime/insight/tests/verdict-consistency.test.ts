@@ -205,12 +205,12 @@ describe("rejected submission on disk", () => {
     expect(
       canonicalizeProductionInvocation(
         {
-          type: "walkthrough",
+          type: "guide",
           input: {
             ...shared,
             evidence: {
               ...shared.evidence,
-              identity: { ...shared.evidence.identity, type: "walkthrough" },
+              identity: { ...shared.evidence.identity, type: "guide" },
             },
             contextPath: paths.preparedContextFile(profileId, sessionId),
           },

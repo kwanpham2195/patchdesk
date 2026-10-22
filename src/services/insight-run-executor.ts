@@ -55,7 +55,6 @@ import type {
 } from "./insight-run-coordinator";
 import { validateInsightResult } from "./insight-result-validation";
 import { localReviewNotificationSubject } from "./local-review-notification-subject";
-import { walkthroughOutputLimitDiagnostic } from "./walkthrough-operation";
 import { contentHash } from "./review-artifact-hash";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -411,17 +410,12 @@ export class InsightRunExecutor {
         this.reach,
       );
       if (validated._tag === "err") {
-        const limitDiagnostic =
-          type === "walkthrough" && validated.error === "malformed"
-            ? walkthroughOutputLimitDiagnostic(payload.output)
-            : undefined;
         await this.failAsInvalidResult(
           input,
           type,
           runId,
           timestamp.value,
           `invalid_result_${validated.error}`,
-          limitDiagnostic,
         );
         return;
       }
@@ -541,7 +535,6 @@ export class InsightRunExecutor {
     runId: InsightRunId,
     failedAt: IsoTimestamp,
     detail: string,
-    limitDiagnostic?: string,
   ): Promise<void> {
     await this.persistTerminal(
       input,
@@ -564,8 +557,6 @@ export class InsightRunExecutor {
       "invalid_result",
     );
     await this.recordDiagnostic(input, type, detail);
-    if (limitDiagnostic !== undefined)
-      await this.recordDiagnostic(input, type, limitDiagnostic);
   }
 
   private async persistTerminal(

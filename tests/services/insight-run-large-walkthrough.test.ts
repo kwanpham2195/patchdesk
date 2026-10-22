@@ -1,32 +1,19 @@
 import { writeFile } from "node:fs/promises";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as v from "valibot";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { WalkthroughProgressStore } from "#src/adapters/storage/walkthrough-progress-store";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
-import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
-import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
+import type { WalkthroughProducer } from "#src/services/walkthrough-producer-pass";
 import { WalkthroughResultReader } from "#src/services/walkthrough-result-reader";
 import { WalkthroughProgressService } from "#src/services/walkthrough-result-progress";
 import { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
-import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
-import { contentHash } from "#src/services/review-artifact-hash";
 import { walkthroughChildFrameSchema } from "#src/domain/walkthrough-protocol";
 import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
 
-import { ok } from "#src/domain/result";
-import {
-  cleanupRoots,
-  fixture,
-  must,
-  now,
-  headSha,
-  baseSha,
-  contextPackFixture,
-  profileId,
-} from "./insight-run-fixture";
+import { cleanupRoots, fixture, must, profileId } from "./insight-run-fixture";
 
 afterEach(cleanupRoots);
 
@@ -58,7 +45,23 @@ describe("large Walkthrough retention", () => {
         })),
       },
     ];
-    const value = await fixture({ invoke: async () => ok({}) });
+    let producer: WalkthroughProducer | undefined;
+    const value = await fixture(
+      {
+        invoke: async () => {
+          throw new Error("Walkthrough must not use whole-result dispatch");
+        },
+      },
+      {
+        walkthroughInvoker: {
+          invokeWalkthroughSession: async (input) => {
+            if (producer === undefined)
+              throw new Error("Missing fixture producer");
+            return producer.invokeWalkthroughSession(input);
+          },
+        },
+      },
+    );
     await writeFile(value.session.patchPath, patch);
     must(
       await new ProfileStore(value.paths).save({
@@ -70,95 +73,85 @@ describe("large Walkthrough retention", () => {
         repos: [],
       }),
     );
-    const resources = createInProcessInsightResourceBundle();
     try {
-      const service = new WalkthroughGenerationService(
-        value.paths,
-        new ExplanationPreparationService(
-          value.paths,
-          value.paths,
-          resources,
-          value.operations,
-          contextPackFixture(value.paths).service,
-          () => now,
-          value.slots,
-        ),
-        value.slots,
-        resources,
-        {
-          async invokeWalkthroughSession(input) {
-            let correlation = 0;
-            const calls = [
-              {
-                tool: "begin_walkthrough",
-                input: {
-                  opId: "begin",
-                  title: "Large patch reading path",
-                  focus: "Follow representative changes.",
+      producer = {
+        async invokeWalkthroughSession(input) {
+          let correlation = 0;
+          const calls = [
+            {
+              tool: "begin_walkthrough",
+              input: {
+                opId: "begin",
+                title: "Large patch reading path",
+                focus: "Follow representative changes.",
+              },
+            },
+            {
+              tool: "open_chapter",
+              input: { opId: "chapter", title: "Reading path" },
+            },
+            ...chapters
+              .flatMap((chapter) => chapter.sections)
+              .flatMap((section, index) => [
+                {
+                  tool: "open_section",
+                  input: {
+                    opId: `section-${index}`,
+                    chapterId: "c1",
+                    title: section.title,
+                    prose: section.prose,
+                  },
                 },
-              },
-              {
-                tool: "open_chapter",
-                input: { opId: "chapter", title: "Reading path" },
-              },
-              ...chapters
-                .flatMap((chapter) => chapter.sections)
-                .flatMap((section, index) => [
-                  {
-                    tool: "open_section",
-                    input: {
-                      opId: `section-${index}`,
-                      chapterId: "c1",
-                      title: section.title,
-                      prose: section.prose,
-                    },
+                {
+                  tool: "add_citations",
+                  input: {
+                    opId: `cite-${index}`,
+                    sectionId: `s${index + 1}`,
+                    hunkIds: section.hunkIds,
                   },
-                  {
-                    tool: "add_citations",
-                    input: {
-                      opId: `cite-${index}`,
-                      sectionId: `s${index + 1}`,
-                      hunkIds: section.hunkIds,
-                    },
-                  },
-                ]),
-              { tool: "finish", input: { opId: "finish" } },
-            ];
-            for (const call of calls) {
-              const outcome = await input.handler(
-                v.parse(walkthroughChildFrameSchema, {
-                  kind: "tool",
-                  ...input.identity,
-                  correlation: ++correlation,
-                  call,
-                }),
-              );
-              expect(outcome.status).toBe("receipt");
-            }
-            return { _tag: "finished" };
-          },
+                },
+              ]),
+            { tool: "finish", input: { opId: "finish" } },
+          ];
+          for (const call of calls) {
+            const outcome = await input.handler(
+              v.parse(walkthroughChildFrameSchema, {
+                kind: "tool",
+                ...input.identity,
+                correlation: ++correlation,
+                call,
+              }),
+            );
+            expect(outcome.status).toBe("receipt");
+          }
+          return { _tag: "finished" };
         },
-        () => now,
-      );
+      };
       const started = must(
-        await service.start({
+        await value.coordinator.start({
           profileId,
           reviewId: value.review.id,
-          revision: value.review.updatedAt,
-          sessionId: value.session.id,
-          expectedHash: await contentHash(value.session.patchPath),
-          headSha,
-          baseSha,
-          selection: {
-            provider: "pi",
-            model: "model",
-            reasoning: "medium",
-            language: "en",
-          },
+          type: "walkthrough",
+          provider: "pi",
+          model: "model",
+          language: "en",
           reasoning: "medium",
         }),
       );
-      await started.completion;
+      expect(started.status).toBe("queued");
+      await vi.waitFor(
+        async () => {
+          expect(
+            await value.coordinator.observe({
+              profileId,
+              reviewId: value.review.id,
+              type: "walkthrough",
+              runId: started.runId,
+            }),
+          ).toMatchObject({ _tag: "ok", value: { status: "completed" } });
+        },
+        { timeout: 110_000, interval: 100 },
+      );
       const reader = new WalkthroughResultReader(
         value.paths,
         readBoundedInsightArtifactFile,
@@ -224,7 +217,7 @@ describe("large Walkthrough retention", () => {
       expect(uncited).toContain("h25");
       expect(uncited).toContain("h952");
     } finally {
-      await resources.dispose();
+      await value.resources?.dispose();
     }
     // Durable capture and independent replay replace the former in-memory whole-result normalization.
   }, 120_000);

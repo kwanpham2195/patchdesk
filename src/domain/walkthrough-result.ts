@@ -15,8 +15,8 @@ import {
 import {
   walkthroughChapterIdSchema,
   walkthroughSectionIdSchema,
-} from "./walkthrough-protocol";
-import { walkthroughHunkIdSchema } from "./walkthrough-preparation";
+  walkthroughHunkIdSchema,
+} from "./walkthrough-selectors.js";
 
 const operation = v.strictObject({
   runId: insightArtifactRunIdSchema,

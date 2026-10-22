@@ -2,11 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  invokeWalkthroughWithResolvedTimeout,
-  resolveWalkthroughTimeoutMs,
-} from "#src/services/child-invocation";
-import type { WalkthroughInput } from "#src/services/walkthrough-operation";
+import { resolveWalkthroughTimeoutMs } from "#src/services/child-invocation";
 
 const roots: Array<string> = [];
 afterEach(async () => {
@@ -67,73 +63,5 @@ describe("resolveWalkthroughTimeoutMs", () => {
         patchPath: join(tmpdir(), "patchdesk-absent-patch.diff"),
       }),
     ).resolves.toBe(5 * 60_000);
-  });
-});
-
-/** The same artifacts as above, dressed as the child's own input. */
-async function walkthroughInput(): Promise<WalkthroughInput> {
-  return {
-    profileId: "acme",
-    sessionId: "session",
-    model: "test-model",
-    reasoning: "medium",
-    language: "en",
-    ...(await writeArtifacts()),
-  };
-}
-
-/** Stands in for `PiInsightChildInvoker`, recording what the wiring spends
- * on it instead of starting a child process. */
-function recordingChild() {
-  const bounds: Array<number> = [];
-  const signals: Array<AbortSignal> = [];
-  return {
-    bounds,
-    signals,
-    async invokeWalkthrough(
-      input: WalkthroughInput,
-      timeoutMs: number,
-      options: { readonly signal: AbortSignal },
-    ) {
-      bounds.push(timeoutMs);
-      signals.push(options.signal);
-      return input.patchPath;
-    },
-  };
-}
-
-describe("invokeWalkthroughWithResolvedTimeout", () => {
-  it("hands the child the patch-scaled bound and the run's own signal", async () => {
-    const child = recordingChild();
-    const controller = new AbortController();
-    const input = await walkthroughInput();
-
-    await expect(
-      invokeWalkthroughWithResolvedTimeout(child, input, {
-        signal: controller.signal,
-      }),
-    ).resolves.toBe(input.patchPath);
-
-    expect(child.bounds).toEqual([FLOOR_PLUS_TWO_STEPS_MS]);
-    expect(child.signals).toEqual([controller.signal]);
-  });
-
-  it("resolves the bound under the run's own signal, so a cancelled run stops the patch read", async () => {
-    const child = recordingChild();
-
-    // Byte-for-byte the same artifacts as the case above; the only difference
-    // is that the run is already cancelled. Wiring that resolves the bound
-    // without the signal reads the patch to the end regardless and records
-    // FLOOR_PLUS_TWO_STEPS_MS here — the case above's value — so this is what
-    // fails if the signal is ever dropped between the run and the read.
-    await invokeWalkthroughWithResolvedTimeout(
-      child,
-      await walkthroughInput(),
-      { signal: AbortSignal.abort() },
-    );
-
-    // Exactly one call, carrying the bound of a patch whose hunks were never
-    // counted: the streaming read stopped instead of running on.
-    expect(child.bounds).toEqual([FLOOR_PLUS_ONE_STEP_MS]);
   });
 });

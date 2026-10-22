@@ -5,7 +5,7 @@
  * context — so one definition decides what a `diff --git` header, a rename, a
  * binary marker, an `@@` hunk header, and a body line are.
  *
- * This is a boundary being moved, not one already reached. Six readers of the
+ * This is a boundary being moved, not one already reached. Five readers of the
  * same grammar still sit outside it. Only the first is outside on purpose; the
  * rest are unconverted. The list is what a sweep for the grammar's own shapes
  * found — hunk-header patterns, `@@` byte codes, `--- `/`+++ ` prefixes, and
@@ -28,8 +28,6 @@
  * - `countUnifiedDiffHunks` in `src/services/walkthrough-timeout.ts` re-encodes
  *   "a line beginning `@@ `" as raw byte codes so it can count hunks while
  *   streaming, without holding the patch in memory.
- * - `src/services/walkthrough-operation.ts` counts `/^@@ /gm` beside a
- *   `narrativeHunkManifest` that already holds that count.
  * - `src/services/review-commit-service.ts` decides "binary only" from
  *   unanchored `includes` tests that disagree with the `binary` rule here.
  * - `countChangedFiles` in `src/services/github-revision-identity-reader.ts`

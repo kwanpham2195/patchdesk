@@ -1,4 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { walkthroughInputLimitDiagnostic } from "#app/domain/walkthrough-input-diagnostic";
 import * as v from "valibot";
 import {
   walkthroughAppReplySchema,
@@ -60,6 +61,19 @@ export function openWalkthroughSession(
     Request<WalkthroughChildFrame>,
     WalkthroughAppOutcome
   >(identity, walkthroughAppReplySchema);
+  return {
+    channel,
+    tools: createWalkthroughSessionTools(identity, channel, state, onStop),
+  };
+}
+
+/** Constructs the strict sequential producer tools over the admitted channel. */
+export function createWalkthroughSessionTools(
+  identity: ExplanationConnectionIdentity,
+  channel: Pick<WalkthroughSession["channel"], "call">,
+  state: ExplanationSessionState,
+  onStop: () => void,
+): ReadonlyArray<AgentTool> {
   const tools = Object.entries(walkthroughInputSchemas).map(
     ([name, schema]): AgentTool => ({
       name,
@@ -78,7 +92,11 @@ export function openWalkthroughSession(
         if (Buffer.byteLength(JSON.stringify(args)) > 32768)
           throw new Error(guidance.too_large);
         const input = v.safeParse(schema, args);
-        if (!input.success) throw new Error(guidance.invalid_input);
+        if (!input.success)
+          throw new Error(
+            walkthroughInputLimitDiagnostic(input.issues) ??
+              guidance.invalid_input,
+          );
         const parsed = v.safeParse(walkthroughChildFrameSchema, {
           kind: "tool",
           ...identity,
@@ -133,5 +151,5 @@ export function openWalkthroughSession(
       },
     }),
   );
-  return { channel, tools };
+  return tools;
 }

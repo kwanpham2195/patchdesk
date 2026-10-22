@@ -131,7 +131,6 @@ const allowedRoutes = new Set([
   "POST /v1/reviews/insights/walkthrough/cancel",
   "POST /v1/reviews/insights/brief/cancel",
   "POST /v1/reviews/insights/brief/pull-request-description",
-  "POST /v1/reviews/insights/walkthrough/progress",
   "POST /v1/reviews/insights/walkthrough/summary",
   "POST /v1/reviews/insights/walkthrough/page",
   "POST /v1/reviews/insights/walkthrough/reading-progress",
@@ -181,9 +180,7 @@ export const deliberatelyDeniedRoutes = new Set([
   "GET /health",
 ]);
 
-// The renderer projection can carry a large retained Walkthrough plus its full
-// patch (a 100+-hunk PR easily exceeds 2 MB of bounded diff text). 8 MB keeps
-// real review projections readable without unbounded renderer memory.
+// Workbench snapshots can contain several MiB of patch text; explanation pages have their own smaller bounds.
 const maxResponseBytes = 8 * 1024 * 1024;
 
 export function isAllowedDesktopRequest(

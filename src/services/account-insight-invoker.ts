@@ -11,9 +11,7 @@ import { insightEvidenceReference } from "./insight-evidence-reference";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   buildCodexAnalysisPrompt,
-  buildCodexWalkthroughPrompt,
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
-  MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexAppServerFailure,
   type CodexRunInput,
 } from "#src/adapters/codex/codex-app-server-client";
@@ -37,14 +35,9 @@ import {
   briefCodexOutputSchema,
   parseCodexStrictResult,
   parseCodexAnalysisOutcome,
-  walkthroughCodexOutputSchema,
 } from "./codex-output-schema";
 import { composeReviewPrompt } from "./review-rubric";
 import { parsePiCliAnalysisOutcome } from "./pi-cli-analysis-outcome";
-import {
-  prepareWalkthroughPrompt,
-  type WalkthroughPromptFailure,
-} from "./walkthrough-operation";
 import {
   ANALYSIS_RUN_TIMEOUT_MS,
   BRIEF_RUN_TIMEOUT_MS,
@@ -87,6 +80,8 @@ export class AccountInsightInvoker implements InsightInvoker {
     input: InsightInvocationInput,
     options: InsightInvocationOptions,
   ) {
+    if (input.type === "walkthrough")
+      return err({ reason: "runtime_unavailable" as const });
     if (input.provider !== this.provider)
       return err({ reason: "execution_failed" as const });
     const expectedPath = this.paths.worktreeDirectory(
@@ -185,51 +180,6 @@ export class AccountInsightInvoker implements InsightInvoker {
         prompt: input.guide.prompt,
         outputSchema: guideCodexOutputSchema,
         maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES,
-        runTimeoutMs,
-      });
-      return result._tag === "ok"
-        ? result
-        : err({
-            reason: result.error.reason,
-            ...insightFailureDiagnostic(
-              result.error.reason,
-              result.error.phase,
-              result.error.detail,
-            ),
-          });
-    }
-    if (input.type === "walkthrough") {
-      const contextPath = resolvedArtifacts[0];
-      const patchPath = resolvedArtifacts[2];
-      if (contextPath === undefined || patchPath === undefined)
-        return err({ reason: "review_worktree_unavailable" as const });
-      const walkthroughPrompt = await prepareWalkthroughPrompt({
-        contextPath,
-        patchPath: input.evidence.patchPath,
-        language: input.language,
-        evidence,
-      });
-      if (walkthroughPrompt._tag === "err")
-        return err(promptPreparationFailure(walkthroughPrompt.error));
-      const prompt = buildCodexWalkthroughPrompt({
-        walkthroughPrompt: walkthroughPrompt.value,
-        policy,
-      });
-      if (prompt._tag === "err")
-        return err({ reason: "execution_failed" as const });
-      // Match the insight-runtime path: scale the run bound with the patch instead of a flat five minutes.
-      const runTimeoutMs = await resolveWalkthroughTimeoutMs(
-        { contextPath, patchPath: input.evidence.patchPath },
-        options.signal,
-      );
-      const result = await runNative({
-        worktreePath,
-        expectedHeadSha: head,
-        model: input.model,
-        reasoning: input.reasoning,
-        prompt: prompt.value,
-        outputSchema: walkthroughCodexOutputSchema,
-        maxPromptBytes: MAX_WALKTHROUGH_PROMPT_BYTES,
         runTimeoutMs,
       });
       return result._tag === "ok"
@@ -351,26 +301,17 @@ function strictRunResult(
  * because the model was never asked; `phase` is what carries the actionable
  * reason into the run's diagnostic.
  */
-function promptPreparationFailure(
-  failure: WalkthroughPromptFailure | BriefPromptFailure,
-) {
+function promptPreparationFailure(failure: BriefPromptFailure) {
   switch (failure.reason) {
-    case "artifact_too_large":
     case "patch_too_large":
       return {
         reason: "execution_failed",
         phase: "prompt_artifact_too_large",
       } as const;
-    case "artifact_unreadable":
     case "patch_unreadable":
       return {
         reason: "review_worktree_unavailable",
         phase: "prompt_artifact_unreadable",
-      } as const;
-    case "patch_not_indexable":
-      return {
-        reason: "execution_failed",
-        phase: "prompt_patch_not_indexable",
       } as const;
     default:
       return casesHandled(failure);

@@ -1,6 +1,5 @@
 import type { Context, Hono } from "hono";
 import {
-  array,
   boolean,
   integer,
   maxLength,
@@ -205,13 +204,6 @@ export function registerInsightRoutes(
         }),
       );
     },
-  );
-  app.post("/v1/reviews/insights/walkthrough/progress", async (context) =>
-    insightWalkthroughProgressResponse(
-      context,
-      insights,
-      await jsonBody(context),
-    ),
   );
   app.post("/v1/reviews/insights/guide/reading-state", async (context) => {
     if (insights?.updateGuideReadingState === undefined)
@@ -526,7 +518,6 @@ function insightResultResponse(
     | Awaited<ReturnType<InsightCoordinatorSeam["cancel"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["dismissFinding"]>>
     | Awaited<ReturnType<InsightCoordinatorSeam["restoreFinding"]>>
-    | Awaited<ReturnType<InsightRunCoordinator["updateWalkthroughProgress"]>>
     | Awaited<ReturnType<InsightRunCoordinator["updateAnalysisVerification"]>>,
   successStatus: 200 | 202 = 200,
 ): Response {
@@ -535,57 +526,6 @@ function insightResultResponse(
     { error: result.error },
     insightFailureStatus(result.error),
   );
-}
-
-async function insightWalkthroughProgressResponse(
-  context: Context,
-  coordinator: InsightCoordinatorSeam | undefined,
-  body: unknown,
-): Promise<Response> {
-  if (
-    coordinator === undefined ||
-    coordinator.updateWalkthroughProgress === undefined
-  )
-    return context.json({ error: "workflow_unavailable" }, 503);
-  const parsed = safeParse(
-    strictObject({
-      profileId: string(),
-      reviewId: string(),
-      runId: string(),
-      reviewedSectionIds: array(string()),
-      supportReviewed: boolean(),
-      currentSectionId: optional(string()),
-    }),
-    body,
-  );
-  if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
-  const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-  const reviewId = parseReviewId(parsed.output.reviewId);
-  const runId = parseInsightRunId(parsed.output.runId);
-  if (
-    profileId._tag === "err" ||
-    reviewId._tag === "err" ||
-    runId._tag === "err"
-  )
-    return context.json({ error: "invalid_input" }, 400);
-  const progress =
-    parsed.output.currentSectionId === undefined
-      ? {
-          reviewedSectionIds: parsed.output.reviewedSectionIds,
-          supportReviewed: parsed.output.supportReviewed,
-        }
-      : {
-          reviewedSectionIds: parsed.output.reviewedSectionIds,
-          supportReviewed: parsed.output.supportReviewed,
-          currentSectionId: parsed.output.currentSectionId,
-        };
-  const result = await coordinator.updateWalkthroughProgress({
-    profileId: profileId.value,
-    reviewId: reviewId.value,
-    runId: runId.value,
-    progress,
-  });
-  return insightResultResponse(context, result);
 }
 
 async function analysisVerificationResponse(

@@ -15,22 +15,12 @@ import {
   insightArtifactPositiveSchema,
   insightArtifactIndexDescriptorSchema,
 } from "./insight-artifact-scalars";
-import { walkthroughHunkIdSchema } from "./walkthrough-preparation";
+import {
+  walkthroughHunkIdSchema,
+  walkthroughChapterIdSchema,
+  walkthroughSectionIdSchema,
+} from "./walkthrough-selectors.js";
 
-/** App-assigned chapter identity in reading order. */
-export const walkthroughChapterIdSchema = v.pipe(
-  v.string(),
-  v.maxLength(17),
-  v.regex(/^c[1-9]\d*$/),
-  v.check((id) => Number.isSafeInteger(Number(id.slice(1)))),
-);
-/** App-assigned section identity in global reading order. */
-export const walkthroughSectionIdSchema = v.pipe(
-  v.string(),
-  v.maxLength(17),
-  v.regex(/^s[1-9]\d*$/),
-  v.check((id) => Number.isSafeInteger(Number(id.slice(1)))),
-);
 const concise = (max: number) =>
   v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(max));
 const opId = insightArtifactIdSchema;

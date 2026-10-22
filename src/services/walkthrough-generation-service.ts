@@ -37,7 +37,7 @@ import {
 } from "./walkthrough-producer-pass";
 import { WalkthroughPublisher } from "./walkthrough-result-publication";
 
-/** Owns the admitted internal producer through durable tools, validation and guarded publication. */
+/** Owns the admitted producer through durable tools, validation and guarded publication. */
 export class WalkthroughGenerationService {
   private readonly artifacts: InsightArtifactStore;
   private readonly slots: InsightSlotStore;

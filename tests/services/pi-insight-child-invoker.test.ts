@@ -8,7 +8,7 @@ import {
   type CommandRequest,
 } from "#src/adapters/github/command-runner";
 import {
-  PiInsightChildInvoker as ReferenceInsightChildInvoker,
+  PiInsightChildInvoker,
   unavailablePiInsightInvoker,
 } from "#src/services/pi-insight-child-invoker";
 import { ANALYSIS_RUN_TIMEOUT_MS } from "#src/services/child-invocation";
@@ -16,7 +16,6 @@ import type { InsightInvocationInput } from "#src/services/insight-run-coordinat
 
 import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
 import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
-import type { WalkthroughInput } from "#src/services/walkthrough-operation";
 
 const sessionId =
   "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-00000000__0123456789ab";
@@ -40,37 +39,6 @@ const evidence: InsightEvidenceBundle = {
   manifestText: "{}",
   patchPath: "/app/evidence/source-1.txt",
 } as never;
-class PiInsightChildInvoker extends ReferenceInsightChildInvoker {
-  override invokeWalkthrough(
-    input: WalkthroughInput,
-    timeoutMs: number,
-    options?: { readonly signal?: AbortSignal },
-  ) {
-    return super.invokeWalkthrough(
-      { ...input, evidence: insightEvidenceReference(evidence) },
-      timeoutMs,
-      options,
-    );
-  }
-}
-
-const walkthrough = {
-  citationVersion: 2,
-  title: "Walkthrough",
-  focus: "The bounded child returned a result.",
-  chapters: [
-    {
-      title: "Review",
-      sections: [
-        {
-          title: "Change",
-          prose: "The child returned the one result.",
-          hunkIds: ["h1"],
-        },
-      ],
-    },
-  ],
-};
 const analysisResult = {
   changeSummary: "Fixture change summary.",
   // No findings, so the consistent verdict is `approve`.
@@ -184,7 +152,7 @@ describe("PiInsightChildInvoker", () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
-      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
       stderr: "private child output",
     });
     const invoker = new PiInsightChildInvoker(
@@ -195,24 +163,16 @@ describe("PiInsightChildInvoker", () => {
       fixtureEnvironment,
     );
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
-    ).resolves.toEqual({ _tag: "ok", value: walkthrough });
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
+    ).resolves.toEqual({
+      _tag: "ok",
+      value: analysisResult,
+    });
     expect(executor.requests).toEqual([
       expect.objectContaining({
         argv: ["/runtime/node", "/runtime/child.mjs"],
         cwd: "/workspace/patchdesk",
-        timeoutMs: 60_000,
+        timeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
         environment: {
           ELECTRON_RUN_AS_NODE: "1",
           PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
@@ -222,12 +182,14 @@ describe("PiInsightChildInvoker", () => {
         },
         inheritEnvironment: false,
         stdin: JSON.stringify({
-          type: "walkthrough",
+          type: "analysis",
           input: {
             profileId: "profile",
             sessionId,
             contextPath: "/app/context",
+            reviewInputPath: "/app/review-input",
             patchPath: "/app/patch",
+            worktreePath: "/app/worktree",
             model: "deepseek/deepseek-v4-flash",
             reasoning: "low",
             language: "en",
@@ -242,7 +204,7 @@ describe("PiInsightChildInvoker", () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
-      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
       stderr: "",
     });
     const invoker = new PiInsightChildInvoker(
@@ -253,18 +215,9 @@ describe("PiInsightChildInvoker", () => {
       fixtureEnvironment,
       { PATCHDESK_DATA_DIRECTORY: "/home/me/.local/share/patchdesk-dev" },
     );
-    await invoker.invokeWalkthrough(
-      {
-        profileId: "profile",
-        sessionId,
-        contextPath: "/app/context",
-        patchPath: "/app/patch",
-        model: "deepseek/deepseek-v4-flash",
-        reasoning: "low",
-        language: "en",
-      },
-      60_000,
-    );
+    await invoker.invoke(invocation(), {
+      signal: new AbortController().signal,
+    });
     expect(executor.requests[0]?.environment).toMatchObject({
       PATCHDESK_DATA_DIRECTORY: "/home/me/.local/share/patchdesk-dev",
     });
@@ -309,19 +262,11 @@ describe("PiInsightChildInvoker", () => {
       "/workspace",
     );
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "invalid_result" },
+    });
   });
 
   it("classifies a crashed child as an execution failure", async () => {
@@ -337,26 +282,18 @@ describe("PiInsightChildInvoker", () => {
       "/workspace",
     );
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "execution_failed" },
+    });
   });
 
   it("rejects oversized child input without starting the runner", async () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
-      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
       stderr: "",
     });
     const invoker = new PiInsightChildInvoker(
@@ -364,17 +301,9 @@ describe("PiInsightChildInvoker", () => {
       "/workspace",
     );
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: `/app/${"x".repeat(2 * 1024 * 1024)}`,
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
+      invoker.invoke(
+        invocation({ contextPath: `/app/${"x".repeat(2 * 1024 * 1024)}` }),
+        { signal: new AbortController().signal },
       ),
     ).resolves.toEqual({ _tag: "err", error: { reason: "execution_failed" } });
     expect(executor.requests).toEqual([]);
@@ -384,7 +313,7 @@ describe("PiInsightChildInvoker", () => {
     const executor = new RecordingExecutor({
       _tag: "Exited",
       exitCode: 0,
-      stdout: JSON.stringify({ ok: true, value: walkthrough }),
+      stdout: JSON.stringify({ ok: true, value: analysisResult }),
       stderr: "",
     });
     const invoker = new PiInsightChildInvoker(
@@ -394,19 +323,7 @@ describe("PiInsightChildInvoker", () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-        { signal: controller.signal },
-      ),
+      invoker.invoke(invocation(), { signal: controller.signal }),
     ).resolves.toEqual({ _tag: "err", error: { reason: "cancelled" } });
     expect(executor.requests).toEqual([]);
   });
@@ -476,17 +393,19 @@ describe("PiInsightChildInvoker provider seam", () => {
     expect(executor.requests).toEqual([]);
   });
 
-  it("routes a walkthrough through its patch-scaled bound", async () => {
+  it("refuses the removed whole-result Walkthrough invocation without a child", async () => {
     const { executor, invoker } = seam(
-      JSON.stringify({ ok: true, value: walkthrough }),
+      JSON.stringify({ ok: true, value: analysisResult }),
     );
     await expect(
       invoker.invoke(invocation({ type: "walkthrough" }), {
         signal: new AbortController().signal,
       }),
-    ).resolves.toEqual({ _tag: "ok", value: walkthrough });
-    // Unreadable fixture artifacts measure as zero bytes, which is the floor.
-    expect(executor.requests[0]?.timeoutMs).toBe(5 * 60_000);
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "runtime_unavailable" },
+    });
+    expect(executor.requests).toEqual([]);
   });
 
   it("fails every run closed when no verified Insight runtime resolved", async () => {
@@ -522,18 +441,7 @@ describe("PiInsightChildInvoker failure classification", () => {
     );
 
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
     ).resolves.toEqual({
       _tag: "err",
       error: {
@@ -560,18 +468,7 @@ describe("PiInsightChildInvoker failure classification", () => {
     );
 
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
     ).resolves.toEqual({
       _tag: "err",
       error: {
@@ -591,19 +488,11 @@ describe("PiInsightChildInvoker failure classification", () => {
     );
 
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "cancelled" } });
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "cancelled" },
+    });
   });
 });
 
@@ -616,7 +505,7 @@ describe("PiInsightChildInvoker strict response boundary", () => {
           exitCode: 0,
           stdout: JSON.stringify({
             ok: true,
-            value: walkthrough,
+            value: analysisResult,
             reason: "cancelled",
           }),
           stderr: "private provider output",
@@ -626,19 +515,11 @@ describe("PiInsightChildInvoker strict response boundary", () => {
     );
 
     await expect(
-      invoker.invokeWalkthrough(
-        {
-          profileId: "profile",
-          sessionId,
-          contextPath: "/app/context",
-          patchPath: "/app/patch",
-          model: "deepseek/deepseek-v4-flash",
-          reasoning: "low",
-          language: "en",
-        },
-        60_000,
-      ),
-    ).resolves.toEqual({ _tag: "err", error: { reason: "invalid_result" } });
+      invoker.invoke(invocation(), { signal: new AbortController().signal }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "invalid_result" },
+    });
   });
 });
 

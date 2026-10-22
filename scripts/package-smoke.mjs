@@ -127,7 +127,7 @@ try {
   await makeTreeWritable(runtimeRoot);
 }
 if (
-  !smoke?.walkthrough?.ok ||
+  !smoke?.brief?.ok ||
   !smoke.analysis?.ok ||
   smoke.analysisCallNineDenied !== true ||
   smoke.cancellation?.reason !== "cancelled"

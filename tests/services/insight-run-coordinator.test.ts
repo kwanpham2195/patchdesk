@@ -41,12 +41,22 @@ describe("InsightRunCoordinator current lifecycle", () => {
       const waiting = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const value = await fixture({
-        async invoke() {
-          await waiting;
-          return ok(analysisResult);
+      const value = await fixture(
+        {
+          async invoke() {
+            await waiting;
+            return ok(analysisResult);
+          },
         },
-      });
+        {
+          walkthroughInvoker: {
+            async invokeWalkthroughSession() {
+              await waiting;
+              return { _tag: "finished" };
+            },
+          },
+        },
+      );
       const started = await value.coordinator.start({
         profileId,
         reviewId: value.review.id,
@@ -88,11 +98,17 @@ describe("InsightRunCoordinator current lifecycle", () => {
       );
       await recovered.recoverAll();
       expect(
-        await value.insights.load(profileId, value.review.id, type),
+        await recovered.observe({
+          profileId,
+          reviewId: value.review.id,
+          type,
+          runId: started.value.runId,
+        }),
       ).toMatchObject({
         _tag: "ok",
         value: {
-          replacementFailure: { reason: "failed" },
+          status: "failed",
+          failureReason: "failed",
         },
       });
       release();

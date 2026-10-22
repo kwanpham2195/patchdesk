@@ -9,12 +9,37 @@ import {
   type NarrativeWalkthroughActions,
 } from "#src/renderer/src/components/narrative-walkthrough";
 import type {
-  NarrativeWalkthrough as NarrativeWalkthroughModel,
+  NarrativeHunk,
   NarrativeSnapshot,
 } from "#src/domain/narrative-walkthrough";
 import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
 import { PagedWalkthroughReader } from "#src/renderer/src/components/paged-walkthrough-reader";
 import { projection } from "./review-workbench-fixtures";
+
+// Static layout fixtures are not retained-result readers.
+type NarrativeWalkthroughModel = {
+  readonly snapshot: NarrativeSnapshot;
+  readonly citationStatus: "verified" | "unverified";
+  readonly title: string;
+  readonly focus: string;
+  readonly chapters: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly sections: ReadonlyArray<{
+      readonly id: string;
+      readonly title: string;
+      readonly prose: string;
+      readonly hunkIds: ReadonlyArray<string>;
+      readonly hunks: ReadonlyArray<NarrativeHunk>;
+    }>;
+  }>;
+  readonly support: {
+    readonly id: "support";
+    readonly title: "Support";
+    readonly hunkIds: ReadonlyArray<string>;
+    readonly hunks: ReadonlyArray<NarrativeHunk>;
+  };
+};
 
 function NarrativeWalkthrough({
   walkthrough,
