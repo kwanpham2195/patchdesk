@@ -14,7 +14,7 @@ const models = Array.from({ length: 269 }, (_, index) => ({
 
 const baseProps = {
   open: true,
-  type: "walkthrough" as const,
+  type: "brief" as const,
   action: "run" as const,
   provider: "pi" as const,
   accountModelsPending: null,

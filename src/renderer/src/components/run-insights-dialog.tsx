@@ -13,6 +13,7 @@ import {
   ModelListPrice,
 } from "./insight-run-option-controls";
 import { modelReasoningOptions } from "#src/renderer/src/insight-run-options";
+import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
 import {
   isAccountInsightProvider,
   type AccountInsightProvider,
@@ -170,6 +171,7 @@ function RunInsightsRowFields({
             id={`${id}-provider`}
             ariaLabel={`${noun} provider`}
             value={row.provider}
+            providers={supportedInsightProviders(type)}
             disabled={fieldsDisabled}
             onValueChange={(provider) =>
               controller.changeProvider(type, provider)
@@ -226,6 +228,17 @@ function RunInsightsRowFields({
       {row.running ? null : (
         <ModelListPrice models={row.models} model={row.model} />
       )}
+      {row.models.length === 0 && provider === "pi" && !row.running ? (
+        <Alert>
+          <AlertDescription>
+            {noun} has no API-key model available. Configure a provider API key,
+            then relaunch Patchdesk.
+            {type === "guide" || type === "walkthrough"
+              ? " CLI accounts are not supported for this Insight."
+              : " Or choose a CLI account."}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {startFailureMessage === undefined ? null : (
         <Alert variant="destructive">
           <AlertTitle>{noun} did not start.</AlertTitle>

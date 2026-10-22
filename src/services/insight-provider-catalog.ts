@@ -1,5 +1,7 @@
 import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
 import { definedProps } from "#src/domain/defined-props";
+import { supportedInsightTypes } from "#src/domain/insight-provider-capabilities";
+import type { InsightType } from "#src/domain/insight-record";
 import type {
   AccountInsightProvider,
   InsightProvider,
@@ -28,6 +30,7 @@ type InsightProviderStatus = {
   readonly label: string;
   readonly available: boolean;
   readonly guidance: string;
+  readonly supportedTypes: ReadonlyArray<InsightType>;
 };
 
 /** Provider-specific model metadata used only by Insight dialogs. */
@@ -170,6 +173,7 @@ function piModelSource(pi: PiRuntimeModelCatalog): ProviderModelSource {
     return {
       status: {
         id: "pi",
+        supportedTypes: supportedInsightTypes("pi"),
         label: "API key",
         available: result._tag === "ok",
         guidance: PI_GUIDANCE,
@@ -209,6 +213,7 @@ function codexModelSource(
 ): ProviderModelSource {
   const status = (available: boolean): InsightProviderStatus => ({
     id: "codex-cli-account",
+    supportedTypes: supportedInsightTypes("codex-cli-account"),
     label: "Codex CLI account",
     available,
     guidance: available
@@ -248,6 +253,7 @@ function piCliModelSource(
 ): ProviderModelSource {
   const status = (available: boolean): InsightProviderStatus => ({
     id: "pi-cli-account",
+    supportedTypes: supportedInsightTypes("pi-cli-account"),
     label: "pi CLI account",
     available,
     guidance: available

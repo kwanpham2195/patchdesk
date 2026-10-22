@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import * as v from "valibot";
 
 import { definedProps } from "#src/domain/defined-props";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 import type {
   AccountInsightProvider,
   InsightProvider,
@@ -316,7 +317,11 @@ export function useInsightRunControls({
     runs[dialogType].dismissStartRefusal();
     setRunDialogRequestId(requestId);
     setConfiguration({
-      ...seedInsightRunOptions(preferencesRef.current[dialogType], catalog),
+      ...seedInsightRunOptions(
+        dialogType,
+        preferencesRef.current[dialogType],
+        catalog,
+      ),
       runDialogType: dialogType,
       runDialogAction: action,
     });
@@ -336,6 +341,7 @@ export function useInsightRunControls({
   const confirmRun = (): void => {
     const dialogType = configuration.runDialogType;
     if (model === null || dialogType === null) return;
+    if (!supportsInsightProvider(dialogType, provider)) return;
     runs[dialogType].run(provider, model, reasoning, language, {
       ...definedProps({ requestId: runDialogRequestId }),
       onAccepted: (runId) => {

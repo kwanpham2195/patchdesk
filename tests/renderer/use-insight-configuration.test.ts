@@ -11,6 +11,29 @@ import {
 } from "./fake-desktop-response";
 
 let desktop: DesktopDouble | undefined;
+const providers = [
+  {
+    id: "pi",
+    label: "API key",
+    available: true,
+    supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
+    guidance: "Configured.",
+  },
+  {
+    id: "codex-cli-account",
+    label: "Codex CLI account",
+    available: true,
+    supportedTypes: ["brief", "analysis"],
+    guidance: "Load models explicitly.",
+  },
+  {
+    id: "pi-cli-account",
+    label: "pi CLI account",
+    available: true,
+    supportedTypes: ["brief", "analysis"],
+    guidance: "Load models explicitly.",
+  },
+];
 afterEach(() => {
   desktop?.restore();
   desktop = undefined;
@@ -23,7 +46,7 @@ describe("useInsightConfiguration", () => {
       | undefined;
     let activation = 0;
     desktop = installDesktopDouble({
-      "/v1/insight-providers": () => success({ providers: [], models: [] }),
+      "/v1/insight-providers": () => success({ providers, models: [] }),
       "/v1/insight-providers/codex/models": () => {
         activation += 1;
         if (activation === 1)
@@ -31,7 +54,7 @@ describe("useInsightConfiguration", () => {
             settleFirst = resolve;
           });
         return success({
-          providers: [],
+          providers,
           models: [
             {
               provider: "codex-cli-account",
@@ -80,7 +103,7 @@ describe("useInsightConfiguration", () => {
   it("suppresses a current cancellation but reports a genuine runtime failure", async () => {
     let response = failure({ error: "cancelled" }, 400);
     desktop = installDesktopDouble({
-      "/v1/insight-providers": () => success({ providers: [], models: [] }),
+      "/v1/insight-providers": () => success({ providers, models: [] }),
       "/v1/insight-providers/codex/models": () => response,
     });
     const { result } = renderHook(() =>
@@ -113,7 +136,7 @@ describe("useInsightConfiguration", () => {
     let response: ReturnType<typeof failure> | ReturnType<typeof success> =
       failure({ error: "runtime_unavailable", requiredVersion: "0.80.4" }, 503);
     desktop = installDesktopDouble({
-      "/v1/insight-providers": () => success({ providers: [], models: [] }),
+      "/v1/insight-providers": () => success({ providers, models: [] }),
       "/v1/insight-providers/pi-cli/models": () => response,
     });
     const { result } = renderHook(() =>
@@ -136,7 +159,7 @@ describe("useInsightConfiguration", () => {
     );
 
     response = success({
-      providers: [],
+      providers,
       models: [
         {
           provider: "pi-cli-account",
@@ -162,7 +185,7 @@ describe("useInsightConfiguration", () => {
     desktop = installDesktopDouble({
       "/v1/insight-providers": () =>
         success({
-          providers: [],
+          providers,
           models: [
             {
               provider: "pi",

@@ -504,6 +504,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
               id: "codex-cli-account",
               label: "Codex CLI account",
               available: true,
+              supportedTypes: ["brief", "analysis"],
               guidance: "Use the existing local Codex CLI login.",
             },
           ],

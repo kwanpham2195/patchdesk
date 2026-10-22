@@ -59,6 +59,7 @@ const insightStatuses = {
   guide_artifact_unreadable: 503,
   invalid_request: 400,
   model_unavailable: 400,
+  unsupported_provider: 400,
   ownership_mismatch: 403,
   not_found: 404,
   terminal_review: 409,

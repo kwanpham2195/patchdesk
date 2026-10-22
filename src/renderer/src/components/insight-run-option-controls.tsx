@@ -1,6 +1,5 @@
 import {
   INSIGHT_LANGUAGES,
-  INSIGHT_PROVIDERS,
   type AccountInsightProvider,
   type InsightLanguage,
   type InsightProvider,
@@ -62,12 +61,14 @@ export function InsightProviderSelect({
   id,
   ariaLabel,
   value,
+  providers,
   disabled,
   onValueChange,
 }: {
   readonly id: string;
   readonly ariaLabel: string;
   readonly value: InsightProvider;
+  readonly providers: ReadonlyArray<InsightProvider>;
   readonly disabled: boolean;
   readonly onValueChange: (provider: InsightProvider) => void;
 }): React.JSX.Element {
@@ -75,12 +76,12 @@ export function InsightProviderSelect({
     <Select
       value={value}
       disabled={disabled}
-      items={INSIGHT_PROVIDERS.map((option) => ({
+      items={providers.map((option) => ({
         label: INSIGHT_PROVIDER_LABELS[option],
         value: option,
       }))}
       onValueChange={(next) => {
-        const provider = INSIGHT_PROVIDERS.find((option) => option === next);
+        const provider = providers.find((option) => option === next);
         if (provider !== undefined) onValueChange(provider);
       }}
     >
@@ -89,7 +90,7 @@ export function InsightProviderSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          {INSIGHT_PROVIDERS.map((option) => (
+          {providers.map((option) => (
             <SelectItem key={option} value={option}>
               {INSIGHT_PROVIDER_LABELS[option]}
             </SelectItem>

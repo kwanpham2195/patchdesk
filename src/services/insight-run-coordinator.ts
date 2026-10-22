@@ -142,6 +142,7 @@ export type InsightCoordinatorFailure =
   | "terminal_review"
   | "already_running"
   | "model_unavailable"
+  | "unsupported_provider"
   | "catalog_unavailable"
   | "storage_unavailable"
   | "not_active"
@@ -174,6 +175,7 @@ export const insightFailureKinds = {
   guide_artifact_unreadable: "unavailable",
   invalid_request: "invalid",
   model_unavailable: "invalid",
+  unsupported_provider: "invalid",
   ownership_mismatch: "forbidden",
   not_found: "not_found",
   terminal_review: "conflict",

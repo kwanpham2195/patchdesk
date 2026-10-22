@@ -28,7 +28,11 @@ import {
   type InsightProviderCatalog,
   type InsightProviderCatalogModel,
 } from "#src/renderer/src/insight-catalog-contracts";
-import { insightRunOptionsForProvider } from "#src/renderer/src/insight-run-options";
+import {
+  insightRunOptionsForProvider,
+  seedInsightRunOptions,
+} from "#src/renderer/src/insight-run-options";
+import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 import type { InsightRunDialogType } from "#src/renderer/src/components/insight-run-dialog";
 
 /** Why an account provider's explicit model load failed; `requiredVersion` is set for an outdated pi. */
@@ -146,14 +150,9 @@ export function useInsightConfiguration(input: {
     }
     preferencesRef.current = loadedPreferences;
     const initialPreference = loadedPreferences[initialInsight];
-    if (initialPreference !== undefined) {
-      setConfiguration({
-        provider: initialPreference.provider,
-        reasoning: initialPreference.reasoning,
-        model: initialPreference.model,
-        language: initialPreference.language,
-      });
-    }
+    setConfiguration(
+      seedInsightRunOptions(initialInsight, initialPreference, undefined),
+    );
     void requestJson("/v1/insight-providers")
       .then((value) => {
         if (!active) return;
@@ -167,14 +166,6 @@ export function useInsightConfiguration(input: {
           });
           return;
         }
-        const piModels = parsed.models.filter(
-          (candidate) => candidate.provider === "pi",
-        );
-        const selectedModel =
-          initialPreference?.provider === "pi" &&
-          piModels.some((candidate) => candidate.id === initialPreference.model)
-            ? initialPreference.model
-            : (piModels[0]?.id ?? null);
         const catalogWithCache = {
           ...parsed,
           models: ACCOUNT_INSIGHT_PROVIDERS.reduce(
@@ -189,8 +180,11 @@ export function useInsightConfiguration(input: {
         };
         setConfiguration({
           catalog: catalogWithCache,
-          models: piModels,
-          model: selectedModel,
+          ...seedInsightRunOptions(
+            initialInsight,
+            initialPreference,
+            catalogWithCache,
+          ),
           catalogError: false,
         });
       })
@@ -210,8 +204,10 @@ export function useInsightConfiguration(input: {
 
   const activePreferenceType = runDialogType ?? selectedInsight;
   const changeProvider = (nextProvider: InsightProvider): void => {
+    if (!supportsInsightProvider(activePreferenceType, nextProvider)) return;
     setConfiguration(
       insightRunOptionsForProvider(
+        activePreferenceType,
         nextProvider,
         preferencesRef.current[activePreferenceType],
         catalog,
@@ -281,16 +277,19 @@ export function useInsightConfiguration(input: {
         setConfiguration({ accountModelsPending: null });
       });
   };
-  const activateAccount = (provider: AccountInsightProvider): void =>
+  const activateAccount = (provider: AccountInsightProvider): void => {
+    if (!supportsInsightProvider(activePreferenceType, provider)) return;
     loadAccountModels(provider, (nextCatalog) =>
       setConfiguration(
         insightRunOptionsForProvider(
+          activePreferenceType,
           provider,
           preferencesRef.current[activePreferenceType],
           nextCatalog,
         ),
       ),
     );
+  };
   return {
     configuration,
     preferencesRef,
