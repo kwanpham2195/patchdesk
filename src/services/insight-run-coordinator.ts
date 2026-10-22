@@ -82,7 +82,11 @@ import { isTerminalStatus } from "./insight-slot-records";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
-import type { GuideResumeRequest } from "./guide-generation-resume";
+import {
+  guideResumeFailure,
+  type GuideResumeRequest,
+} from "./guide-generation-resume";
+import type { WalkthroughGenerationService } from "./walkthrough-generation-service";
 import {
   ExplanationRunAdmission,
   type InsightStartResolution,
@@ -256,6 +260,7 @@ export class InsightRunCoordinator {
      * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
      */
     guide?: GuideGenerationStarter,
+    private readonly walkthrough?: Pick<WalkthroughGenerationService, "resume">,
   ) {
     this.active = owned;
     this.explanation = new ExplanationRunAdmission(
@@ -557,6 +562,22 @@ export class InsightRunCoordinator {
     input: GuideResumeRequest,
   ): Promise<Result<void, InsightCoordinatorFailure>> {
     return this.explanation.resumeGuide(input);
+  }
+
+  /** The new Resume route uses durable Walkthrough generation, never the legacy producer. */
+  async resumeWalkthrough(
+    input: GuideResumeRequest,
+  ): Promise<Result<void, InsightCoordinatorFailure>> {
+    const owned = await this.ensureMutableOwned(
+      input.profileId,
+      input.reviewId,
+    );
+    if (owned._tag === "err") return owned;
+    if (this.walkthrough === undefined) return err("not_available");
+    const resumed = await this.walkthrough.resume(input);
+    return resumed._tag === "err"
+      ? err(guideResumeFailure(resumed.error))
+      : ok(undefined);
   }
 
   async cancel(input: {

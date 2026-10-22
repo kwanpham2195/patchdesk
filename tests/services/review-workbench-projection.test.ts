@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parseRetainedInsight } from "#src/domain/insight-record";
+import { RetainedInsightReader } from "#src/services/retained-insight-reader";
+import { projectStoredInsight } from "#src/domain/insight";
 import { err, ok } from "#src/domain/result";
 import {
   at,
@@ -12,6 +14,7 @@ import {
   review,
   reviewId,
   sessionId,
+  session,
   snapshot,
   snapshotData,
 } from "./review-workbench-projection-fixture";
@@ -718,15 +721,18 @@ describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", ()
       args[2] === "walkthrough"
         ? walkthroughRecord(value)
         : err({ reason: "not_found" })) as never);
-    const result = await fx.service.loadRepresented({
-      profileId,
-      sessionId,
-      snapshot,
-      refreshedAt: at,
-      freshness: { _tag: "Fresh" },
-    });
-    if (result._tag !== "ok") throw new Error("expected an ok projection");
-    return result.value.insights.walkthrough;
+    // The retired helper remains under coverage until slice 2e removes it; the workbench no longer calls it.
+    const reader = new RetainedInsightReader(fx.sessions, fx.insights as never);
+    const result = await reader.loadLegacyWalkthroughRecord(session());
+    if (result._tag !== "ok") throw new Error("expected a legacy record");
+    return projectStoredInsight(
+      result.value.record,
+      session(),
+      undefined,
+      undefined,
+      undefined,
+      result.value.artifactStatus,
+    );
   }
 
   it("degrades a non-object retained value to every fallback default", async () => {

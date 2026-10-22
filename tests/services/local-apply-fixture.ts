@@ -294,6 +294,7 @@ export async function localApplyHarness(
       viewedFiles,
       operations,
       createInProcessInsightResourceBundle().jobs,
+      { summary: async () => ok({ _tag: "none", run: null, failure: null }) },
     ),
     {
       reviews,

@@ -70,7 +70,7 @@ test("production walkthrough stays manual, supports review actions, and keeps th
       page.getByRole("button", { name: "Mark Support reviewed" }),
     ).toHaveCount(0);
     const walkthroughDiff = page.locator(
-      '[data-walkthrough-diff-block="section-1::h1::0"]',
+      '[data-walkthrough-diff-block="s1::h1"]',
     );
     await expect(
       walkthroughDiff.getByRole("button", {

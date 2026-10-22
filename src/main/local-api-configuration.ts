@@ -51,6 +51,7 @@ export type InsightCoordinatorSeam = Pick<
     Pick<
       InsightRunCoordinator,
       | "updateWalkthroughProgress"
+      | "resumeWalkthrough"
       | "updateAnalysisVerification"
       | "updateGuideReadingState"
       | "addFinding"

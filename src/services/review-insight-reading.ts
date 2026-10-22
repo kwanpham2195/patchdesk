@@ -19,7 +19,7 @@ import type {
   AgentInsightType,
 } from "#src/domain/insight-record";
 import { findingDraftStates } from "#src/domain/local-draft";
-import type { NarrativeWalkthrough } from "#src/domain/narrative-walkthrough";
+import type { WalkthroughSummary } from "#src/domain/walkthrough-progress";
 import type { ReviewResult } from "#src/domain/review-result";
 import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
@@ -72,7 +72,7 @@ type RetainedInsightReading = {
   | { readonly type: "brief"; readonly markdown: string }
   | {
       readonly type: "walkthrough";
-      readonly chapters: NarrativeWalkthrough["chapters"];
+      readonly summary: Extract<WalkthroughSummary, { _tag: "ready" }>;
     }
 );
 
@@ -332,7 +332,7 @@ function readRetained(
       const walkthrough = projection.insights.walkthrough.retained;
       return walkthrough === undefined
         ? undefined
-        : { ...revision, type, chapters: walkthrough.value.chapters };
+        : { ...revision, type, summary: walkthrough.value };
     }
     default:
       return casesHandled(type);

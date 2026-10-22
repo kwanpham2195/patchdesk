@@ -1,102 +1,193 @@
-import { useRef, useState } from "react";
-
-import { requestJson } from "#src/renderer/src/api-client";
-import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
-import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
+import { useEffect, useRef, useState } from "react";
+import * as v from "valibot";
+import { isApiErrorCode, requestJson } from "#src/renderer/src/api-client";
+import type {
+  WalkthroughSummary,
+  WalkthroughProgressMutationRequest,
+} from "#src/domain/walkthrough-progress";
+import { parseWalkthroughSummaryReply } from "#src/renderer/src/walkthrough-contracts";
 import { useLatestCommitted } from "./use-latest-committed";
+import { definedProps } from "#src/domain/defined-props";
 
-type WalkthroughProgress = NonNullable<
-  WorkbenchResponse["insights"]["walkthrough"]["progress"]
->;
+type ReadySummary = Extract<WalkthroughSummary, { _tag: "ready" }>;
+type Mutation = WalkthroughProgressMutationRequest["mutation"];
+const savedSchema = v.strictObject({
+  version: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+});
 
-/** The reviewed marks and open section one Walkthrough reader renders and edits. */
+/** Only markers in the requested window are held in renderer memory. */
 export type WalkthroughProgressControls = {
-  readonly progress: WalkthroughProgress;
+  readonly progress: {
+    readonly reviewedSectionIds: ReadonlyArray<string>;
+    readonly currentSectionId: string | null;
+    readonly reviewedCount: number;
+  };
   readonly saveFailed: boolean;
-  /** Marks the section reviewed, or unmarks it when it already is. Absent on a merged or closed Review, whose progress the server refuses to change. */
   readonly toggleSectionReviewed?: (sectionId: string) => void;
   readonly selectSection: (sectionId: string) => void;
 };
 
-const NO_PROGRESS: WalkthroughProgress = {
-  reviewedSectionIds: [],
-  supportReviewed: false,
-};
-
-/**
- * Owns the reading progress of the retained Walkthrough: each change applies at
- * once and is saved whole, and a saved change is written back to the workbench.
- */
+/** Mounted under the reader's digest key; conflicts refresh the fence before retrying a still-current intent. */
 export function useWalkthroughProgress({
   profileId,
   reviewId,
   reviewOpen,
-  walkthrough,
-  onWorkbenchPatch,
+  summary,
+  sections,
+  onSelectSection,
+  onSaved,
 }: {
   readonly profileId: string;
   readonly reviewId: string;
   readonly reviewOpen: boolean;
-  readonly walkthrough: WorkbenchResponse["insights"]["walkthrough"];
-  /** Receives the saved progress so a remounted Insights slot starts from it. */
-  readonly onWorkbenchPatch: (patch: ReviewWorkbenchPatch) => void;
+  readonly summary: ReadySummary;
+  readonly sections: ReadonlyArray<{
+    readonly sectionId: string;
+    readonly reviewed: boolean;
+  }>;
+  readonly onSelectSection: (sectionId: string) => void;
+  readonly onSaved: (mutation: Mutation) => void;
 }): WalkthroughProgressControls {
-  const runId = walkthrough.retained?.runId;
-  const savedProgress = walkthrough.progress ?? NO_PROGRESS;
-  const [state, setState] = useState<{
-    readonly runId: string | undefined;
-    readonly progress: WalkthroughProgress;
-    readonly saveFailed: boolean;
-  }>(() => ({ runId, progress: savedProgress, saveFailed: false }));
-  // A regenerated Walkthrough starts from its own stored progress, never the previous run's.
-  if (state.runId !== runId)
-    setState({ runId, progress: savedProgress, saveFailed: false });
-  const generation = useRef(0);
-  const latest = useLatestCommitted({ walkthrough, onWorkbenchPatch });
+  const digest = summary.digest;
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
+  const [currentSectionId, setCurrentSectionId] = useState(
+    summary.currentSectionId,
+  );
+  const [saveFailed, setSaveFailed] = useState(false);
+  const latest = useLatestCommitted({
+    digest,
+    sections,
+    summary,
+    onSaved,
+    reviewOpen,
+  });
+  const queue = useRef<Promise<void> | null>(null);
+  const version = useRef({ digest, value: summary.progressVersion });
+  const intents = useRef(new Map<string, Mutation>());
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (version.current.digest === digest)
+      version.current.value = Math.max(
+        version.current.value,
+        summary.progressVersion,
+      );
+    if (intents.current.size === 0) setOverrides(new Map());
+  }, [digest, summary.progressVersion]);
 
-  const save = (progress: WalkthroughProgress): void => {
-    setState((current) => ({ ...current, progress }));
-    // A merged or closed Review still moves between sections, but only on screen.
-    if (runId === undefined || !reviewOpen) return;
-    const request = ++generation.current;
-    void requestJson("/v1/reviews/insights/walkthrough/progress", {
-      method: "POST",
-      body: { profileId, reviewId, runId, ...progress },
-    })
-      .then(() => {
-        // An older response must not overwrite progress a later request already saved.
-        if (request !== generation.current) return;
-        const current = latest.current;
-        if (current.walkthrough.retained?.runId === runId)
-          current.onWorkbenchPatch({
-            insights: { walkthrough: { ...current.walkthrough, progress } },
-          });
-        setState((current) =>
-          current.runId === runId ? { ...current, saveFailed: false } : current,
-        );
-      })
-      .catch(() => {
-        setState((current) =>
-          current.runId === runId ? { ...current, saveFailed: true } : current,
-        );
-      });
+  const save = (mutation: Mutation): void => {
+    if (!reviewOpen) return;
+    const key =
+      mutation.action === "set_current" ? "current" : mutation.sectionId;
+    intents.current.set(key, mutation);
+    const isCurrent = (): boolean =>
+      latest.current.digest === digest &&
+      latest.current.reviewOpen &&
+      intents.current.get(key) === mutation;
+    queue.current = (queue.current ?? Promise.resolve()).then(async () => {
+      if (!isCurrent()) return;
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const reply = v.safeParse(
+              savedSchema,
+              await requestJson(
+                "/v1/reviews/insights/walkthrough/reading-progress",
+                {
+                  method: "POST",
+                  body: {
+                    profileId,
+                    reviewId,
+                    digest,
+                    expectedVersion: version.current.value,
+                    mutation,
+                  },
+                },
+              ),
+            );
+            if (!reply.success)
+              throw new Error("Invalid Walkthrough progress reply");
+            if (latest.current.digest !== digest) return;
+            version.current = { digest, value: reply.output.version };
+            if (isCurrent()) intents.current.delete(key);
+            if (mounted.current) {
+              setSaveFailed(false);
+              latest.current.onSaved(mutation);
+            }
+            return;
+          } catch (cause) {
+            if (!isApiErrorCode(cause, "version_conflict") || attempt !== 0)
+              throw cause;
+            const refreshed = parseWalkthroughSummaryReply(
+              await requestJson("/v1/reviews/insights/walkthrough/summary", {
+                method: "POST",
+                body: { profileId, reviewId },
+              }),
+            );
+            if (
+              refreshed?._tag !== "ready" ||
+              refreshed.digest !== digest ||
+              !isCurrent()
+            )
+              return;
+            version.current = { digest, value: refreshed.progressVersion };
+          }
+        }
+      } catch {
+        if (isCurrent()) {
+          intents.current.delete(key);
+          if (mounted.current) setSaveFailed(true);
+        }
+      }
+    });
   };
-
-  const { progress } = state;
-  const selectSection = (sectionId: string): void =>
-    save({ ...progress, currentSectionId: sectionId });
-  if (!reviewOpen)
-    return { progress, saveFailed: state.saveFailed, selectSection };
+  const reviewed = (sectionId: string): boolean =>
+    overrides.get(sectionId) ??
+    sections.find((section) => section.sectionId === sectionId)?.reviewed ??
+    false;
+  let reviewedCount = summary.reviewedCount;
+  for (const section of sections) {
+    const value = overrides.get(section.sectionId);
+    if (value !== undefined && value !== section.reviewed)
+      reviewedCount += value ? 1 : -1;
+  }
+  const selectSection = (sectionId: string): void => {
+    setCurrentSectionId(sectionId);
+    onSelectSection(sectionId);
+    save({ action: "set_current", sectionId });
+  };
+  const progress = {
+    reviewedSectionIds: sections.flatMap((section) =>
+      reviewed(section.sectionId) ? [section.sectionId] : [],
+    ),
+    currentSectionId,
+    reviewedCount,
+  };
   return {
     progress,
-    saveFailed: state.saveFailed,
-    toggleSectionReviewed: (sectionId) =>
-      save({
-        ...progress,
-        reviewedSectionIds: progress.reviewedSectionIds.includes(sectionId)
-          ? progress.reviewedSectionIds.filter((id) => id !== sectionId)
-          : [...progress.reviewedSectionIds, sectionId],
-      }),
+    saveFailed,
     selectSection,
+    ...definedProps({
+      toggleSectionReviewed: reviewOpen
+        ? (sectionId: string) => {
+            const value = !reviewed(sectionId);
+            setOverrides((current) =>
+              new Map(
+                [...current].filter(([id]) =>
+                  sections.some((section) => section.sectionId === id),
+                ),
+              ).set(sectionId, value),
+            );
+            save({ action: "set_reviewed", sectionId, value });
+          }
+        : undefined,
+    }),
   };
 }

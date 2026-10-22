@@ -183,6 +183,7 @@ async function opening(
     viewedFiles,
     new LocalApplyOperationStore(paths),
     createInProcessInsightResourceBundle().jobs,
+    { summary: async () => ok({ _tag: "none", run: null, failure: null }) },
   );
   return new LocalReviewOpening(
     {

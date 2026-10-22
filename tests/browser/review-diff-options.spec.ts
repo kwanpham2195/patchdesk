@@ -29,7 +29,7 @@ test("Walkthrough View options stay with their trigger while the reader scrolls"
       Object.assign(element.style, { height: "600px", flex: "none" });
     });
     const trigger = page
-      .locator('[data-walkthrough-diff-block="section-1::h1::0"]')
+      .locator('[data-walkthrough-diff-block="s1::h1"]')
       .getByRole("button", { name: "View options" });
     await expect(trigger).toBeVisible();
     const contentSize = await reader.evaluate((element) => ({
@@ -122,7 +122,7 @@ test("Walkthrough View options flip above their trigger near the viewport bottom
     await openWalkthroughFixture(page, serverOrigin(server));
 
     const trigger = page
-      .locator('[data-walkthrough-diff-block="section-1::h1::0"]')
+      .locator('[data-walkthrough-diff-block="s1::h1"]')
       .getByRole("button", { name: "View options" });
     await expect(trigger).toBeVisible();
     await trigger.click();

@@ -195,6 +195,15 @@ export class WalkthroughPageService {
     return ok({
       kind: "navigation",
       items,
+      previous:
+        at.p === 0
+          ? null
+          : encodeCursor({
+              d: view.digest,
+              k: "navigation",
+              s: "",
+              p: Math.max(0, at.p - 10),
+            }),
       next:
         consumed < view.root.sections.count
           ? encodeCursor({
@@ -244,6 +253,15 @@ export class WalkthroughPageService {
       previous: ordinal > 0 ? `s${ordinal}` : null,
       next: ordinal + 1 < view.root.sections.count ? `s${ordinal + 2}` : null,
       reviewed: reviewed.value,
+      navigationCursor:
+        ordinal < 10
+          ? null
+          : encodeCursor({
+              d: view.digest,
+              k: "navigation",
+              s: "",
+              p: Math.floor(ordinal / 10) * 10,
+            }),
     });
   }
 
@@ -258,7 +276,9 @@ export class WalkthroughPageService {
       kind,
       scope: sectionId ?? "",
     });
-    if (at === undefined || at.u !== 0) return err("invalid_cursor");
+    if (at === undefined || at.u > 1 || (sectionId === null && at.u !== 0))
+      return err("invalid_cursor");
+    const backwards = at.u === 1;
     const section =
       sectionId === null ? null : await walkthroughSection(view, sectionId);
     if (section?._tag === "err") return section;
@@ -266,11 +286,9 @@ export class WalkthroughPageService {
       section === null ? view.root.uncited : section.value.citations;
     if (at.p > index.count) return err("invalid_cursor");
     const items: Extract<WalkthroughPage, { kind: "uncited" }>["items"] = [];
-    for (
-      let ordinal = at.p;
-      ordinal < Math.min(at.p + 10, index.count);
-      ordinal += 1
-    ) {
+    for (let offset = 0; offset < 10; offset += 1) {
+      const ordinal = backwards ? at.p - offset - 1 : at.p + offset;
+      if (ordinal < 0 || ordinal >= index.count) break;
       let hunk;
       if (section === null)
         hunk = await walkthroughRecordAt(
@@ -339,20 +357,38 @@ export class WalkthroughPageService {
         }) > 24576
       )
         break;
-      items.push(item);
+      if (backwards) items.unshift(item);
+      else items.push(item);
     }
+    const start = backwards ? at.p - items.length : at.p;
+    const consumed = backwards ? at.p : at.p + items.length;
     const next =
-      at.p + items.length < index.count
+      consumed < index.count
         ? encodeCursor({
             d: view.digest,
             k: kind,
             s: sectionId ?? "",
-            p: at.p + items.length,
+            p: consumed,
           })
         : null;
     return sectionId === null
       ? ok({ kind: "uncited", items, next })
-      : ok({ kind: "citations", sectionId, items, next });
+      : ok({
+          kind: "citations",
+          sectionId,
+          items,
+          next,
+          previous:
+            start === 0
+              ? null
+              : encodeCursor({
+                  d: view.digest,
+                  k: kind,
+                  s: sectionId,
+                  p: start,
+                  u: 1,
+                }),
+        });
   }
 
   private async text(

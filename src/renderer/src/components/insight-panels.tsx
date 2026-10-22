@@ -65,6 +65,7 @@ export function InsightNavRail({
   runInsightsDisabled = false,
   trailing,
   guideStatus,
+  walkthroughStatus,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly selectedInsight: InsightRunDialogType;
@@ -81,6 +82,11 @@ export function InsightNavRail({
   /** The selected document's meta line and run action, drawn at the row's right end so the tab strip is the only divider above the content. */
   readonly trailing?: React.ReactNode;
   readonly guideStatus: {
+    readonly status: InsightProjection["status"];
+    readonly label: string | undefined;
+    readonly activeStatus: InsightRunController["status"] | undefined;
+  };
+  readonly walkthroughStatus?: {
     readonly status: InsightProjection["status"];
     readonly label: string | undefined;
     readonly activeStatus: InsightRunController["status"] | undefined;
@@ -119,19 +125,34 @@ export function InsightNavRail({
                   activeStatus={
                     type === "guide"
                       ? guideStatus.activeStatus
-                      : runs[type].runId === undefined
-                        ? projection.activeRun?.status
-                        : runs[type].status
+                      : type === "walkthrough" &&
+                          walkthroughStatus !== undefined
+                        ? walkthroughStatus.activeStatus
+                        : runs[type].runId === undefined
+                          ? projection.activeRun?.status
+                          : runs[type].status
                   }
                   status={
                     type === "guide"
                       ? guideStatus.status
-                      : runs[type].runId === undefined
-                        ? projection.status
-                        : "running"
+                      : type === "walkthrough" &&
+                          walkthroughStatus !== undefined
+                        ? walkthroughStatus.status
+                        : runs[type].runId === undefined
+                          ? projection.status
+                          : "running"
                   }
-                  {...(type === "guide" && guideStatus.label !== undefined
-                    ? { statusLabel: guideStatus.label }
+                  {...((type === "guide"
+                    ? guideStatus.label
+                    : type === "walkthrough"
+                      ? walkthroughStatus?.label
+                      : undefined) !== undefined
+                    ? {
+                        statusLabel:
+                          (type === "guide"
+                            ? guideStatus.label
+                            : walkthroughStatus?.label) ?? "",
+                      }
                     : {})}
                 />
               ))}

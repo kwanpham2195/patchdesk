@@ -41,7 +41,7 @@ import type { InsightRunConfiguration } from "#src/renderer/src/hooks/use-insigh
 import { useInsightRunControls } from "#src/renderer/src/hooks/use-insight-run-controls";
 import type { RunInsightsDialogController } from "#src/renderer/src/hooks/use-run-insights-dialog";
 import { useAnalysisVerification } from "#src/renderer/src/hooks/use-analysis-verification";
-import { useWalkthroughProgress } from "#src/renderer/src/hooks/use-walkthrough-progress";
+import { walkthroughRevisionMatches } from "#src/renderer/src/hooks/use-walkthrough-summary";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { AnalysisFinding } from "#src/renderer/src/flows/use-analysis-review-actions";
 import type { AddAllFindingsControls } from "#src/renderer/src/flows/use-add-all-findings";
@@ -58,11 +58,7 @@ import {
 import { localPatchViewLabels } from "#src/renderer/src/review-source";
 import { RelativeTime } from "./relative-time";
 import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
-import {
-  useGuideSummary,
-  guideSummaryStatus,
-} from "#src/renderer/src/hooks/use-guide-summary";
-import { publishedGuideRevisionMatches } from "./guide-review-controls";
+import { useInsightSummaries } from "#src/renderer/src/hooks/use-insight-summaries";
 import {
   analysisChangeIntentLine,
   changeIntentRunRefusalMessage,
@@ -313,47 +309,32 @@ export function InsightsSlot({
     analysis: workbench.insights.analysis,
     onWorkbenchPatch,
   });
-  const walkthroughProgress = useWalkthroughProgress({
-    profileId,
-    reviewId,
-    reviewOpen: workbench.review.status === "open",
-    walkthrough: workbench.insights.walkthrough,
-    onWorkbenchPatch,
-  });
+  const {
+    walkthroughSummary,
+    readyWalkthrough,
+    walkthroughStatus,
+    walkthroughRun,
+    walkthroughCanRegenerate,
+    selectedProjection,
+    selectedRetained,
+    selectedIsOutdated,
+    analysisFirstRunActive,
+    walkthroughTitle,
+    guideSummary,
+    guideSnapshot,
+    readyGuide,
+    guideStatus,
+  } = useInsightSummaries(workbench, runs, selectedInsight);
   const brief = workbench.insights.brief ?? NOT_GENERATED_BRIEF;
-  const guideSummary = useGuideSummary(
-    workbench,
-    runs.guide,
-    selectedInsight === "guide",
-  );
-  const guideSnapshot =
-    guideSummary.state.status === "loaded"
-      ? guideSummary.state.summary
-      : undefined;
-  const readyGuide =
-    guideSnapshot?._tag === "ready" ? guideSnapshot : undefined;
   const guideRun = guideSnapshot?.run;
-  const guideStatus = guideSummaryStatus(
-    workbench,
-    guideSummary.state,
-    runs.guide,
-  );
-  const projections = {
-    analysis: workbench.insights.analysis,
-    walkthrough: workbench.insights.walkthrough,
-    brief,
-    guide: workbench.insights.guide,
-  };
   const reviewOpen = workbench.review.status === "open";
   const runEnabled = insightRunEnabled(configuration, reviewOpen);
-  const selectedProjection =
-    selectedInsight === "guide" ? undefined : projections[selectedInsight];
   const insightResultRef = useInsightResultEntrance({
     retainedRunIds: {
       analysis: workbench.insights.analysis.retained?.runId,
       brief: brief.retained?.runId,
       guide: readyGuide?.runId,
-      walkthrough: workbench.insights.walkthrough.retained?.runId,
+      walkthrough: readyWalkthrough?.runId,
     },
     selectedInsight,
     selectedProjectionStatus: selectedProjection?.status,
@@ -361,6 +342,7 @@ export function InsightsSlot({
   const selectedRunning = runs[selectedInsight];
   const selectedBusy =
     selectedInsight !== "guide" &&
+    !(selectedInsight === "walkthrough" && walkthroughRun !== null) &&
     (selectedRunning?.busy === true ||
       selectedProjection?.status === "running");
   const retainedDescription = retainedInsightDescription(
@@ -378,6 +360,9 @@ export function InsightsSlot({
     selectedInsight,
     ...definedProps({
       onRunGuide: reviewOpen ? () => openRunDialog("run") : undefined,
+      onRunWalkthrough: reviewOpen
+        ? () => openRunDialog("run", "walkthrough")
+        : undefined,
       onFinishWithAnalysisSummary,
       addFinding: onAddFinding,
       addAllFindings,
@@ -391,7 +376,8 @@ export function InsightsSlot({
     dismissFinding,
     restoreFinding,
     analysisVerification,
-    walkthroughProgress,
+    walkthroughSummaryState: walkthroughSummary.state,
+    refreshWalkthrough: walkthroughSummary.refresh,
     walkthroughFocused,
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
@@ -403,22 +389,7 @@ export function InsightsSlot({
   });
   const walkthroughFocusActive =
     selectedInsight === "walkthrough" && walkthroughFocused;
-  const selectedRetained = selectedProjection?.retained;
-  const selectedIsOutdated =
-    selectedInsight === "guide"
-      ? readyGuide !== undefined &&
-        workbench.revision.patchHash !== undefined &&
-        !publishedGuideRevisionMatches(workbench, readyGuide)
-      : selectedProjection?.status === "outdated";
-  const analysisFirstRunActive =
-    selectedInsight === "analysis" &&
-    selectedProjection?.status === "running" &&
-    selectedProjection.retained === undefined;
   const selectedInsightName = INSIGHT_NOUNS[selectedInsight];
-  const walkthroughTitle =
-    selectedInsight === "walkthrough" && selectedRetained !== undefined
-      ? workbench.insights.walkthrough.retained?.value.title
-      : undefined;
   const retryRun = reviewOpen ? () => openRunDialog("retry") : undefined;
   const selectedRequestFailureMessage = insightRequestFailureMessage(
     selectedInsightName,
@@ -453,6 +424,7 @@ export function InsightsSlot({
             setSelectedInsight={setSelectedInsight}
             runs={runs}
             guideStatus={guideStatus}
+            walkthroughStatus={walkthroughStatus}
             onRunInsights={reviewOpen ? runInsights.open : undefined}
             runInsightsDisabled={!runEnabled}
             trailing={
@@ -467,6 +439,10 @@ export function InsightsSlot({
                 {selectedInsight === "brief" && !selectedBusy ? (
                   <BriefWalkthroughAction
                     workbench={workbench}
+                    walkthroughReady={
+                      readyWalkthrough !== undefined &&
+                      walkthroughRevisionMatches(workbench, readyWalkthrough)
+                    }
                     runEnabled={runEnabled}
                     onOpen={() => setSelectedInsight("walkthrough")}
                     onGenerate={() => openRunDialog("run", "walkthrough")}
@@ -474,12 +450,20 @@ export function InsightsSlot({
                 ) : null}
                 <InsightHeaderAction
                   running={
-                    selectedInsight === "guide" &&
-                    (!reviewOpen || guideSummary.activeRun !== null)
+                    (selectedInsight === "guide" &&
+                      (!reviewOpen || guideSummary.activeRun !== null)) ||
+                    (selectedInsight === "walkthrough" &&
+                      walkthroughRun !== null)
                       ? undefined
                       : selectedRunning
                   }
-                  projectionRunning={selectedProjection?.status === "running"}
+                  projectionRunning={
+                    selectedProjection?.status === "running" &&
+                    !(
+                      selectedInsight === "walkthrough" &&
+                      walkthroughRun !== null
+                    )
+                  }
                   insightName={selectedInsightName}
                   hideRegenerate={
                     analysisFirstRunActive ||
@@ -491,7 +475,9 @@ export function InsightsSlot({
                         guideSnapshot?.failure != null ||
                         guideRun != null ||
                         runs.guide.busy
-                      : selectedProjection?.retained === undefined)
+                      : selectedInsight === "walkthrough"
+                        ? !walkthroughCanRegenerate || runs.walkthrough.busy
+                        : selectedProjection?.retained === undefined)
                   }
                   runEnabled={runEnabled}
                   onRegenerate={() => openRunDialog("regenerate")}
@@ -785,17 +771,19 @@ function InsightRunControls({
  */
 function BriefWalkthroughAction({
   workbench,
+  walkthroughReady,
   runEnabled,
   onOpen,
   onGenerate,
 }: {
   readonly workbench: WorkbenchResponse;
+  readonly walkthroughReady: boolean;
   readonly runEnabled: boolean;
   readonly onOpen: () => void;
   readonly onGenerate: () => void;
 }): React.JSX.Element | null {
   if (workbench.insights.brief?.retained === undefined) return null;
-  if (workbench.insights.walkthrough.status === "current")
+  if (walkthroughReady)
     return (
       <Button size="sm" variant="outline" onClick={onOpen}>
         Open walkthrough

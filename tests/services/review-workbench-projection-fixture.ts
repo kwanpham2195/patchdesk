@@ -206,6 +206,7 @@ export function fixture(
       viewedFiles as never,
       { load: async () => ok(undefined) },
       createInProcessInsightResourceBundle().jobs,
+      { summary: async () => ok({ _tag: "none", run: null, failure: null }) },
     ),
     profiles,
     sessions,

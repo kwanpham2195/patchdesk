@@ -34,6 +34,7 @@ function workbenchController(
     new ViewedFilesStore(harness.paths, { write: () => undefined }),
     harness.operations,
     createInProcessInsightResourceBundle().jobs,
+    { summary: async () => ok({ _tag: "none", run: null, failure: null }) },
   );
   return new ReviewWorkbenchController(
     // SAFETY: loading a stored local Review never prepares a pull request session.

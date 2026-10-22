@@ -52,6 +52,11 @@ import type {
 } from "#src/domain/github-context";
 import {
   createReviewId,
+  parseInsightRunId,
+  parseReviewSessionId,
+  parseGitSha,
+  parseIsoTimestamp,
+  type InsightRunId,
   parseGitHubLogin,
   type GitHubHost,
   type GitHubOwner,
@@ -74,7 +79,8 @@ import {
 } from "#src/domain/change-scope";
 import type { NormalizedBrief } from "#src/domain/brief";
 import { definedProps } from "#src/domain/defined-props";
-import type { NarrativeWalkthrough } from "#src/domain/narrative-walkthrough";
+import type { WalkthroughSummary } from "#src/domain/walkthrough-progress";
+import type { WalkthroughPageService } from "./walkthrough-result-pages";
 import {
   evaluateMergeReadiness,
   readinessMergeability,
@@ -184,7 +190,18 @@ export type ReviewWorkbenchProjection = {
   readonly commitTotal?: number;
   readonly insights: {
     readonly analysis: InsightProjection<ReviewResult>;
-    readonly walkthrough: InsightProjection<NarrativeWalkthrough>;
+    readonly walkthrough: Omit<
+      InsightProjection<Extract<WalkthroughSummary, { _tag: "ready" }>>,
+      "retained"
+    > & {
+      readonly retained?: {
+        readonly runId: InsightRunId;
+        readonly sessionId: ReviewSessionId;
+        readonly headSha: GitSha;
+        readonly generatedAt: IsoTimestamp;
+        readonly value: Extract<WalkthroughSummary, { _tag: "ready" }>;
+      };
+    };
     readonly brief: InsightProjection<NormalizedBrief>;
     readonly guide: InsightProjection<RetainedGuide>;
   };
@@ -293,6 +310,7 @@ export class ReviewWorkbenchProjectionService {
       "load"
     >,
     private readonly jobs: InsightResourceBundle["jobs"],
+    private readonly walkthroughPages: Pick<WalkthroughPageService, "summary">,
   ) {
     this.retainedInsights = new RetainedInsightReader(
       this.sessions,
@@ -522,11 +540,16 @@ export class ReviewWorkbenchProjectionService {
     const viewerLogin = parseGitHubLogin(profile.ghAccount);
     if (viewerLogin._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
-    const [hashedPatch, storedInsights, viewed] = await Promise.all([
-      this.readHashedPatch(session.patchPath),
-      this.retainedInsights.loadStoredInsights(session),
-      this.viewedFiles.load(session.key.profileId, session.id, "combined"),
-    ]);
+    const [hashedPatch, storedInsights, viewed, walkthroughSummary] =
+      await Promise.all([
+        this.readHashedPatch(session.patchPath),
+        this.retainedInsights.loadStoredInsights(session),
+        this.viewedFiles.load(session.key.profileId, session.id, "combined"),
+        this.walkthroughPages.summary(
+          session.key.profileId,
+          createReviewId(session.key),
+        ),
+      ]);
     if (storedInsights._tag === "err") return storedInsights;
     if (hashedPatch._tag === "err") return hashedPatch;
     const fullPatch = hashedPatch.value?.contents;
@@ -630,14 +653,51 @@ export class ReviewWorkbenchProjectionService {
       storedInsights.value.analysisScope,
       storedInsights.value.analysisArtifactStatus,
     );
-    const walkthrough = projectStoredInsight(
-      storedInsights.value.walkthrough,
-      session,
-      patchHash,
-      undefined,
-      undefined,
-      storedInsights.value.walkthroughArtifactStatus,
-    );
+    const summary =
+      walkthroughSummary._tag === "ok" ? walkthroughSummary.value : undefined;
+    const ready = summary?._tag === "ready" ? summary : undefined;
+    const retainedRun =
+      ready === undefined ? undefined : parseInsightRunId(ready.runId);
+    const retainedSession =
+      ready === undefined ? undefined : parseReviewSessionId(ready.sessionId);
+    const retainedHead =
+      ready === undefined ? undefined : parseGitSha(ready.revision.headSha);
+    const retainedAt =
+      ready === undefined ? undefined : parseIsoTimestamp(ready.generatedAt);
+    const walkthrough: ReviewWorkbenchProjection["insights"]["walkthrough"] = {
+      status:
+        summary === undefined
+          ? "failed"
+          : summary.run !== null
+            ? "running"
+            : summary.failure !== null &&
+                summary.failure.reason !== "cancelled" &&
+                summary.failure.reason !== "superseded"
+              ? "failed"
+              : ready === undefined
+                ? "not_generated"
+                : ready.sessionId === session.id &&
+                    ready.revision.headSha === session.key.headSha &&
+                    String(ready.revision.patchHash) === patchHash
+                  ? "current"
+                  : "outdated",
+      ...definedProps({
+        retained:
+          ready === undefined ||
+          retainedRun?._tag !== "ok" ||
+          retainedSession?._tag !== "ok" ||
+          retainedHead?._tag !== "ok" ||
+          retainedAt?._tag !== "ok"
+            ? undefined
+            : {
+                runId: retainedRun.value,
+                sessionId: retainedSession.value,
+                headSha: retainedHead.value,
+                generatedAt: retainedAt.value,
+                value: ready,
+              },
+      }),
+    };
     // A retained Brief carries its own resolved citation labels, so it needs
     // neither a decorator nor a scope read -- only its artifact status, which
     // says whether the patch those citations were resolved against survives.

@@ -23,12 +23,7 @@ import {
   ReviewWorkbenchFindingNavigationContext,
   type FindingFocusRequest,
 } from "#src/renderer/src/components/review-workbench-finding-navigation";
-import {
-  failure,
-  installDesktopDouble,
-  success,
-  type DesktopDouble,
-} from "./fake-desktop-response";
+import { failure, success, type DesktopDouble } from "./fake-desktop-response";
 import {
   briefInsight,
   projection,
@@ -36,6 +31,9 @@ import {
   withAnalysis,
   withWalkthrough,
 } from "./review-workbench-fixtures";
+import { walkthroughDesktopFixture } from "./paged-walkthrough-fixtures";
+const { install: installDesktopDouble, configure: configureWalkthrough } =
+  walkthroughDesktopFixture();
 
 type Deferred<T> = {
   readonly promise: Promise<T>;
@@ -63,12 +61,20 @@ afterEach(() => {
   desktop?.restore();
   desktop = undefined;
   window.localStorage.clear();
+  configureWalkthrough(projection());
 });
 
 function renderInsights(
   workbench = projection(),
   initialDetail?: "analysis" | "walkthrough" | "guide",
 ): void {
+  configureWalkthrough(workbench);
+  if (desktop === undefined)
+    desktop = installDesktopDouble({
+      "/v1/reviews/insights/guide/summary": () =>
+        success({ _tag: "none", run: null, failure: null }),
+      "/v1/insight-providers": () => success(json(providerCatalog)),
+    });
   render(
     <InsightsSlot
       workbench={workbench}
@@ -292,13 +298,15 @@ describe("InsightsSlot on a merged Review", () => {
         insights: {
           guide: { status: "not_generated" },
           analysis: { status: "not_generated" },
-          walkthrough: { status: "current" },
+          walkthrough: withWalkthrough().insights.walkthrough,
           brief: briefInsight(),
         },
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: "Open walkthrough" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Open walkthrough" }),
+    );
 
     expect(
       screen
@@ -367,13 +375,14 @@ describe("InsightsSlot on a merged Review", () => {
     { status: "merged", offersMark: false },
   ] as const)(
     "offers Mark section reviewed on a Walkthrough of a $status Review: $offersMark",
-    ({ status, offersMark }) => {
+    async ({ status, offersMark }) => {
       const workbench = withWalkthrough();
       renderInsights(
         { ...workbench, review: { ...workbench.review, status } },
         "walkthrough",
       );
 
+      await screen.findByRole("heading", { name: "Fixture section" });
       expect(
         screen.queryByRole("button", { name: "Mark section reviewed" }) !==
           null,
@@ -381,7 +390,7 @@ describe("InsightsSlot on a merged Review", () => {
     },
   );
 
-  it("keeps a stored reviewed marker visible and unchangeable on a closed Review", () => {
+  it("keeps a stored reviewed marker visible and unchangeable on a closed Review", async () => {
     const workbench = withWalkthrough();
     renderInsights(
       {
@@ -401,7 +410,9 @@ describe("InsightsSlot on a merged Review", () => {
       "walkthrough",
     );
 
-    const marker = screen.getByRole("button", { name: "Section reviewed" });
+    const marker = await screen.findByRole("button", {
+      name: "Section reviewed",
+    });
     expect(marker.getAttribute("aria-pressed")).toBe("true");
     expect(marker.hasAttribute("disabled")).toBe(true);
   });
@@ -494,7 +505,9 @@ describe("InsightsSlot run requests", () => {
     const transition = screen.getByRole("region", {
       name: "Review insights",
     });
-    await user.click(screen.getByRole("button", { name: "Focus section" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Focus section" }),
+    );
     expect(transition.dataset.walkthroughFocusTransition).toBe("leaving");
     expect(
       document.querySelector('[data-walkthrough-layout="docked"]'),
@@ -803,7 +816,7 @@ describe("InsightsSlot Walkthrough progress", () => {
     render(<PatchedInsights initial={withWalkthrough()} />);
 
     await user.click(
-      screen.getByRole("button", { name: "Mark section reviewed" }),
+      await screen.findByRole("button", { name: "Mark section reviewed" }),
     );
     await user.click(screen.getByRole("tab", { name: /^Brief/ }));
     await user.click(screen.getByRole("tab", { name: /^Walkthrough/ }));
@@ -842,7 +855,7 @@ describe("InsightsSlot Walkthrough progress", () => {
       />,
     );
     const rail = within(
-      screen.getByRole("region", { name: "Walkthrough chapters" }),
+      await screen.findByRole("region", { name: "Walkthrough chapters" }),
     );
     expect(rail.getByLabelText("Reviewed")).toBeTruthy();
 
@@ -863,7 +876,10 @@ function PatchedInsights({
 }: {
   readonly initial: WorkbenchResponse;
 }): React.JSX.Element {
-  const [workbench, setWorkbench] = useState(initial);
+  const [workbench, setWorkbench] = useState(() => {
+    configureWalkthrough(initial);
+    return initial;
+  });
   return (
     <InsightsSlot
       workbench={workbench}

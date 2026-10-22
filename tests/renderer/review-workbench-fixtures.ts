@@ -1,10 +1,4 @@
-import {
-  parseContentHash,
-  parseGitSha,
-  parseReviewSessionId,
-  parseWorkspaceProfileId,
-} from "#src/domain/ids";
-import type { Result } from "#src/domain/result";
+import { walkthroughSummary } from "./paged-walkthrough-fixtures";
 import type { LocalDraftPlacementContext } from "#src/renderer/src/local-draft-placement";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 
@@ -295,53 +289,9 @@ export function withAnalysis(
   } as never);
 }
 
-function valueOf<T>(result: Result<T, unknown>): T {
-  if (result._tag === "err") throw new Error("Invalid walkthrough fixture");
-  return result.value;
-}
-
 /** A projection carrying a current, verified Walkthrough with one section. */
 export function withWalkthrough(): WorkbenchResponse {
-  const walkthrough = {
-    snapshot: {
-      profileId: valueOf(parseWorkspaceProfileId("profile")),
-      sessionId: valueOf(
-        parseReviewSessionId(
-          "github.com__octo-org__patchdesk__pr-42__sha-22222222__base-00000000__abcdef123456",
-        ),
-      ),
-      headSha: valueOf(parseGitSha("2222222222222222222222222222222222222222")),
-      patchHash: valueOf(
-        parseContentHash(
-          "0000000000000000000000000000000000000000000000000000000000000000",
-        ),
-      ),
-    },
-    citationStatus: "verified" as const,
-    title: "Fixture walkthrough",
-    focus: "Read the fixture walkthrough.",
-    chapters: [
-      {
-        id: "chapter-1",
-        title: "Fixture chapter",
-        sections: [
-          {
-            id: "section-1",
-            title: "Fixture section",
-            prose: "The retained walkthrough is ready to read.",
-            hunkIds: [],
-            hunks: [],
-          },
-        ],
-      },
-    ],
-    support: {
-      id: "support" as const,
-      title: "Support" as const,
-      hunkIds: [],
-      hunks: [],
-    },
-  };
+  const walkthrough = walkthroughSummary();
   return projection({
     insights: {
       guide: { status: "not_generated" },

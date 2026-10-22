@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { CanonicalFixtureWorkbench } from "./canonical-fixture-workbench";
 import type { NavigationState } from "./navigation-state";
 import { WalkthroughFixtureControls } from "./walkthrough-fixture-controls";
@@ -6,7 +6,40 @@ import {
   walkthroughFixturePatch,
   workbenchFixtureData,
 } from "./workbench-fixture-data";
+import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
 
+const sections: ReadonlyArray<Extract<WalkthroughPage, { kind: "section" }>> = [
+  {
+    kind: "section",
+    sectionId: "s1",
+    ordinal: 0,
+    title: "Keep the review local",
+    prose:
+      "This fixture proves a manual walkthrough without starting an Analysis run.",
+    chapter: { id: "c1", title: "Read first" },
+    citationCount: 1,
+    previous: null,
+    next: "s2",
+    reviewed: false,
+    navigationCursor: null,
+  },
+  {
+    kind: "section",
+    sectionId: "s2",
+    ordinal: 1,
+    title: "Follow the changed path",
+    prose:
+      "The chapter rail keeps the next section available without leaving the saved Files surface.",
+    chapter: { id: "c1", title: "Read first" },
+    citationCount: 1,
+    previous: "s1",
+    next: null,
+    reviewed: false,
+    navigationCursor: null,
+  },
+];
+
+/** The existing browser journey uses small page-shaped fixtures without a provider. */
 export function WalkthroughFixture({
   onNavigationStateChange,
 }: {
@@ -26,96 +59,6 @@ export function WalkthroughFixture({
   const [reviewedSectionIds, setReviewedSectionIds] = useState<
     ReadonlyArray<string>
   >([]);
-  const walkthrough = useMemo(
-    () => ({
-      snapshot: {
-        profileId: "fixture",
-        sessionId: "fixture-session",
-        headSha: "abcdef1234567890abcdef1234567890abcdef12",
-        patchHash: "b".repeat(64),
-      },
-      citationStatus: "verified" as const,
-      title: "Walkthrough fixture",
-      focus: "The focused review path remains separate from Files mode.",
-      chapters: [
-        {
-          id: "chapter-1",
-          title: "Read first",
-          sections: [
-            {
-              id: "section-1",
-              title: "Keep the review local",
-              prose:
-                "This fixture proves a manual walkthrough without starting an Analysis run.",
-              hunkIds: ["h1"],
-              hunks: [
-                {
-                  id: "h1",
-                  path: "src/a.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-            {
-              id: "section-2",
-              title: "Follow the changed path",
-              prose:
-                "The chapter rail keeps the next section available without leaving the saved Files surface.",
-              hunkIds: ["h2"],
-              hunks: [
-                {
-                  id: "h2",
-                  path: "src/b.ts",
-                  header: "@@ -1 +1 @@",
-                  raw: "@@ -1 +1 @@\\n-old\\n+new",
-                  oldStart: 1,
-                  oldLines: 1,
-                  newStart: 1,
-                  newLines: 1,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      support: {
-        id: "support" as const,
-        title: "Support" as const,
-        hunkIds: ["h3"],
-        hunks: [
-          {
-            id: "h3",
-            path: "src/c.ts",
-            header: "@@ -1 +1 @@",
-            raw: "@@ -1 +1 @@\\n-old\\n+new",
-            oldStart: 1,
-            oldLines: 1,
-            newStart: 1,
-            newLines: 1,
-          },
-        ],
-      },
-    }),
-    [],
-  );
-  const confirmGeneration = (): void => {
-    setDialogOpen(false);
-    setGenerateRequests((current) => current + 1);
-    setLifecycle("generating");
-    window.setTimeout(() => setLifecycle("ready"), 50);
-  };
-  const toggleSectionReviewed = (sectionId: string): void => {
-    setReviewedSectionIds((current) =>
-      current.includes(sectionId)
-        ? current.filter((id) => id !== sectionId)
-        : [...current, sectionId],
-    );
-  };
   return (
     <div data-walkthrough-generate-requests={generateRequests}>
       <WalkthroughFixtureControls
@@ -123,7 +66,10 @@ export function WalkthroughFixture({
         dialogOpen={dialogOpen}
         model={model}
         reasoning={reasoning}
-        walkthrough={walkthrough}
+        sections={sections}
+        reviewedSectionIds={reviewedSectionIds}
+        open={open}
+        openButtonRef={openButtonRef}
         actions={{
           onOpenDialog: () => setDialogOpen(true),
           onCloseDialog: () => setDialogOpen(false),
@@ -134,16 +80,20 @@ export function WalkthroughFixture({
             if (value === "low" || value === "medium" || value === "high")
               setReasoning(value);
           },
-          onConfirm: confirmGeneration,
-          onOpen: () => {
-            setOpen(true);
+          onConfirm: () => {
+            setDialogOpen(false);
+            setGenerateRequests((value) => value + 1);
+            setLifecycle("generating");
+            window.setTimeout(() => setLifecycle("ready"), 50);
           },
-          onToggleSectionReviewed: toggleSectionReviewed,
-          onSelectSection: () => undefined,
+          onOpen: () => setOpen(true),
+          onToggleSectionReviewed: (id) =>
+            setReviewedSectionIds((current) =>
+              current.includes(id)
+                ? current.filter((item) => item !== id)
+                : [...current, id],
+            ),
         }}
-        reviewedSectionIds={reviewedSectionIds}
-        open={open}
-        openButtonRef={openButtonRef}
       />
       <CanonicalFixtureWorkbench
         data={{ ...workbenchFixtureData, fullPatch: walkthroughFixturePatch }}

@@ -5,7 +5,7 @@ import type { WalkthroughProgressControls } from "#src/renderer/src/hooks/use-wa
 
 type WalkthroughProgressReaderProps = Omit<
   React.ComponentProps<typeof NarrativeWalkthrough>,
-  "reviewedSectionIds" | "currentSectionId" | "actions"
+  "actions"
 > & {
   readonly controls: WalkthroughProgressControls;
 };
@@ -13,7 +13,7 @@ export function WalkthroughProgressReader({
   controls,
   ...props
 }: WalkthroughProgressReaderProps): React.JSX.Element {
-  const { progress } = controls;
+  const reviewed = new Set(controls.progress.reviewedSectionIds);
   return (
     <>
       {controls.saveFailed ? (
@@ -23,10 +23,22 @@ export function WalkthroughProgressReader({
       ) : null}
       <NarrativeWalkthrough
         {...props}
-        reviewedSectionIds={progress.reviewedSectionIds}
-        {...(progress.currentSectionId === undefined
-          ? {}
-          : { currentSectionId: progress.currentSectionId })}
+        counts={{ ...props.counts, reviewed: controls.progress.reviewedCount }}
+        navigation={{
+          ...props.navigation,
+          items: props.navigation.items.map((item) => ({
+            ...item,
+            reviewed: reviewed.has(item.sectionId),
+          })),
+        }}
+        activeSection={
+          props.activeSection === null
+            ? null
+            : {
+                ...props.activeSection,
+                reviewed: reviewed.has(props.activeSection.sectionId),
+              }
+        }
         actions={{
           ...definedProps({
             onToggleSectionReviewed: controls.toggleSectionReviewed,

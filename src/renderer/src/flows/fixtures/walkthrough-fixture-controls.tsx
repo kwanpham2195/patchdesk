@@ -1,4 +1,7 @@
 import { NarrativeWalkthrough } from "#src/renderer/src/components/narrative-walkthrough";
+import { useState } from "react";
+import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
+import { NarrativeWalkthroughDiff } from "#src/renderer/src/components/narrative-walkthrough-diff";
 import { Button } from "#src/renderer/src/components/ui/button";
 import {
   Dialog,
@@ -17,14 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#src/renderer/src/components/ui/select";
-import { walkthroughFixturePatch } from "./workbench-fixture-data";
 
 export function WalkthroughFixtureControls({
   lifecycle,
   dialogOpen,
   model,
   reasoning,
-  walkthrough,
+  sections,
   actions,
   reviewedSectionIds,
   open,
@@ -34,9 +36,9 @@ export function WalkthroughFixtureControls({
   readonly dialogOpen: boolean;
   readonly model: string | undefined;
   readonly reasoning: "low" | "medium" | "high";
-  readonly walkthrough: Parameters<
-    typeof NarrativeWalkthrough
-  >[0]["walkthrough"];
+  readonly sections: ReadonlyArray<
+    Extract<WalkthroughPage, { kind: "section" }>
+  >;
   readonly actions: {
     readonly onOpenDialog: () => void;
     readonly onCloseDialog: () => void;
@@ -45,12 +47,18 @@ export function WalkthroughFixtureControls({
     readonly onConfirm: () => void;
     readonly onOpen: () => void;
     readonly onToggleSectionReviewed: (sectionId: string) => void;
-    readonly onSelectSection: (sectionId: string) => void;
   };
   readonly reviewedSectionIds: ReadonlyArray<string>;
   readonly open: boolean;
   readonly openButtonRef: React.RefObject<HTMLButtonElement | null>;
 }): React.JSX.Element {
+  const [selected, setSelected] = useState("s1");
+  const active =
+    sections.find((section) => section.sectionId === selected) ?? null;
+  const path = selected === "s1" ? "src/a.ts" : "src/b.ts";
+  const lineCount = selected === "s1" ? 48 : 1;
+  const header = `@@ -1,${lineCount} +1,${lineCount} @@`;
+  const raw = `${header}\n${Array.from({ length: lineCount }, (_, index) => `-old-${index + 1}\n+new-${index + 1}`).join("\n")}`;
   return (
     <div className="border-b p-4">
       {lifecycle === "ready" && !open ? (
@@ -141,13 +149,50 @@ export function WalkthroughFixtureControls({
       </Dialog>
       {open ? (
         <NarrativeWalkthrough
-          walkthrough={walkthrough}
-          reviewedSectionIds={reviewedSectionIds}
-          rawPatch={walkthroughFixturePatch}
-          sourceSession={{ profileId: "fixture", sessionId: "fixture-session" }}
+          counts={{
+            sections: 2,
+            reviewed: reviewedSectionIds.length,
+            citedHunks: 2,
+            hunks: 3,
+            uncited: 1,
+          }}
+          navigation={{
+            kind: "navigation",
+            items: sections.map((section) => ({
+              ...section,
+              reviewed: reviewedSectionIds.includes(section.sectionId),
+            })),
+            next: null,
+            previous: null,
+          }}
+          activeSection={
+            active === null
+              ? null
+              : {
+                  ...active,
+                  reviewed: reviewedSectionIds.includes(active.sectionId),
+                }
+          }
+          onNavigationPage={() => undefined}
+          evidence={
+            <NarrativeWalkthroughDiff
+              blockId={`${selected}::${selected === "s1" ? "h1" : "h2"}`}
+              hunk={{
+                id: selected === "s1" ? "h1" : "h2",
+                path,
+                filePrefix: `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}`,
+                header,
+                raw,
+                oldStart: 1,
+                oldLines: lineCount,
+                newStart: 1,
+                newLines: lineCount,
+              }}
+            />
+          }
           actions={{
             onToggleSectionReviewed: actions.onToggleSectionReviewed,
-            onSelectSection: actions.onSelectSection,
+            onSelectSection: setSelected,
           }}
         />
       ) : null}
