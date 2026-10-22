@@ -122,7 +122,7 @@ export class WalkthroughProgressService {
       if (section._tag === "err")
         return err(
           section.error === "storage_unavailable"
-            ? section.error
+            ? this.unavailable("section_read")
             : "invalid_progress",
         );
     }
@@ -145,7 +145,10 @@ export class WalkthroughProgressService {
     if (profile._tag === "err" || review._tag === "err")
       return err("not_available");
     const current = await this.reader.current(profile.value, review.value);
-    if (current._tag === "err") return current;
+    if (current._tag === "err")
+      return current.error === "storage_unavailable"
+        ? err(this.unavailable("result_read"))
+        : current;
     const view = current.value;
     if (view === undefined) return err("not_available");
     if (view.digest !== request.digest) return err("stale_result");
@@ -157,7 +160,7 @@ export class WalkthroughProgressService {
     if (section._tag === "err")
       return err(
         section.error === "storage_unavailable"
-          ? section.error
+          ? this.unavailable("section_read")
           : "invalid_progress",
       );
     const version = prior.value?.state.version ?? 0;
@@ -188,7 +191,7 @@ export class WalkthroughProgressService {
       prior.value === undefined
         ? await view.store.emptyIndex("WalkthroughReviewedSection1")
         : ok(prior.value.state.reviewedSections);
-    if (empty._tag === "err") return err("storage_unavailable");
+    if (empty._tag === "err") return err(this.unavailable(empty.error.reason));
     let marks = empty.value;
     if (request.mutation.action === "set_reviewed") {
       const edited = await this.edit(
@@ -215,7 +218,7 @@ export class WalkthroughProgressService {
             : (prior.value?.state.currentSectionId ?? null),
       },
     );
-    if (state._tag === "err") return err("storage_unavailable");
+    if (state._tag === "err") return err(this.unavailable(state.error.reason));
     return this.operations.withReviewLock(
       view.profileId,
       view.reviewId,
@@ -226,9 +229,12 @@ export class WalkthroughProgressService {
           this.reader.current(view.profileId, view.reviewId),
           this.reviews.load(view.profileId, view.reviewId),
         ]);
-        if (latest._tag === "err") return latest;
+        if (latest._tag === "err")
+          return latest.error === "storage_unavailable"
+            ? err(this.unavailable("result_read"))
+            : latest;
         if (latest.value?.digest !== view.digest) return err("stale_result");
-        if (owned._tag === "err") return err("storage_unavailable");
+        if (owned._tag === "err") return err(this.unavailable("review_read"));
         if (owned.value.status._tag === "Terminal") return err("not_available");
         const saved = await this.store.commit(
           view.profileId,
@@ -239,7 +245,7 @@ export class WalkthroughProgressService {
           state.value,
         );
         return saved._tag === "err"
-          ? err("storage_unavailable")
+          ? err(this.unavailable(saved.error.reason))
           : saved.value
             ? ok({ version: next })
             : err("version_conflict");
@@ -280,7 +286,7 @@ export class WalkthroughProgressService {
     return section._tag === "err"
       ? err(
           section.error === "storage_unavailable"
-            ? section.error
+            ? this.unavailable("section_read")
             : "invalid_progress",
         )
       : ok({ sectionId: mark.value.sectionId, reference: entry.value });
@@ -288,12 +294,22 @@ export class WalkthroughProgressService {
 
   private readFailure(error: StorageFailure): WalkthroughReadFailure {
     if (error.reason === "invalid_stored_value") return "invalid_progress";
+    return this.unavailable(error.reason);
+  }
+
+  private unavailable(
+    category:
+      | StorageFailure["reason"]
+      | "result_read"
+      | "section_read"
+      | "review_read",
+  ): "storage_unavailable" {
     this.logs?.write({
       process: "main",
       level: "warn",
       topic: "insight-artifact-read",
-      message: "Walkthrough progress read failed",
-      meta: { category: error.reason },
+      message: "Walkthrough progress storage failed",
+      meta: { category },
     });
     return "storage_unavailable";
   }
@@ -305,7 +321,14 @@ export class WalkthroughProgressService {
     value: boolean,
   ): Promise<Result<InsightArtifactIndexDescriptor, WalkthroughReadFailure>> {
     const empty = await view.store.emptyIndex("WalkthroughReviewedSection1");
-    if (empty._tag === "err") return err(walkthroughReadFailure(empty.error));
+    if (empty._tag === "err") {
+      const failure = walkthroughReadFailure(empty.error);
+      return err(
+        failure === "storage_unavailable"
+          ? this.unavailable(empty.error.reason)
+          : failure,
+      );
+    }
     let rebuilt = empty.value;
     const target = Number(sectionId.slice(1));
     let inserted = false;
@@ -319,7 +342,7 @@ export class WalkthroughProgressService {
         rebuilt.count,
         reference,
       );
-      if (next._tag === "err") return err("storage_unavailable");
+      if (next._tag === "err") return err(this.unavailable(next.error.reason));
       rebuilt = next.value;
       return ok(undefined);
     };
@@ -333,7 +356,7 @@ export class WalkthroughProgressService {
         { sectionId },
       );
       return mark._tag === "err"
-        ? err("storage_unavailable")
+        ? err(this.unavailable(mark.error.reason))
         : append(mark.value);
     };
     // Rebuild streams one mark at a time; memory does not grow with the reviewed set.

@@ -173,13 +173,14 @@ async function parentsUnchanged(
   return checked._tag === "ok" && sameParents(parents, checked.value);
 }
 
-/** Pointers live only in the Review's named pointer directories; Guide progress filenames bind a result digest. */
+/** Pointers live only in the Review's named pointer directories; progress filenames bind a result digest. */
 function pointerDirectory(ownedRoot: string, path: string): string | undefined {
   const directory = dirname(resolve(path));
   return basename(dirname(directory)) === "insight-artifacts-v2" &&
     (basename(directory) === "slots" ||
       basename(directory) === "journals" ||
-      (basename(directory) === "guide-progress" &&
+      ((basename(directory) === "guide-progress" ||
+        basename(directory) === "walkthrough-progress") &&
         /^[a-f0-9]{64}\.json$/.test(basename(path)))) &&
     isPathContained(ownedRoot, directory)
     ? directory
