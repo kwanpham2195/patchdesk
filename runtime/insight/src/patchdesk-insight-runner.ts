@@ -41,10 +41,12 @@ import {
 } from "#app/services/walkthrough-operation";
 
 import { runGuideSession } from "./guide-runtime";
+import { runWalkthroughSession } from "./walkthrough-runtime";
 import {
   guideInvocationSchema,
   productionGuideInvocationSchema,
   productionGuideSessionInvocationSchema,
+  productionWalkthroughSessionInvocationSchema,
   guideResultSchema,
   createGuideAgent,
   createEvidenceTools,
@@ -104,10 +106,16 @@ const productionProtocolSchema = v.variant("type", [
 ]);
 
 /** The tool-driven Guide child: it talks to the app over the private channel and takes no prompt or path. */
-const guideSessionProtocolSchema = v.strictObject({
-  type: v.literal("guide_session"),
-  input: productionGuideSessionInvocationSchema,
-});
+const guideSessionProtocolSchema = v.variant("type", [
+  v.strictObject({
+    type: v.literal("guide_session"),
+    input: productionGuideSessionInvocationSchema,
+  }),
+  v.strictObject({
+    type: v.literal("walkthrough_session"),
+    input: productionWalkthroughSessionInvocationSchema,
+  }),
+]);
 
 export type PatchdeskChildInvocation = v.InferOutput<
   typeof childProtocolSchema
@@ -540,7 +548,7 @@ export async function runPatchdeskChildProcess(
   process.once("SIGINT", terminate);
   try {
     const result = session.success
-      ? await runGuideSessionChild(session.output.input, controller.signal)
+      ? await runExplanationSessionChild(session.output, controller.signal)
       : invocation === undefined
         ? ({ ok: false, reason: "invalid_input" } as const)
         : await runProductionChild(invocation, controller.signal, {
@@ -556,11 +564,12 @@ export async function runPatchdeskChildProcess(
 }
 
 /** Runs the tool-driven Guide with the directories the app passed in its environment. */
-async function runGuideSessionChild(
-  input: v.InferOutput<typeof productionGuideSessionInvocationSchema>,
+async function runExplanationSessionChild(
+  invocation: v.InferOutput<typeof guideSessionProtocolSchema>,
   signal: AbortSignal,
 ): Promise<PatchdeskChildResult> {
   const paths = PatchdeskPaths.fromEnvironment(process.env);
+  const { input } = invocation;
   const profile = parseWorkspaceProfileId(input.profileId);
   const session = parseReviewSessionId(input.sessionId);
   const identity = input.evidence.identity;
@@ -569,11 +578,14 @@ async function runGuideSessionChild(
     session._tag === "err" ||
     identity.profileId !== profile.value ||
     identity.sessionId !== session.value ||
-    identity.type !== "guide" ||
+    identity.type !==
+      (invocation.type === "guide_session" ? "guide" : "walkthrough") ||
     String(identity.runId) !== String(input.channel.runId)
   )
     return { ok: false, reason: "invalid_input" };
-  return runGuideSession(input, { paths, signal });
+  return invocation.type === "guide_session"
+    ? runGuideSession(invocation.input, { paths, signal })
+    : runWalkthroughSession(invocation.input, { paths, signal });
 }
 
 /** Parses one bounded stdin protocol object sent by the installed app. */

@@ -110,8 +110,26 @@ export class InsightSlotWriter {
       });
     if (change.guideRuntime !== undefined)
       staged.push({ schema: "GuideRuntime1", root: change.guideRuntime });
+    if (change.walkthroughPreparation !== undefined)
+      staged.push({
+        schema: "WalkthroughPreparedInput1",
+        root: change.walkthroughPreparation,
+      });
+    if (change.walkthroughRuntime !== undefined)
+      staged.push({
+        schema: "WalkthroughRuntime1",
+        root: change.walkthroughRuntime,
+      });
+    if (change.policy !== undefined)
+      staged.push({ schema: "RunPolicy", root: change.policy });
     if (change.publication !== undefined)
-      staged.push({ schema: "GuidePublication1", root: change.publication });
+      staged.push({
+        schema:
+          snapshot.state.walkthroughRuntime === undefined
+            ? "GuidePublication1"
+            : "WalkthroughPublication1",
+        root: change.publication,
+      });
     staged.push(...(change.staged ?? []));
     const committed = await this.journals.applyInternalTransaction(
       journal,
@@ -126,6 +144,9 @@ export class InsightSlotWriter {
         ...definedProps({
           guidePreparation: change.guidePreparation,
           guideRuntime: change.guideRuntime,
+          walkthroughPreparation: change.walkthroughPreparation,
+          walkthroughRuntime: change.walkthroughRuntime,
+          policy: change.policy,
           dispatches: change.dispatches,
           authorization: change.authorization,
           publication: change.publication,

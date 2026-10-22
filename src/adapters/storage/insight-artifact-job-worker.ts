@@ -10,6 +10,10 @@ import {
 } from "./guide-result-job";
 import type { StorageFailure } from "./json-file";
 import {
+  walkthroughValidationFailure,
+  type WalkthroughValidationResult,
+} from "./walkthrough-result-job";
+import {
   insightArtifactJobReplySchema,
   insightArtifactJobRequestSchema,
   type InsightArtifactJobRequest,
@@ -35,6 +39,11 @@ export type InsightArtifactJobWorker = {
     input: GuidePreparationInput,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GuidePreparationResult>;
+  /** Builds the complete captured Walkthrough hunk index. */
+  prepareWalkthrough(
+    input: GuidePreparationInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GuidePreparationResult>;
   /** Replays the frozen Guide receipts and stores the verified result graph; abort behaves like `capturePatch`. */
   validateGuide(
     input: GuideValidationInput,
@@ -42,6 +51,11 @@ export type InsightArtifactJobWorker = {
   ): Promise<GuideValidationResult>;
   /** Settles all admitted jobs and awaits the same termination on repeated disposal. */
   dispose(): Promise<Result<void, StorageFailure>>;
+  /** Replays and verifies the complete Walkthrough graph on the worker. */
+  validateWalkthrough(
+    input: GuideValidationInput,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<WalkthroughValidationResult>;
 };
 
 type PendingJob = {
@@ -170,7 +184,14 @@ export async function acquireInsightArtifactJobWorker(
 
   type CancellableRequest = Extract<
     InsightArtifactJobRequest,
-    { kind: "capture_patch" | "prepare_guide" | "validate_guide" }
+    {
+      kind:
+        | "capture_patch"
+        | "prepare_guide"
+        | "prepare_walkthrough"
+        | "validate_guide"
+        | "validate_walkthrough";
+    }
   >;
 
   /** Validates and numbers a cancellable job; `invalid_source` is a refused request, `transport` an overloaded or closed worker. */
@@ -198,6 +219,8 @@ export async function acquireInsightArtifactJobWorker(
       !parsed.success ||
       (parsed.output.kind !== "capture_patch" &&
         parsed.output.kind !== "prepare_guide" &&
+        parsed.output.kind !== "prepare_walkthrough" &&
+        parsed.output.kind !== "validate_walkthrough" &&
         parsed.output.kind !== "validate_guide")
     )
       return err("invalid_source");
@@ -318,6 +341,18 @@ export async function acquireInsightArtifactJobWorker(
         (reply) => (reply.kind === "prepare_guide" ? reply.result : undefined),
       );
     },
+    prepareWalkthrough(input, options = {}) {
+      const parsed = admit("prepare_walkthrough", input, options);
+      if (parsed._tag === "err")
+        return Promise.resolve(guidePreparationFailure(parsed.error));
+      return enqueueCancellable(
+        parsed.value,
+        options,
+        guidePreparationFailure,
+        (reply) =>
+          reply.kind === "prepare_walkthrough" ? reply.result : undefined,
+      );
+    },
     validateGuide(input, options = {}) {
       const parsed = admit("validate_guide", input, options);
       if (parsed._tag === "err")
@@ -336,6 +371,22 @@ export async function acquireInsightArtifactJobWorker(
     async dispose() {
       failTransport();
       return await terminate();
+    },
+    validateWalkthrough(input, options = {}) {
+      const parsed = admit("validate_walkthrough", input, options);
+      if (parsed._tag === "err")
+        return Promise.resolve(
+          walkthroughValidationFailure(
+            parsed.error === "invalid_source" ? "invalid_input" : parsed.error,
+          ),
+        );
+      return enqueueCancellable(
+        parsed.value,
+        options,
+        walkthroughValidationFailure,
+        (reply) =>
+          reply.kind === "validate_walkthrough" ? reply.result : undefined,
+      );
     },
   });
 }

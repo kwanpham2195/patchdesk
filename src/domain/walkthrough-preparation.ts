@@ -10,7 +10,7 @@ import {
 } from "./insight-artifact-scalars";
 
 /** Canonical producer alias, constrained to the prepared hunk namespace. */
-const walkthroughHunkIdSchema = v.pipe(
+export const walkthroughHunkIdSchema = v.pipe(
   v.string(),
   v.maxLength(16),
   v.regex(/^h[1-9]\d*$/),
@@ -49,3 +49,8 @@ export const walkthroughPreparedInputCodec: InsightArtifactCodec<
   name: "WalkthroughPreparedInput1",
   schema: walkthroughPreparedInputSchema,
 };
+
+/** Complete prepared Walkthrough dependencies. */
+export type WalkthroughPreparedInput = v.InferOutput<
+  typeof walkthroughPreparedInputSchema
+>;

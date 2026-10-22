@@ -64,7 +64,24 @@ const journalStateSchema = v.pipe(
     guidePreparation: v.exactOptional(reference),
     /** R<GuideRuntime1>; the specialized Guide generation state, which never uses candidate, draft, checkpoint or seal. */
     guideRuntime: v.exactOptional(reference),
+    walkthroughPreparation: v.exactOptional(reference),
+    walkthroughRuntime: v.exactOptional(reference),
   }),
+  v.check(
+    (state) =>
+      (state.walkthroughPreparation === undefined ||
+        state.guidePreparation === undefined) &&
+      (state.walkthroughRuntime === undefined ||
+        state.walkthroughPreparation !== undefined) &&
+      (state.walkthroughPreparation === undefined ||
+        (state.candidate === null &&
+          state.draft === null &&
+          state.checkpoint === null &&
+          state.seal === null &&
+          (state.walkthroughRuntime !== undefined ||
+            (state.dispatches.count === 0 && state.publication === null)))),
+    "Specialized explanation families are exclusive and runtime requires preparation without generic state.",
+  ),
   v.check(
     (state) =>
       state.guidePreparation === undefined ||
@@ -85,6 +102,7 @@ const journalStateSchema = v.pipe(
     (state) =>
       state.candidate !== null ||
       state.guideRuntime !== undefined ||
+      state.walkthroughRuntime !== undefined ||
       (PRE_CAPTURE_STATUSES.includes(state.status) &&
         state.draft === null &&
         state.checkpoint === null &&

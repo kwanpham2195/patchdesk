@@ -30,7 +30,7 @@ import {
 import { err, type Result } from "#src/domain/result";
 import { GuideGraphWriter } from "./guide-result-validation";
 import { InsightResultStore } from "./insight-result-store";
-import { validateGuidePreparedEvidence } from "./guide-prepared-evidence-validation";
+import { validateExplanationPreparedEvidence } from "./explanation-prepared-evidence-validation";
 import { readBoundedInsightArtifactFile } from "./insight-artifact-files";
 import { InsightArtifactStore } from "./insight-artifact-store";
 import { PatchdeskPaths } from "./patchdesk-paths";
@@ -388,12 +388,13 @@ class Validation {
     if (prepared.value.binding.hash !== input.binding.hash)
       return this.stopped("rejected");
     if (
-      !(await validateGuidePreparedEvidence(
+      !(await validateExplanationPreparedEvidence(
         this.artifacts,
         this.paths,
         { profileId: this.profile, reviewId: this.review, runId: input.runId },
         prepared.value,
         this.options,
+        "guide",
       ))
     )
       return this.stopped("rejected");

@@ -1,5 +1,8 @@
 import { incompleteAnalysisSchema } from "#app/domain/analysis-invocation-outcome";
-import { insightArtifactRunIdSchema } from "#app/domain/insight-artifact-scalars";
+import {
+  insightArtifactRunIdSchema,
+  insightArtifactTimeSchema,
+} from "#app/domain/insight-artifact-scalars";
 import {
   MAX_GUIDE_PROMPT_BYTES,
   GUIDE_RUNTIME_SUBMISSION_SUFFIX,
@@ -148,6 +151,15 @@ export const productionGuideSessionInvocationSchema = v.strictObject({
 });
 export type GuideSessionInvocation = v.InferOutput<
   typeof productionGuideSessionInvocationSchema
+>;
+/** Internal tool-driven Walkthrough metadata, never a whole-result invocation. */
+export const productionWalkthroughSessionInvocationSchema = v.strictObject({
+  ...productionGuideSessionInvocationSchema.entries,
+  deadlineAt: insightArtifactTimeSchema,
+});
+/** Host-authorized channel and immutable deadline for one generation. */
+export type WalkthroughSessionInvocation = v.InferOutput<
+  typeof productionWalkthroughSessionInvocationSchema
 >;
 
 /** Guide generation uses the shared model schema and canonical artifact paths. */

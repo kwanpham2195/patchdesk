@@ -18,7 +18,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuideStartRequest } from "./guide-generation-service";
 import type { PiGuideChildOutcome } from "./pi-insight-child-invoker";
-import type { GuidePreparationService } from "./guide-preparation-service";
+import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
 import type { InsightResourceBundle } from "./insight-resource-bundle";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
@@ -221,7 +221,7 @@ export class GuidePassConclusion {
     private readonly artifacts: InsightArtifactStore,
     private readonly jobs: Pick<InsightResourceBundle["jobs"], "validateGuide">,
     private readonly preparation: Pick<
-      GuidePreparationService,
+      ExplanationPreparationService,
       "representedInputs"
     >,
     private readonly isStopping: (runId: string) => boolean,

@@ -9,6 +9,11 @@ import {
   guideRuntimeCodec,
 } from "#src/domain/guide-result";
 import { ok, type Result } from "#src/domain/result";
+import { encodeInsightArtifactCanonicalJson } from "#src/domain/insight-artifact-scalars";
+import {
+  walkthroughPublicationCodec,
+  walkthroughRuntimeCodec,
+} from "#src/domain/walkthrough-result";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type {
   InsightRunRef,
@@ -23,7 +28,7 @@ import type {
  * runtime names the same result, generation and cancel epoch, records the completion. It never dispatches, never turns
  * the success into a failure and never touches the retained pointer.
  */
-export async function reconcilePublishedGuide(
+export async function reconcilePublishedExplanation(
   deps: {
     readonly paths: PatchdeskPaths;
     readonly artifacts: InsightArtifactStore;
@@ -33,8 +38,8 @@ export async function reconcilePublishedGuide(
   },
   key: InsightSlotKey,
 ): Promise<Result<void, InsightSlotFailure>> {
-  if (key.type !== "guide") return ok(undefined);
-  const slot = await deps.slots.read(key.profileId, key.reviewId, "guide");
+  if (key.type !== "guide" && key.type !== "walkthrough") return ok(undefined);
+  const slot = await deps.slots.read(key.profileId, key.reviewId, key.type);
   if (slot._tag === "err") return { _tag: "err", error: "storage_unavailable" };
   if (
     slot.value === undefined ||
@@ -42,13 +47,26 @@ export async function reconcilePublishedGuide(
     slot.value.retained?.tag !== "generated"
   )
     return ok(undefined);
-  const publication = await deps.artifacts.readObject(
-    key.profileId,
-    key.reviewId,
-    guidePublicationCodec,
-    slot.value.publication,
-  );
+  const publication =
+    key.type === "guide"
+      ? await deps.artifacts.readObject(
+          key.profileId,
+          key.reviewId,
+          guidePublicationCodec,
+          slot.value.publication,
+        )
+      : await deps.artifacts.readObject(
+          key.profileId,
+          key.reviewId,
+          walkthroughPublicationCodec,
+          slot.value.publication,
+        );
   if (publication._tag === "err")
+    return { _tag: "err", error: "storage_unavailable" };
+  if (
+    encodeInsightArtifactCanonicalJson(publication.value.result) !==
+    encodeInsightArtifactCanonicalJson(slot.value.retained.root)
+  )
     return { _tag: "err", error: "storage_unavailable" };
   let names: string[];
   try {
@@ -75,18 +93,33 @@ export async function reconcilePublishedGuide(
     // A journal of another run fails the run-identity check of its pointer and is not this publication's.
     if (journal._tag === "err") continue;
     const { state } = journal.value;
-    if (state.status !== "running" || state.guideRuntime === undefined)
+    const runtimeReference =
+      key.type === "guide" ? state.guideRuntime : state.walkthroughRuntime;
+    if (state.status !== "running" || runtimeReference === undefined)
       return ok(undefined);
-    const runtime = await deps.artifacts.readObject(
-      key.profileId,
-      key.reviewId,
-      guideRuntimeCodec,
-      state.guideRuntime,
-    );
+    const runtime =
+      key.type === "guide"
+        ? await deps.artifacts.readObject(
+            key.profileId,
+            key.reviewId,
+            guideRuntimeCodec,
+            runtimeReference,
+          )
+        : await deps.artifacts.readObject(
+            key.profileId,
+            key.reviewId,
+            walkthroughRuntimeCodec,
+            runtimeReference,
+          );
     if (
       runtime._tag !== "ok" ||
       runtime.value.phase !== "validated" ||
       runtime.value.result?.hash !== publication.value.result.hash ||
+      runtime.value.result?.bytes !== publication.value.result.bytes ||
+      runtime.value.frozen?.sequence !== publication.value.frozenSequence ||
+      encodeInsightArtifactCanonicalJson(
+        runtime.value.frozen?.receipts ?? null,
+      ) !== encodeInsightArtifactCanonicalJson(publication.value.receipts) ||
       state.generation !== publication.value.generation ||
       state.cancelEpoch !== publication.value.cancelEpoch
     )

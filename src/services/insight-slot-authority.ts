@@ -15,6 +15,9 @@ import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { IsoTimestamp } from "#src/domain/ids";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
+import { insightBindingCodec } from "#src/domain/insight-run-binding-contract";
+import { guidePreparedInputCodec } from "#src/domain/guide-preparation";
+import { walkthroughPreparedInputCodec } from "#src/domain/walkthrough-preparation";
 import type { InsightJournalState } from "#src/domain/insight-run-journal-contract";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
@@ -35,7 +38,7 @@ import {
   type InsightAdmittedRun,
   type InsightProcessRuns,
 } from "./insight-slot-admission";
-import { reconcilePublishedGuide } from "./guide-publication-recovery";
+import { reconcilePublishedExplanation } from "./explanation-publication-recovery";
 import { ExplanationRunTransactions } from "./explanation-run-transactions";
 import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
@@ -65,10 +68,10 @@ export class InsightSlotAuthority {
   private readonly admission: InsightSlotAdmission;
   /** Lock-free reads of the same state, for status, cancel lookup and listings. */
   readonly status: InsightSlotStatus;
-  private readonly publishedGuide: Parameters<
-    typeof reconcilePublishedGuide
+  private readonly publishedExplanation: Parameters<
+    typeof reconcilePublishedExplanation
   >[0];
-  /** The Guide begin, produce, resume and publish transitions over this authority's own locks and stores. */
+  /** Both explanation families share this authority's begin, produce, resume and publish locks. */
   readonly explanation: ExplanationRunTransactions;
 
   constructor(
@@ -99,7 +102,7 @@ export class InsightSlotAuthority {
       journals: this.journals,
       writer: this.writer,
     });
-    this.publishedGuide = {
+    this.publishedExplanation = {
       paths,
       artifacts: this.artifacts,
       slots: this.slots,
@@ -165,16 +168,88 @@ export class InsightSlotAuthority {
     },
     guard: () => Promise<Result<void, E>>,
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
-    return this.advanceActive(input, guard, ({ state }): Decision =>
-      state.generation === input.generation &&
-      state.cancelEpoch === input.cancelEpoch &&
-      (state.status === "queued" || state.status === "preparing") &&
-      state.guidePreparation === undefined
-        ? ok({
-            status: "preparing",
-            guidePreparation: input.guidePreparation,
-          })
-        : err("not_active"),
+    return this.installPreparation(
+      input,
+      input.guidePreparation,
+      "guide",
+      guard,
+    );
+  }
+
+  /** Installs only the verified Walkthrough family on a Walkthrough-bound run. */
+  installWalkthroughPreparation<E>(
+    input: InsightRunRef & {
+      readonly generation: number;
+      readonly cancelEpoch: number;
+      readonly walkthroughPreparation: InsightArtifactReference;
+    },
+    guard: () => Promise<Result<void, E>>,
+  ): Promise<Result<Outcome, InsightSlotFailure | E>> {
+    return this.installPreparation(
+      input,
+      input.walkthroughPreparation,
+      "walkthrough",
+      guard,
+    );
+  }
+
+  private installPreparation<E>(
+    input: InsightRunRef & {
+      readonly generation: number;
+      readonly cancelEpoch: number;
+    },
+    root: InsightArtifactReference,
+    kind: "guide" | "walkthrough",
+    guard: () => Promise<Result<void, E>>,
+  ): Promise<Result<Outcome, InsightSlotFailure | E>> {
+    let preparedBinding: InsightArtifactReference | undefined;
+    return this.advanceActive<E | InsightSlotFailure>(
+      input,
+      async () => {
+        const allowed = await guard();
+        if (allowed._tag === "err") return allowed;
+        if (input.type !== kind) return err("not_active" as const);
+        const prepared =
+          kind === "guide"
+            ? await this.artifacts.readObject(
+                input.profileId,
+                input.reviewId,
+                guidePreparedInputCodec,
+                root,
+              )
+            : await this.artifacts.readObject(
+                input.profileId,
+                input.reviewId,
+                walkthroughPreparedInputCodec,
+                root,
+              );
+        if (prepared._tag === "err") return failed();
+        preparedBinding = prepared.value.binding;
+        const binding = await this.artifacts.readObject(
+          input.profileId,
+          input.reviewId,
+          insightBindingCodec,
+          prepared.value.binding,
+        );
+        return binding._tag === "ok" && binding.value.kind === kind
+          ? ok(undefined)
+          : failed();
+      },
+      ({ state }): Decision =>
+        state.generation === input.generation &&
+        preparedBinding?.hash === state.binding.hash &&
+        preparedBinding.bytes === state.binding.bytes &&
+        state.cancelEpoch === input.cancelEpoch &&
+        (state.status === "queued" || state.status === "preparing") &&
+        state.guidePreparation === undefined &&
+        state.walkthroughPreparation === undefined
+          ? ok({
+              status: "preparing",
+              ...(kind === "guide"
+                ? { guidePreparation: root }
+                : { walkthroughPreparation: root }),
+            })
+          : err("not_active"),
     );
   }
 
@@ -209,7 +284,7 @@ export class InsightSlotAuthority {
     ).then(async (reconciled) =>
       reconciled._tag === "err"
         ? reconciled
-        : reconcilePublishedGuide(this.publishedGuide, input),
+        : reconcilePublishedExplanation(this.publishedExplanation, input),
     );
   }
 
@@ -342,6 +417,25 @@ export class InsightSlotAuthority {
       if (pending.value._tag === "conflict") return err("outcome_unknown");
       const read = await this.journals.read(journal);
       if (read._tag === "err") return failed();
+      if (
+        read.value.state.guidePreparation !== undefined ||
+        read.value.state.walkthroughPreparation !== undefined
+      ) {
+        const binding = await this.artifacts.readObject(
+          run.profileId,
+          run.reviewId,
+          insightBindingCodec,
+          read.value.state.binding,
+        );
+        if (
+          binding._tag === "err" ||
+          binding.value.kind !== run.type ||
+          (read.value.state.walkthroughPreparation !== undefined
+            ? run.type !== "walkthrough"
+            : run.type !== "guide")
+        )
+          return failed();
+      }
       const change = await decide(read.value);
       if (change._tag === "err") return change;
       return change.value === undefined

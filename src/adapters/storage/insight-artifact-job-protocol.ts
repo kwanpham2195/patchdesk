@@ -15,6 +15,7 @@ import {
 } from "#src/domain/ids";
 import { isNotFound, type StorageFailure } from "./json-file";
 import { guidePreparationResultSchema } from "#src/domain/guide-preparation";
+import { walkthroughValidationResultSchema } from "./walkthrough-result-job";
 import {
   guideValidationInputSchema,
   guideValidationResultSchema,
@@ -166,6 +167,11 @@ export const insightArtifactJobRequestSchema = v.pipe(
       input: guideValidationInputSchema,
     }),
     v.strictObject({ kind: v.literal("cancel"), id: requestId }),
+    v.strictObject({
+      kind: v.literal("validate_walkthrough"),
+      id: requestId,
+      input: guideValidationInputSchema,
+    }),
   ]),
   v.check((request) => {
     const strings =
@@ -180,7 +186,8 @@ export const insightArtifactJobRequestSchema = v.pipe(
               request.input.destinationReview,
               request.input.contextPath,
             ]
-          : request.kind === "validate_guide"
+          : request.kind === "validate_guide" ||
+              request.kind === "validate_walkthrough"
             ? [request.input.destinationRoot]
             : request.kind === "hash_file"
               ? [request.path]
@@ -246,6 +253,11 @@ export const insightArtifactJobReplySchema = v.union([
     kind: v.literal("validate_guide"),
     id: requestId,
     result: guideValidationResultSchema,
+  }),
+  v.strictObject({
+    kind: v.literal("validate_walkthrough"),
+    id: requestId,
+    result: walkthroughValidationResultSchema,
   }),
 ]);
 

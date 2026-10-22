@@ -32,7 +32,7 @@ import {
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
-import { GuidePreparationService } from "#src/services/guide-preparation-service";
+import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import {
   PiInsightChildInvoker,
@@ -203,7 +203,7 @@ export function insightCoordinatorFactory({
         ? undefined
         : new GuideGenerationService(
             paths,
-            new GuidePreparationService(
+            new ExplanationPreparationService(
               paths,
               paths,
               resources,

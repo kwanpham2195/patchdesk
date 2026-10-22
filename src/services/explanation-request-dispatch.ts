@@ -1,7 +1,6 @@
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import {
-  type GuideAppOutcome,
   type GuideChildFrame,
   type GuideRefusalReason,
 } from "#src/domain/guide-protocol";
@@ -10,13 +9,32 @@ import {
   guideRuntimeCodec,
 } from "#src/domain/guide-result";
 import type { IsoTimestamp } from "#src/domain/ids";
-import { err, ok } from "#src/domain/result";
 import {
-  outcomeForFailure,
-  type GuideRunContext,
-} from "./guide-generation-operations";
+  walkthroughDispatchIntentCodec,
+  walkthroughRuntimeCodec,
+} from "#src/domain/walkthrough-result";
+import { insightRunPolicyCodec } from "#src/domain/insight-run-binding-contract";
+import { err, ok } from "#src/domain/result";
+import type { GuideRunContext } from "./guide-generation-operations";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import { ExplanationRequestStaging } from "./explanation-request-staging";
+import type * as v from "valibot";
+import type { explanationPermissionSchema } from "#src/domain/explanation-channel";
+
+type DispatchOutcome =
+  | v.InferOutput<typeof explanationPermissionSchema>
+  | { readonly status: "unknown" }
+  | {
+      readonly status: "refused";
+      readonly reason:
+        | "stale_identity"
+        | "closed"
+        | "cancelled"
+        | "invalid_input"
+        | "unsupported"
+        | "sensitive"
+        | "storage";
+    };
 
 /**
  * Per-connection staging of exact provider request bodies. The app issues the handle, so the child never names a
@@ -24,30 +42,31 @@ import { ExplanationRequestStaging } from "./explanation-request-staging";
  * TextRoot, its hash and length and a GuideDispatchIntent1 are durable before the app grants permission to send,
  * and no permission is granted once `finish` has closed writing, so no paid turn follows an accepted finish.
  */
-export class GuideRequestStaging {
+export class ExplanationRequestDispatch {
   private readonly staging = new ExplanationRequestStaging();
 
   constructor(
     private readonly authority: Pick<ExplanationRunTransactions, "produce">,
     private readonly artifacts: InsightArtifactStore,
     private readonly now: () => IsoTimestamp,
+    private readonly kind: "guide" | "walkthrough" = "guide",
   ) {}
 
   /** A new open discards an unfinished earlier body: only one request is in flight per connection. */
-  open(totalBytes: number): GuideAppOutcome {
+  open(totalBytes: number): ReturnType<ExplanationRequestStaging["open"]> {
     return this.staging.open(totalBytes);
   }
 
   chunk(
     frame: Extract<GuideChildFrame, { kind: "request_chunk" }>,
-  ): GuideAppOutcome {
+  ): ReturnType<ExplanationRequestStaging["chunk"]> {
     return this.staging.chunk(frame);
   }
 
   async commit(
     context: GuideRunContext,
     frame: Extract<GuideChildFrame, { kind: "request_commit" }>,
-  ): Promise<GuideAppOutcome> {
+  ): Promise<DispatchOutcome> {
     const text = this.staging.take(frame);
     if (text._tag === "err") return { status: "refused", reason: text.error };
     const { profileId, reviewId } = context.run;
@@ -73,16 +92,45 @@ export class GuideRequestStaging {
         if (
           state.generation !== context.generation ||
           state.cancelEpoch !== context.cancelEpoch ||
-          state.guideRuntime === undefined ||
+          context.run.type !== this.kind ||
+          (this.kind === "guide"
+            ? state.guideRuntime
+            : state.walkthroughRuntime) === undefined ||
           (state.status !== "running" && state.status !== "waiting")
         )
           return err("stale_identity" as const);
-        const runtime = await this.artifacts.readObject(
-          profileId,
-          reviewId,
-          guideRuntimeCodec,
-          state.guideRuntime,
-        );
+        const runtimeReference =
+          this.kind === "guide" ? state.guideRuntime : state.walkthroughRuntime;
+        if (runtimeReference === undefined)
+          return err("stale_identity" as const);
+        if (this.kind === "walkthrough") {
+          const policy = await this.artifacts.readObject(
+            profileId,
+            reviewId,
+            insightRunPolicyCodec,
+            state.policy,
+          );
+          if (policy._tag === "err") return err("storage" as const);
+          if (
+            policy.value.kind !== "walkthrough-deadline/1" ||
+            Date.parse(this.now()) >= Date.parse(policy.value.deadlineAt)
+          )
+            return err("closed" as const);
+        }
+        const runtime =
+          this.kind === "guide"
+            ? await this.artifacts.readObject(
+                profileId,
+                reviewId,
+                guideRuntimeCodec,
+                runtimeReference,
+              )
+            : await this.artifacts.readObject(
+                profileId,
+                reviewId,
+                walkthroughRuntimeCodec,
+                runtimeReference,
+              );
         if (runtime._tag === "err") return err("storage" as const);
         // After an accepted finish the model is done; no further request is permitted.
         if (runtime.value.phase !== "building") return err("closed" as const);
@@ -90,7 +138,9 @@ export class GuideRequestStaging {
         const intent = await this.artifacts.writeObject(
           profileId,
           reviewId,
-          guideDispatchIntentCodec,
+          this.kind === "guide"
+            ? guideDispatchIntentCodec
+            : walkthroughDispatchIntentCodec,
           {
             binding: state.binding,
             generation: context.generation,
@@ -108,7 +158,9 @@ export class GuideRequestStaging {
           profileId,
           reviewId,
         ).appendIndex(
-          "GuideDispatchIntent1",
+          this.kind === "guide"
+            ? "GuideDispatchIntent1"
+            : "WalkthroughDispatchIntent1",
           state.dispatches,
           ordinal,
           intent.value,
@@ -117,11 +169,28 @@ export class GuideRequestStaging {
         return ok({
           status: state.status,
           dispatches: dispatches.value,
-          staged: [{ schema: "GuideDispatchIntent1", root: intent.value }],
+          staged: [
+            {
+              schema:
+                this.kind === "guide"
+                  ? "GuideDispatchIntent1"
+                  : "WalkthroughDispatchIntent1",
+              root: intent.value,
+            },
+          ],
         });
       },
     );
-    if (recorded._tag === "err") return outcomeForFailure(recorded.error);
+    if (recorded._tag === "err") {
+      if (recorded.error === "outcome_unknown") return { status: "unknown" };
+      const reason =
+        recorded.error === "stale_identity" ||
+        recorded.error === "closed" ||
+        recorded.error === "cancelled"
+          ? recorded.error
+          : "storage";
+      return { status: "refused", reason };
+    }
     return {
       status: "permission",
       requestOrdinal: ordinal,

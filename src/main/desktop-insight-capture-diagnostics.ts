@@ -21,10 +21,8 @@ import {
   discoverGuideScopes,
   registerGuideScope,
 } from "#src/adapters/storage/guide-preparation-store";
-import {
-  GuidePreparationService,
-  recoverGuideScope,
-} from "#src/services/guide-preparation-service";
+import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
+import { recoverGuideScope } from "#src/services/guide-scope-recovery";
 import { currentIsoTimestamp } from "#src/services/insight-run-coordinator";
 import { InsightPatchCaptureService } from "#src/services/insight-patch-capture-service";
 import type { InsightResourceBundle } from "#src/services/insight-resource-bundle";
@@ -211,7 +209,7 @@ export function createInsightCaptureDiagnostics(
     if (pack === undefined)
       return Promise.resolve({ status: "rejected", reason: "transport" });
     const early = new AbortController();
-    let live: ReturnType<GuidePreparationService["begin"]> | undefined;
+    let live: ReturnType<ExplanationPreparationService["begin"]> | undefined;
     onOperation(async () => {
       // Before the service exists nothing is durable; afterwards the service cancels durably before it signals.
       early.abort();
@@ -222,7 +220,7 @@ export function createInsightCaptureDiagnostics(
         const destination = await createScope(early, true);
         if (destination._tag === "err") return settled(destination.error);
         if (early.signal.aborted) return settled("aborted");
-        live = new GuidePreparationService(
+        live = new ExplanationPreparationService(
           paths,
           destination.value,
           resources,

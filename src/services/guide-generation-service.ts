@@ -16,7 +16,7 @@ import { guideRuntimeCodec } from "#src/domain/guide-result";
 import { parseInsightRunId, type IsoTimestamp } from "#src/domain/ids";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import { err, ok, type Result } from "#src/domain/result";
-import { GuideRequestStaging } from "./guide-generation-dispatch";
+import { ExplanationRequestDispatch } from "./explanation-request-dispatch";
 import {
   GuideRunOperations,
   type GuideRunContext,
@@ -29,8 +29,8 @@ import {
 import type {
   AdmittedRun,
   GuidePreparationRequest,
-  GuidePreparationService,
-} from "./guide-preparation-service";
+  ExplanationPreparationService,
+} from "./explanation-preparation-service";
 import {
   GuidePassConclusion,
   slotPointerDigest,
@@ -87,7 +87,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
 
   constructor(
     destination: PatchdeskPaths,
-    private readonly preparation: GuidePreparationService,
+    private readonly preparation: ExplanationPreparationService,
     private readonly authority: InsightSlotAuthority,
     private readonly resources: InsightResourceBundle,
     private readonly invoker: ChildInvoker,
@@ -351,7 +351,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
         generation: pass.generation,
         cancelEpoch: pass.cancelEpoch,
       };
-      const staging = new GuideRequestStaging(
+      const staging = new ExplanationRequestDispatch(
         this.authority.explanation,
         this.artifacts,
         this.now,
@@ -392,7 +392,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
 
   private route(
     context: GuideRunContext,
-    staging: GuideRequestStaging,
+    staging: ExplanationRequestDispatch,
     frame: GuideChildFrame,
   ): Promise<GuideAppOutcome> {
     switch (frame.kind) {

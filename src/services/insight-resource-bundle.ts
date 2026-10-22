@@ -5,6 +5,8 @@ import {
 import { resolve } from "node:path";
 
 import { prepareGuideInputs } from "#src/adapters/storage/guide-preparation-job";
+import { prepareWalkthroughInputs } from "#src/adapters/storage/walkthrough-preparation-job";
+import { validateWalkthroughResult } from "#src/adapters/storage/walkthrough-result-job";
 import { validateGuideResult } from "#src/adapters/storage/guide-result-job";
 import { hashUtf8FileSha256 } from "#src/adapters/storage/insight-artifact-job-protocol";
 import { captureInsightPatch } from "#src/adapters/storage/insight-patch-capture-job";
@@ -44,7 +46,12 @@ export type InsightResourceBundle = {
   runReader(runId: string): Reader;
   readonly jobs: Pick<
     InsightArtifactJobWorker,
-    "hashFile" | "capturePatch" | "prepareGuide" | "validateGuide"
+    | "hashFile"
+    | "capturePatch"
+    | "prepareGuide"
+    | "validateGuide"
+    | "prepareWalkthrough"
+    | "validateWalkthrough"
   >;
   /**
    * Abortable FIFO permits keyed by holder. A holder that already holds or
@@ -84,7 +91,13 @@ type Workers = {
   readonly reader: Pick<InsightArtifactWorker, "read" | "dispose">;
   readonly jobs: Pick<
     InsightArtifactJobWorker,
-    "hashFile" | "capturePatch" | "prepareGuide" | "validateGuide" | "dispose"
+    | "hashFile"
+    | "capturePatch"
+    | "prepareGuide"
+    | "validateGuide"
+    | "prepareWalkthrough"
+    | "validateWalkthrough"
+    | "dispose"
   >;
 };
 
@@ -122,6 +135,8 @@ export function createInProcessInsightResourceBundle(): InsightResourceBundle {
       capturePatch: captureInsightPatch,
       prepareGuide: prepareGuideInputs,
       validateGuide: validateGuideResult,
+      prepareWalkthrough: prepareWalkthroughInputs,
+      validateWalkthrough: validateWalkthroughResult,
       dispose: disposed,
     },
   });
@@ -210,6 +225,10 @@ function createBundle(workers: Workers): InsightResourceBundle {
         workers.jobs.prepareGuide(input, options),
       validateGuide: (input, options) =>
         workers.jobs.validateGuide(input, options),
+      prepareWalkthrough: (input, options) =>
+        workers.jobs.prepareWalkthrough(input, options),
+      validateWalkthrough: (input, options) =>
+        workers.jobs.validateWalkthrough(input, options),
     },
     ownership: {
       forScope(dataDirectory) {
