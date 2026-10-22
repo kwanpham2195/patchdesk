@@ -26,6 +26,7 @@ import type {
 import type { GuideValidationInput } from "./guide-result-job";
 import type { InsightArtifactStore } from "./insight-artifact-store";
 import { InsightResultStore } from "./insight-result-store";
+import { InsightIndexBuilder } from "./insight-index-builder";
 
 /** Keeps only the current section and chapter, flushing them to indexes in reading order. */
 export class WalkthroughGraphWriter {
@@ -185,24 +186,63 @@ export class WalkthroughGraphWriter {
       this.focus === undefined
     )
       return undefined;
-    const empty = await this.store.emptyIndex("WalkthroughHunk1");
-    if (empty._tag === "err") return undefined;
-    let uncited: InsightArtifactIndexDescriptor | undefined = empty.value;
-    for (let at = 0; at < this.prepared.hunks.count; at += 1) {
-      if (this.options.signal?.aborted || uncited === undefined)
-        return undefined;
-      if (this.cited.has(`h${at + 1}`)) continue;
+    const builder = new InsightIndexBuilder(
+      this.artifacts,
+      this.profileId,
+      this.reviewId,
+      "WalkthroughHunk1",
+    );
+    for (let at = 0; at < this.prepared.hunks.count; at += 16) {
+      if (this.options.signal?.aborted) return undefined;
       const entries = await this.store.readIndex(
         "WalkthroughHunk1",
         this.prepared.hunks,
         at,
-        1,
+        16,
       );
-      const entry = entries._tag === "ok" ? entries.value[0] : undefined;
-      uncited = await this.append("WalkthroughHunk1", uncited, entry?.value);
+      if (entries._tag === "err") return undefined;
+      for (const [offset, entry] of entries.value.entries()) {
+        if (this.cited.has(`h${at + offset + 1}`)) continue;
+        if ((await builder.append(entry.value))._tag === "err")
+          return undefined;
+      }
+    }
+    const built = await builder.finish();
+    if (built._tag === "err") return undefined;
+    const uncited = built.value;
+    let verified = 0;
+    for (let at = 0; at < this.prepared.hunks.count; at += 16) {
+      if (this.options.signal?.aborted) return undefined;
+      const source = await this.store.readIndex(
+        "WalkthroughHunk1",
+        this.prepared.hunks,
+        at,
+        16,
+      );
+      if (source._tag === "err") return undefined;
+      const expected = source.value.filter(
+        (_, offset) => !this.cited.has(`h${at + offset + 1}`),
+      );
+      const stored = await this.store.readIndex(
+        "WalkthroughHunk1",
+        uncited,
+        verified,
+        expected.length,
+      );
+      if (
+        stored._tag === "err" ||
+        stored.value.some(
+          (entry, offset) =>
+            entry.key !== String(verified + offset).padStart(16, "0") ||
+            entry.value.hash !== expected[offset]?.value.hash ||
+            entry.value.bytes !== expected[offset]?.value.bytes,
+        )
+      )
+        return undefined;
+      verified += expected.length;
     }
     if (
-      uncited === undefined ||
+      verified !== uncited.count ||
       this.cited.size + uncited.count !== this.prepared.hunks.count
     )
       return undefined;

@@ -1,6 +1,7 @@
 import type { ReviewId, WorkspaceProfileId } from "#src/domain/ids";
 import {
-  insightBlobIndexNodeCodec,
+  insightIndexNodeCodec,
+  type InsightIndexElement,
   type InsightBlobIndexNode,
 } from "#src/domain/insight-artifact-index";
 import type {
@@ -20,8 +21,8 @@ type Child = Extract<
 // Sixteen preserves existing small metadata leaves and bounds every encoded wrapper below 16 KiB.
 const nodeEntries = 16;
 
-/** Append-only BlobBlock index construction; only one bounded node per level is retained. */
-export class InsightBlobIndexBuilder {
+/** Append-only typed index construction; only one bounded node per level is retained. */
+export class InsightIndexBuilder {
   private entries: Entry[] = [];
   private readonly levels: Child[][] = [];
   private count = 0;
@@ -32,9 +33,10 @@ export class InsightBlobIndexBuilder {
     private readonly artifacts: Pick<InsightArtifactStore, "writeObject">,
     private readonly profileId: WorkspaceProfileId,
     private readonly reviewId: ReviewId,
+    private readonly element: InsightIndexElement,
   ) {}
 
-  /** Adds exactly the next zero-based block ordinal; failure closes this builder. */
+  /** Adds exactly the next zero-based ordinal; failure closes this builder. */
   async append(
     value: InsightArtifactReference,
   ): Promise<Result<void, StorageFailure>> {
@@ -137,7 +139,7 @@ export class InsightBlobIndexBuilder {
     const result = await this.artifacts.writeObject(
       this.profileId,
       this.reviewId,
-      insightBlobIndexNodeCodec,
+      insightIndexNodeCodec(this.element),
       node,
     );
     if (result._tag === "err") this.closed = true;
