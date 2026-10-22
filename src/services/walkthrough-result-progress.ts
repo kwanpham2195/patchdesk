@@ -21,6 +21,8 @@ import {
   type WalkthroughResultView,
 } from "./walkthrough-result-reader";
 import { walkthroughSection } from "./walkthrough-result-records";
+import type { AppLogService } from "./app-log-service";
+import type { StorageFailure } from "#src/adapters/storage/json-file";
 
 type Progress = {
   readonly version: number;
@@ -39,6 +41,7 @@ export class WalkthroughProgressService {
       "withReviewLock"
     >,
     private readonly reviews: Pick<ReviewStore, "load">,
+    private readonly logs?: Pick<AppLogService, "write">,
   ) {}
 
   /** Missing progress is empty. Explicit malformed state never resets. */
@@ -101,12 +104,7 @@ export class WalkthroughProgressService {
       view.reviewId,
       view.digest,
     );
-    if (stored._tag === "err")
-      return err(
-        stored.error.reason === "invalid_stored_value"
-          ? "invalid_progress"
-          : "storage_unavailable",
-      );
+    if (stored._tag === "err") return err(this.readFailure(stored.error));
     const state = stored.value?.state;
     if (state === undefined) return ok(undefined);
     const valid = await this.validateState(view, state);
@@ -135,11 +133,7 @@ export class WalkthroughProgressService {
       0,
     );
     return index._tag === "err"
-      ? err(
-          index.error.reason === "invalid_stored_value"
-            ? "invalid_progress"
-            : "storage_unavailable",
-        )
+      ? err(this.readFailure(index.error))
       : ok(undefined);
   }
 
@@ -159,12 +153,7 @@ export class WalkthroughProgressService {
       this.store.read(view.profileId, view.reviewId, view.digest),
       walkthroughSection(view, request.mutation.sectionId),
     ]);
-    if (prior._tag === "err")
-      return err(
-        prior.error.reason === "invalid_stored_value"
-          ? "invalid_progress"
-          : "storage_unavailable",
-      );
+    if (prior._tag === "err") return err(this.readFailure(prior.error));
     if (section._tag === "err")
       return err(
         section.error === "storage_unavailable"
@@ -277,12 +266,7 @@ export class WalkthroughProgressService {
       position,
       1,
     );
-    if (entries._tag === "err")
-      return err(
-        entries.error.reason === "invalid_stored_value"
-          ? "invalid_progress"
-          : "storage_unavailable",
-      );
+    if (entries._tag === "err") return err(this.readFailure(entries.error));
     const entry = entries.value[0];
     if (entry === undefined) return err("invalid_progress");
     const mark = await view.artifacts.readObject(
@@ -291,12 +275,7 @@ export class WalkthroughProgressService {
       walkthroughReviewedSectionCodec,
       entry.value,
     );
-    if (mark._tag === "err")
-      return err(
-        mark.error.reason === "invalid_stored_value"
-          ? "invalid_progress"
-          : "storage_unavailable",
-      );
+    if (mark._tag === "err") return err(this.readFailure(mark.error));
     const section = await walkthroughSection(view, mark.value.sectionId);
     return section._tag === "err"
       ? err(
@@ -305,6 +284,18 @@ export class WalkthroughProgressService {
             : "invalid_progress",
         )
       : ok({ sectionId: mark.value.sectionId, reference: entry.value });
+  }
+
+  private readFailure(error: StorageFailure): WalkthroughReadFailure {
+    if (error.reason === "invalid_stored_value") return "invalid_progress";
+    this.logs?.write({
+      process: "main",
+      level: "warn",
+      topic: "insight-artifact-read",
+      message: "Walkthrough progress read failed",
+      meta: { category: error.reason },
+    });
+    return "storage_unavailable";
   }
 
   private async edit(
