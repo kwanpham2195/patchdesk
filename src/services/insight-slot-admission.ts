@@ -209,15 +209,15 @@ export class InsightSlotAdmission {
     };
     const captureId = randomUUID();
     const createdAt = this.now();
-    const [objects, base] = await Promise.all([
-      stageAdmissionObjects(this.artifacts, {
-        ...input,
-        runId: runId.output,
-        captureId,
-        authorizedAt: createdAt,
-      }),
-      seen === undefined ? this.writer.newSlot(input) : ok(seen.record),
-    ]);
+    // These writes share content-addressed objects, so they must not run concurrently.
+    const objects = await stageAdmissionObjects(this.artifacts, {
+      ...input,
+      runId: runId.output,
+      captureId,
+      authorizedAt: createdAt,
+    });
+    const base =
+      seen === undefined ? await this.writer.newSlot(input) : ok(seen.record);
     if (objects._tag === "err") return failed();
     if (base._tag === "err") return base;
     const created = await this.withJournal(journal, () =>
