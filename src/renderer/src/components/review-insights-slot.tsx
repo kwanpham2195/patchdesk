@@ -378,6 +378,7 @@ export function InsightsSlot({
     analysisVerification,
     walkthroughSummaryState: walkthroughSummary.state,
     refreshWalkthrough: walkthroughSummary.refresh,
+    onReprepare,
     walkthroughFocused,
     setWalkthroughFocused: requestWalkthroughFocusChange,
     onRegenerateBrief: () => openRunDialog("regenerate"),
@@ -468,8 +469,9 @@ export function InsightsSlot({
                   hideRegenerate={
                     analysisFirstRunActive ||
                     !reviewOpen ||
-                    selectedIsOutdated ||
-                    selectedProjection?.status === "failed" ||
+                    (selectedInsight !== "walkthrough" &&
+                      (selectedIsOutdated ||
+                        selectedProjection?.status === "failed")) ||
                     (selectedInsight === "guide"
                       ? readyGuide === undefined ||
                         guideSnapshot?.failure != null ||
@@ -594,7 +596,8 @@ function InsightDocument({
               selectedRunning?.starting ? "queued" : selectedRunning?.status
             }
           />
-        ) : selectedProjection?.status === "failed" ? (
+        ) : selectedInsight !== "walkthrough" &&
+          selectedProjection?.status === "failed" ? (
           <InsightFailed
             projection={selectedProjection}
             activity={selectedRunning?.activity}

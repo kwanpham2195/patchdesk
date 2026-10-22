@@ -1,7 +1,7 @@
 import { InsightEmpty } from "./insight-panels";
 import { PagedGuideReader } from "./paged-guide-reader";
-import { GuideActiveRunControls } from "./guide-resume-controls";
-import { GuideFailurePanel } from "./guide-failure-panel";
+import { InsightActiveRunControls } from "./insight-resume-controls";
+import { PagedInsightFailurePanel } from "./paged-insight-failure-panel";
 import type { GuideRunStatus } from "#src/domain/guide-progress";
 import type { GuideSummaryState } from "#src/renderer/src/hooks/use-guide-summary";
 import * as v from "valibot";
@@ -14,7 +14,6 @@ import { renderAnalysisReviewSummary } from "#src/renderer/src/analysis-review-s
 import { AnalysisReader, type FindingRestoreOutcome } from "./analysis-reader";
 import { projectReadOnlyConversationAnnotations } from "#src/renderer/src/inline-conversation-mapping";
 import { PagedWalkthroughReader } from "./paged-walkthrough-reader";
-import { WalkthroughActiveRunControls } from "./walkthrough-active-run-controls";
 import type { WalkthroughSummaryState } from "#src/renderer/src/hooks/use-walkthrough-summary";
 import { requestJson } from "#src/renderer/src/api-client";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
@@ -47,6 +46,7 @@ type InsightReaderBuilderInput = {
   readonly analysisVerification: AnalysisVerificationControls;
   readonly walkthroughSummaryState: WalkthroughSummaryState;
   readonly refreshWalkthrough: () => void;
+  readonly onReprepare: () => Promise<WorkbenchResponse>;
   readonly walkthroughFocused: boolean;
   readonly setWalkthroughFocused: (focused: boolean) => void;
   /** Opens the run dialog from the Brief's own Provenance card. */
@@ -145,6 +145,7 @@ export function buildInsightReaders({
   analysisVerification,
   walkthroughSummaryState,
   refreshWalkthrough,
+  onReprepare,
   onOpenFindingInDiff,
   onOpenFileInDiff,
   onOpenScopeBucketInDiff,
@@ -163,13 +164,15 @@ export function buildInsightReaders({
   if (selectedInsight === "guide") {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <GuideActiveRunControls
+        <InsightActiveRunControls
+          type="guide"
           workbench={workbench}
           state={guideSummaryState}
           run={guideActiveRun}
           refresh={refreshGuide}
         />
-        <GuideFailurePanel
+        <PagedInsightFailurePanel
+          type="guide"
           state={guideSummaryState}
           runEnabled={runEnabled}
           onRetry={onRunGuide}
@@ -307,42 +310,54 @@ export function buildInsightReaders({
   const firstDiffPath = patchFiles[0]?.newPath;
   const retainedWalkthrough =
     selectedInsight === "walkthrough" ? (
-      <>
-        <WalkthroughActiveRunControls
+      <div className="flex h-full min-h-0 flex-col">
+        <InsightActiveRunControls
+          type="walkthrough"
+          workbench={workbench}
+          state={walkthroughSummaryState}
           run={
             walkthroughSummaryState.status === "loaded"
               ? walkthroughSummaryState.summary.run
               : null
           }
-          profileId={workbench.session.key.profileId}
-          reviewId={workbench.review.id}
-          reviewOpen={workbench.review.status === "open"}
           refresh={refreshWalkthrough}
         />
-        <PagedWalkthroughReader
-          workbench={workbench}
+        <PagedInsightFailurePanel
+          type="walkthrough"
           state={walkthroughSummaryState}
-          refresh={refreshWalkthrough}
-          empty={
-            <InsightEmpty
-              type="walkthrough"
-              disabled={!runEnabled}
-              {...definedProps({ onRun: onRunWalkthrough })}
-            />
-          }
-          regenerateDisabled={!runEnabled}
-          {...definedProps({ onRegenerate: onRunWalkthrough })}
-          {...(walkthroughAnnotations === undefined
-            ? {}
-            : { annotations: walkthroughAnnotations })}
-          {...definedProps({ diffAuthoring: walkthroughDiffAuthoring })}
-          focused={walkthroughFocused}
-          onFocusedChange={setWalkthroughFocused}
-          {...(onOpenFileInDiff === undefined || firstDiffPath === undefined
-            ? {}
-            : { onOpenDiff: () => onOpenFileInDiff(firstDiffPath) })}
+          runEnabled={runEnabled}
+          onRetry={onRunWalkthrough}
+          onReprepare={onReprepare}
         />
-      </>
+        <div className="min-h-0 flex-1">
+          <PagedWalkthroughReader
+            workbench={workbench}
+            state={walkthroughSummaryState}
+            refresh={refreshWalkthrough}
+            empty={
+              walkthroughSummaryState.status === "loaded" &&
+              walkthroughSummaryState.summary.failure !== null ? null : (
+                <InsightEmpty
+                  type="walkthrough"
+                  disabled={!runEnabled}
+                  {...definedProps({ onRun: onRunWalkthrough })}
+                />
+              )
+            }
+            regenerateDisabled={!runEnabled}
+            {...definedProps({ onRegenerate: onRunWalkthrough })}
+            {...(walkthroughAnnotations === undefined
+              ? {}
+              : { annotations: walkthroughAnnotations })}
+            {...definedProps({ diffAuthoring: walkthroughDiffAuthoring })}
+            focused={walkthroughFocused}
+            onFocusedChange={setWalkthroughFocused}
+            {...(onOpenFileInDiff === undefined || firstDiffPath === undefined
+              ? {}
+              : { onOpenDiff: () => onOpenFileInDiff(firstDiffPath) })}
+          />
+        </div>
+      </div>
     ) : null;
   const briefRetained = workbench.insights.brief?.retained;
   const briefRunId = briefRetained?.runId;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { History, Play } from "lucide-react";
+import { History, Pause, Play } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -211,7 +211,9 @@ function InsightTab({
         }
       >
         {noun}
-        {status === "not_generated" ? null : (
+        {status === "not_generated" ? null : label === "Paused" ? (
+          <Pause aria-hidden="true" className="size-3 shrink-0" />
+        ) : (
           <InsightStatusIcon status={status} />
         )}
       </TooltipTrigger>
