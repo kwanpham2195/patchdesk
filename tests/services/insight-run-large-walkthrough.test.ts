@@ -227,5 +227,5 @@ describe("large Walkthrough retention", () => {
       await resources.dispose();
     }
     // Durable capture and independent replay replace the former in-memory whole-result normalization.
-  }, 180_000);
+  }, 120_000);
 });

@@ -11,7 +11,7 @@ import {
 import { err, ok, type Result } from "#src/domain/result";
 import { MAX_INSIGHT_OBJECT_BYTES } from "./insight-artifact-files";
 import type { InsightArtifactStore } from "./insight-artifact-store";
-import { InsightBlobIndexBuilder } from "./insight-index-builder";
+import { InsightIndexBuilder } from "./insight-index-builder";
 import { InsightSensitiveStream } from "./insight-sensitive-stream";
 import type { StorageFailure } from "./json-file";
 import type { InsightCaptureSourceFile } from "./insight-capture-source-file";
@@ -115,7 +115,12 @@ async function writeValidatedText(
   readText: () => Promise<Result<string | undefined, StorageFailure>>,
   options: { readonly signal?: AbortSignal },
 ): Promise<Result<InsightTextRootDescriptor, StorageFailure>> {
-  const index = new InsightBlobIndexBuilder(artifacts, profileId, reviewId);
+  const index = new InsightIndexBuilder(
+    artifacts,
+    profileId,
+    reviewId,
+    "BlobBlock",
+  );
   const digest = createHash("sha256");
   let bytes = 0;
   let utf16Units = 0;
