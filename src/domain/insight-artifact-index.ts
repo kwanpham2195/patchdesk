@@ -127,6 +127,7 @@ export type InsightIndexElement =
   | "WalkthroughChapter1"
   | "WalkthroughSection1"
   | "WalkthroughCitation1"
+  | "WalkthroughReviewedSection1"
   | "ObjectDigest"
   | "Receipt"
   | "TransactionEntry"

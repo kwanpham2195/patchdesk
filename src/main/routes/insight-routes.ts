@@ -33,6 +33,10 @@ import {
   type GuideReadFailure,
 } from "#src/domain/guide-progress";
 import type { Result } from "#src/domain/result";
+import {
+  walkthroughSummaryRequestSchema,
+  walkthroughPageRequestSchema,
+} from "#src/domain/walkthrough-progress";
 import { definedProps } from "#src/domain/defined-props";
 import {
   agentRunDeclineRequestSchema,
@@ -272,6 +276,32 @@ export function registerInsightRoutes(
     return guideReadResponse(
       context,
       await container.guidePages.summary(profileId.value, reviewId.value),
+    );
+  });
+  app.post("/v1/reviews/insights/walkthrough/summary", async (context) => {
+    const parsed = safeParse(
+      walkthroughSummaryRequestSchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    const profile = parseWorkspaceProfileId(parsed.output.profileId);
+    const review = parseReviewId(parsed.output.reviewId);
+    if (profile._tag === "err" || review._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return guideReadResponse(
+      context,
+      await container.walkthroughPages.summary(profile.value, review.value),
+    );
+  });
+  app.post("/v1/reviews/insights/walkthrough/page", async (context) => {
+    const parsed = safeParse(
+      walkthroughPageRequestSchema,
+      await jsonBody(context),
+    );
+    if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
+    return guideReadResponse(
+      context,
+      await container.walkthroughPages.page(parsed.output),
     );
   });
   app.post("/v1/reviews/insights/guide/resume", async (context) => {

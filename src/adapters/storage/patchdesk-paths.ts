@@ -387,6 +387,20 @@ export class PatchdeskPaths {
     );
   }
 
+  /** Progress is retained independently for each published Walkthrough digest. */
+  walkthroughProgressPointerFile(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    resultDigest: string,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "insight-artifacts-v2",
+      "walkthrough-progress",
+      `${resultDigest}.json`,
+    );
+  }
+
   insightJournalPointerFile(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,

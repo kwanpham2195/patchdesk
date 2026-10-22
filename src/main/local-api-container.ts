@@ -77,6 +77,10 @@ import { GuideCapturedFilePages } from "#src/services/guide-captured-file-pages"
 import { GuidePageService } from "#src/services/guide-result-pages";
 import { GuideProgressService } from "#src/services/guide-result-progress";
 import { GuideResultReader } from "#src/services/guide-result-reader";
+import { WalkthroughProgressStore } from "#src/adapters/storage/walkthrough-progress-store";
+import { WalkthroughResultReader } from "#src/services/walkthrough-result-reader";
+import { WalkthroughProgressService } from "#src/services/walkthrough-result-progress";
+import { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
 import { InsightSlotStatus } from "#src/services/insight-slot-status";
 import { SidebarListingService } from "#src/services/sidebar-listing-service";
 import { WatchedPullRequestService } from "#src/services/watched-pull-request-service";
@@ -125,6 +129,8 @@ export type LocalApiContainer = {
   readonly guidePages: GuidePageService;
   /** Digest-keyed Guide reading progress. */
   readonly guideProgress: GuideProgressService;
+  /** Bounded reads of published WalkthroughResultRoot1 only. */
+  readonly walkthroughPages: WalkthroughPageService;
   /** Retained Insight reads for routes that compose from a stored result, such as the Brief's PR description. */
   readonly retainedInsights: Pick<InsightStore, "loadTyped">;
   readonly reviewDiffSources: ReviewDiffSourceService;
@@ -524,6 +530,26 @@ export async function buildLocalApiContainer(
     guideProgress,
     new GuideCapturedFilePages(),
   );
+  const walkthroughReader = new WalkthroughResultReader(
+    paths,
+    configuration.insightResources.uiReader,
+  );
+  const walkthroughPages = new WalkthroughPageService(
+    walkthroughReader,
+    new WalkthroughProgressService(
+      new WalkthroughProgressStore(
+        paths,
+        new InsightArtifactStore(
+          paths,
+          configuration.insightResources.uiReader,
+        ),
+        configuration.insightResources.uiReader,
+      ),
+      walkthroughReader,
+      reviewOperations,
+      reviews,
+    ),
+  );
   const slotStatus = new InsightSlotStatus(
     paths,
     configuration.insightResources.uiReader,
@@ -700,6 +726,7 @@ export async function buildLocalApiContainer(
       agentRunRequests,
       guidePages,
       guideProgress,
+      walkthroughPages,
       retainedInsights: insights,
       reviewDiffSources,
       mergeWrites,
