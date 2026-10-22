@@ -105,11 +105,13 @@ export class WalkthroughResultReader {
   > {
     const slot = await this.slots.read(profileId, reviewId, "walkthrough");
     if (slot._tag === "err") return err(walkthroughReadFailure(slot.error));
-    if (slot.value?.retained?.tag === "historical") return err("not_available");
     const view = await this.published(profileId, reviewId, slot.value);
     if (view._tag === "err") return view;
     const run = await this.active(profileId, reviewId, slot.value);
     if (run._tag === "err") return run;
+    // Keep replacement controls and polling available while historical content is being regenerated.
+    if (slot.value?.retained?.tag === "historical" && run.value === null)
+      return err("not_available");
     const failure = await this.failure(profileId, reviewId, slot.value);
     if (failure._tag === "err") return failure;
     if (failure.value !== null && failure.value.runId === view.value?.runId)
