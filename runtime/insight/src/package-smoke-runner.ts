@@ -9,23 +9,7 @@ import {
   type PatchdeskChildResult,
 } from "./patchdesk-insight-runner";
 
-const walkthrough = {
-  citationVersion: 2,
-  title: "Smoke walkthrough",
-  focus: "The fixed smoke fixture proves the packaged child data channel.",
-  chapters: [
-    {
-      title: "Smoke",
-      sections: [
-        {
-          title: "Result",
-          prose: "The child records one bounded result.",
-          hunkIds: ["h1"],
-        },
-      ],
-    },
-  ],
-};
+const brief = { reachSymbols: ["runPackageSmoke"] };
 const analysis = {
   changeSummary: "The child runs one bounded analysis.",
   verdict: "approve",
@@ -36,7 +20,7 @@ const analysis = {
 };
 /** The four child outcomes one package smoke run reports on stdout. */
 type PackageSmokeReport = {
-  readonly walkthrough: PatchdeskChildResult;
+  readonly brief: PatchdeskChildResult;
   readonly analysis: PatchdeskChildResult;
   readonly analysisCallNineDenied: boolean;
   readonly cancellation: PatchdeskChildResult;
@@ -45,29 +29,28 @@ type PackageSmokeReport = {
 /** Runs fixed faux fixtures. Production runner never imports this entry or accepts smoke selection. */
 export async function runPackageSmoke(): Promise<PackageSmokeReport> {
   assertNoProviderCredentials();
-  const walkthroughProvider = fauxProvider({
+  const briefProvider = fauxProvider({
     provider: "patchdesk-smoke",
     models: [{ id: "fixture" }],
   });
-  walkthroughProvider.setResponses([
-    fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", walkthrough), {
+  briefProvider.setResponses([
+    fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", brief), {
       stopReason: "toolUse",
     }),
   ]);
-  const walkthroughResult = await runPatchdeskChild(
+  const briefResult = await runPatchdeskChild(
     {
-      type: "walkthrough",
+      type: "brief",
       input: {
         profileId: "smoke-profile",
         sessionId: "smoke-session",
-        contextPath: "/immutable/context.json",
         patchPath: "/immutable/patch.diff",
         model: "patchdesk-smoke/fixture",
         reasoning: "low",
         prompt: "Submit the fixed smoke result.",
       },
     },
-    { providers: [walkthroughProvider.provider] },
+    { providers: [briefProvider.provider] },
   );
 
   const analysisProvider = fauxProvider({
@@ -128,21 +111,20 @@ export async function runPackageSmoke(): Promise<PackageSmokeReport> {
   controller.abort();
   const cancellation = await runPatchdeskChild(
     {
-      type: "walkthrough",
+      type: "brief",
       input: {
         profileId: "smoke-profile",
         sessionId: "smoke-session",
-        contextPath: "/immutable/context.json",
         patchPath: "/immutable/patch.diff",
         model: "patchdesk-smoke/fixture",
         reasoning: "low",
         prompt: "Cancelled smoke fixture.",
       },
     },
-    { providers: [walkthroughProvider.provider], signal: controller.signal },
+    { providers: [briefProvider.provider], signal: controller.signal },
   );
   return {
-    walkthrough: walkthroughResult,
+    brief: briefResult,
     analysis: analysisResult,
     analysisCallNineDenied: calls === 9,
     cancellation,

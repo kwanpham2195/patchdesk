@@ -77,10 +77,6 @@ export type InsightReadingIdentity = {
   readonly reviewId: ReviewId;
   readonly runId: InsightRunId;
 };
-/** Progress updates share their represented-result identity at the coordinator boundary. */
-export type WalkthroughProgressUpdate = InsightReadingIdentity & {
-  readonly progress: WalkthroughProgress;
-};
 /** Verification updates name one step of the represented Analysis. */
 export type AnalysisVerificationUpdate = InsightReadingIdentity & {
   readonly stepIndex: number;
@@ -392,30 +388,6 @@ export function restoreInsightFinding(
       (dismissal) => dismissal.findingId !== findingId,
     ),
     updatedAt: restoredAt,
-  });
-}
-
-/** Updates walkthrough progress for the currently retained walkthrough. */
-export function updateWalkthroughProgress(
-  record: InsightRecord<unknown>,
-  progress: WalkthroughProgress,
-  at: IsoTimestamp,
-): Result<InsightRecord<unknown>, "not_available"> {
-  if (record.type !== "walkthrough" || record.retained === undefined)
-    return err("not_available");
-  const reviewedSectionIds = [
-    ...new Set(
-      progress.reviewedSectionIds.filter((id) => id.trim().length > 0),
-    ),
-  ];
-  return ok({
-    ...record,
-    walkthroughProgress: {
-      reviewedSectionIds,
-      supportReviewed: progress.supportReviewed,
-      ...definedProps({ currentSectionId: progress.currentSectionId }),
-    },
-    updatedAt: at,
   });
 }
 

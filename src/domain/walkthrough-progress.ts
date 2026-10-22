@@ -15,31 +15,14 @@ import {
 import {
   walkthroughSectionIdSchema as SectionId,
   walkthroughChapterIdSchema as ChapterId,
-} from "./walkthrough-protocol";
-import { walkthroughHunkIdSchema as HunkId } from "./walkthrough-preparation";
+  walkthroughHunkIdSchema as HunkId,
+  walkthroughPageSelectorSchema,
+} from "./walkthrough-selectors.js";
 
 const cursor = v.nullable(v.pipe(v.string(), v.minLength(1), v.maxLength(512)));
 const scope = guideSummaryRequestSchema.entries;
 const metadata = guideSummarySchema.options[1].entries;
 
-/** A digest-bound selector, with no storage paths or object references supplied by the caller. */
-const walkthroughPageSelectorSchema = v.variant("kind", [
-  v.strictObject({ kind: v.literal("navigation"), cursor }),
-  v.strictObject({ kind: v.literal("section"), sectionId: SectionId }),
-  v.strictObject({
-    kind: v.literal("citations"),
-    sectionId: SectionId,
-    cursor,
-  }),
-  v.strictObject({ kind: v.literal("uncited"), cursor }),
-  v.strictObject({
-    kind: v.literal("hunk_text"),
-    sectionId: v.nullable(SectionId),
-    hunkId: HunkId,
-    field: v.picklist(["raw", "filePrefix", "header", "path"]),
-    cursor,
-  }),
-]);
 /** Summary requires only the owning Review. */
 export const walkthroughSummaryRequestSchema = v.strictObject(scope);
 /** Resume names the paused generation and explicitly acknowledges unknown spend. */

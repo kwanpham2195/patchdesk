@@ -419,11 +419,11 @@ function failureMessage(
     case "timed_out":
       return "The Insight run timed out.";
     case "guide_patch_empty":
-      return "The represented patch has no changes Guide can index.";
+      return "The represented patch has no changes this Insight can index.";
     case "guide_artifact_unreadable":
-      return "Guide could not read the represented Review evidence.";
+      return "This Insight could not read the represented Review evidence.";
     case "guide_input_too_large":
-      return "The represented Review input exceeds Guide's supported size.";
+      return "The represented Review input exceeds this Insight's supported size.";
     case "execution_failed":
       return "The provider refused or failed this run.";
     case "invalid_result":

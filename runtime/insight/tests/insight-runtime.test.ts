@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
+import { createWalkthroughSessionTools } from "#runtime/src/walkthrough-session-tools";
+import { insightArtifactRunIdSchema } from "#app/domain/insight-artifact-scalars";
 import {
   fauxAssistantMessage,
   fauxProvider,
@@ -37,9 +39,7 @@ const reference = v.parse(
 import {
   createAnalysisAgent,
   createBriefAgent,
-  createWalkthroughAgent,
   modelReviewResultSchema,
-  walkthroughResultSchema,
 } from "#runtime/src/patchdesk-insight-agent";
 import {
   canonicalizeProductionInvocation,
@@ -50,23 +50,6 @@ import {
   runProductionChild,
 } from "#runtime/src/patchdesk-insight-runner";
 
-const walkthrough = {
-  citationVersion: 2,
-  title: "Walkthrough",
-  focus: "The patch adds a bounded review path.",
-  chapters: [
-    {
-      title: "Review",
-      sections: [
-        {
-          title: "One change",
-          prose: "The child accepts one result.",
-          hunkIds: ["h1"],
-        },
-      ],
-    },
-  ],
-};
 const analysis = {
   changeSummary: "One change.",
   verdict: "approve",
@@ -75,21 +58,6 @@ const analysis = {
   validationPlan: [],
   assumptions: [],
 };
-
-function walkthroughInvocation() {
-  return {
-    type: "walkthrough" as const,
-    input: {
-      profileId: "profile",
-      sessionId: "session",
-      contextPath: "/immutable/context",
-      patchPath: "/immutable/patch",
-      model: "faux/test",
-      reasoning: "low" as const,
-      prompt: "Submit one result.",
-    },
-  };
-}
 
 const brief = {
   flow: [
@@ -223,32 +191,32 @@ describe("one-shot insight runtime", () => {
       fauxAssistantMessage(
         [
           fauxText("untrusted prose"),
-          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", brief),
         ],
         { stopReason: "toolUse" },
       ),
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
       }),
-    ).resolves.toEqual({ ok: true, value: walkthrough });
+    ).resolves.toEqual({ ok: true, value: brief });
     expect(provider.state.callCount).toBe(1);
   });
 
   it("rejects missing and extra data rather than treating assistant text as authority", async () => {
     const provider = fake([
-      fauxAssistantMessage(fauxText(JSON.stringify(walkthrough))),
+      fauxAssistantMessage(fauxText(JSON.stringify(brief))),
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
       }),
     ).resolves.toEqual({ ok: false, reason: "invalid_result" });
     const malformed = fake([
       fauxAssistantMessage(
         fauxToolCall("submit_patchdesk_result", {
-          ...walkthrough,
+          ...brief,
           extra: true,
         }),
         { stopReason: "toolUse" },
@@ -256,7 +224,7 @@ describe("one-shot insight runtime", () => {
       fauxAssistantMessage(fauxText("Unable to submit a valid result.")),
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [malformed.provider],
       }),
     ).resolves.toEqual({ ok: false, reason: "invalid_result" });
@@ -270,7 +238,7 @@ describe("one-shot insight runtime", () => {
         );
       },
     ]);
-    const result = await runPatchdeskChild(walkthroughInvocation(), {
+    const result = await runPatchdeskChild(briefInvocation(), {
       providers: [provider.provider],
     });
     if (result.ok) throw new Error("expected the provider refusal to fail");
@@ -293,20 +261,20 @@ describe("one-shot insight runtime", () => {
     const provider = fake([
       fauxAssistantMessage(
         [
-          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", brief),
           fauxToolCall("submit_patchdesk_result", {
-            ...walkthrough,
-            title: "Second submission",
+            ...brief,
+            reachSymbols: ["second"],
           }),
         ],
         { stopReason: "toolUse" },
       ),
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
       }),
-    ).resolves.toEqual({ ok: true, value: walkthrough });
+    ).resolves.toEqual({ ok: true, value: brief });
   });
 
   it("gives Analysis exactly four bounded inspectors plus submission", async () => {
@@ -341,7 +309,6 @@ describe("one-shot insight runtime", () => {
       "git_show",
     ]);
     expect(modelReviewResultSchema).toBeDefined();
-    expect(walkthroughResultSchema).toBeDefined();
     const provider = fake([
       fauxAssistantMessage(fauxToolCall("list_changed_files", {}), {
         stopReason: "toolUse",
@@ -423,17 +390,16 @@ describe("one-shot insight runtime", () => {
   it("retries a transient provider turn and returns the result the retry submitted", async () => {
     const provider = fake([
       transientFailure('503: {"message":"Service Unavailable"}'),
-      fauxAssistantMessage(
-        fauxToolCall("submit_patchdesk_result", walkthrough),
-        { stopReason: "toolUse" },
-      ),
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", brief), {
+        stopReason: "toolUse",
+      }),
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
         retryBaseDelayMs: 0,
       }),
-    ).resolves.toEqual({ ok: true, value: walkthrough });
+    ).resolves.toEqual({ ok: true, value: brief });
     expect(provider.state.callCount).toBe(2);
   });
 
@@ -444,7 +410,7 @@ describe("one-shot insight runtime", () => {
         errorMessage: '402: {"message":"Insufficient Balance"}',
       }),
     ]);
-    const result = await runPatchdeskChild(walkthroughInvocation(), {
+    const result = await runPatchdeskChild(briefInvocation(), {
       providers: [provider.provider],
       retryBaseDelayMs: 0,
     });
@@ -459,7 +425,7 @@ describe("one-shot insight runtime", () => {
     const provider = fake(
       Array.from({ length: 4 }, () => transientFailure("503: overloaded")),
     );
-    const result = await runPatchdeskChild(walkthroughInvocation(), {
+    const result = await runPatchdeskChild(briefInvocation(), {
       providers: [provider.provider],
       retryBaseDelayMs: 0,
     });
@@ -480,7 +446,7 @@ describe("one-shot insight runtime", () => {
       },
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
         signal: controller.signal,
         // Long enough that a retry that ignored the abort would hang the test.
@@ -540,15 +506,14 @@ describe("one-shot insight runtime", () => {
 
   it("requests a durable abort through the agent handle when the caller cancels", async () => {
     const provider = fake([
-      fauxAssistantMessage(
-        fauxToolCall("submit_patchdesk_result", walkthrough),
-        { stopReason: "toolUse" },
-      ),
+      fauxAssistantMessage(fauxToolCall("submit_patchdesk_result", brief), {
+        stopReason: "toolUse",
+      }),
     ]);
     const controller = new AbortController();
     controller.abort();
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
+      runPatchdeskChild(briefInvocation(), {
         providers: [provider.provider],
         signal: controller.signal,
       }),
@@ -561,7 +526,7 @@ describe("one-shot insight runtime", () => {
       async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         return fauxAssistantMessage(
-          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", brief),
           { stopReason: "toolUse" },
         );
       },
@@ -569,7 +534,7 @@ describe("one-shot insight runtime", () => {
     const controller = new AbortController();
     let abortHandle: (() => Promise<void>) | undefined;
     let abortRequests = 0;
-    const pending = runPatchdeskChild(walkthroughInvocation(), {
+    const pending = runPatchdeskChild(briefInvocation(), {
       providers: [provider.provider],
       signal: controller.signal,
       onHandle: (abort) => {
@@ -588,24 +553,22 @@ describe("one-shot insight runtime", () => {
   });
 
   it("exposes only the allowed model-visible tool catalogs", async () => {
-    let walkthroughTools: ReadonlyArray<string> = [];
-    const walkthroughProvider = fake([
+    let briefTools: ReadonlyArray<string> = [];
+    const briefProvider = fake([
       (context) => {
-        walkthroughTools = getCurrentTools(context.messages).map(
-          (tool) => tool.name,
-        );
+        briefTools = getCurrentTools(context.messages).map((tool) => tool.name);
         return fauxAssistantMessage(
-          fauxToolCall("submit_patchdesk_result", walkthrough),
+          fauxToolCall("submit_patchdesk_result", brief),
           { stopReason: "toolUse" },
         );
       },
     ]);
     await expect(
-      runPatchdeskChild(walkthroughInvocation(), {
-        providers: [walkthroughProvider.provider],
+      runPatchdeskChild(briefInvocation(), {
+        providers: [briefProvider.provider],
       }),
-    ).resolves.toEqual({ ok: true, value: walkthrough });
-    expect(walkthroughTools).toEqual(["submit_patchdesk_result"]);
+    ).resolves.toEqual({ ok: true, value: brief });
+    expect(briefTools).toEqual(["submit_patchdesk_result"]);
 
     let analysisTools: ReadonlyArray<string> = [];
     const analysisProvider = fake([
@@ -903,20 +866,6 @@ describe("one-shot insight runtime", () => {
     });
   });
 
-  it("does not add a sandbox, MCP connection, declared subagent, or inspector tool to Walkthrough", () => {
-    const created = createWalkthroughAgent(walkthroughInvocation().input);
-    expect(created.spec.tools.map((tool) => tool.name)).toEqual([
-      "submit_patchdesk_result",
-    ]);
-    expect(created.capabilities).toEqual({
-      customTools: ["submit_patchdesk_result"],
-      usesSkill: false,
-      usesSandbox: false,
-      usesMcp: false,
-      usesSubagent: false,
-    });
-  });
-
   it("declares only the four Analysis inspectors and submission capability", () => {
     const created = createAnalysisAgent(
       analysisInvocation().input,
@@ -954,6 +903,35 @@ describe("one-shot insight runtime", () => {
       usesMcp: false,
       usesSubagent: false,
     });
+  });
+
+  it("does not add a sandbox, MCP connection, declared subagent, or inspector tool to Walkthrough", () => {
+    const tools = createWalkthroughSessionTools(
+      {
+        runId: v.parse(
+          insightArtifactRunIdSchema,
+          "insight-walkthrough-1-aaaaaaaaaaaa-review",
+        ),
+        generation: 0,
+        cancelEpoch: 0,
+        connection: "test-connection",
+      },
+      {
+        call: async () => {
+          throw new Error("Catalog inspection must not call the app");
+        },
+      },
+      { finished: false, halted: false, unconfirmed: false },
+      () => undefined,
+    );
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "begin_walkthrough",
+      "open_chapter",
+      "open_section",
+      "add_citations",
+      "finish",
+      "lookup_receipt",
+    ]);
   });
 
   it("rejects malformed and oversized process stdin before a runtime starts", async () => {

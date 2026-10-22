@@ -7,7 +7,6 @@ import {
   analysisCodexOutputSchema,
   briefCodexOutputSchema,
   parseCodexStrictResult,
-  walkthroughCodexOutputSchema,
 } from "#src/services/codex-output-schema";
 
 type SchemaNode = JsonSchema["items"];
@@ -28,7 +27,6 @@ describe("Codex output schemas", () => {
   it.each([
     ["Brief", briefCodexOutputSchema],
     ["Analysis", analysisCodexOutputSchema],
-    ["Walkthrough", walkthroughCodexOutputSchema],
   ])(
     "closes every object in the %s schema and requires every property, as Codex strict mode demands",
     (_type, schema) => {

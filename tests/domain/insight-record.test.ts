@@ -9,7 +9,6 @@ import {
   parseRetainedInsight,
   requestInsightCancellation,
   sameInsightRevision,
-  updateWalkthroughProgress,
   type InsightRecord,
 } from "#src/domain/insight-record";
 import {
@@ -212,7 +211,7 @@ describe("InsightRecord", () => {
       expect(completed.value.dismissals).toBeUndefined();
   });
 
-  it("persists walkthrough progress and clears it for a replacement run", () => {
+  it("preserves historical walkthrough progress until a successful legacy replacement", () => {
     const walkthrough = createInsightRecord({
       reviewId,
       type: "walkthrough",
@@ -247,25 +246,14 @@ describe("InsightRecord", () => {
     );
     if (retained._tag === "err")
       throw new Error("expected retained walkthrough");
-    const progress = updateWalkthroughProgress(
-      retained.value,
-      {
-        reviewedSectionIds: ["section-a", "section-a"],
+    const progress = {
+      ...retained.value,
+      walkthroughProgress: {
+        reviewedSectionIds: ["section-a"],
         supportReviewed: true,
         currentSectionId: "section-a",
       },
-      later,
-    );
-    expect(progress).toMatchObject({
-      _tag: "ok",
-      value: {
-        walkthroughProgress: {
-          reviewedSectionIds: ["section-a"],
-          supportReviewed: true,
-        },
-      },
-    });
-    if (progress._tag === "err") return;
+    };
     const activeRun = started.value.activeRun;
     if (activeRun === undefined) throw new Error("expected active run");
     const replacementId = must(
@@ -273,7 +261,7 @@ describe("InsightRecord", () => {
         `insight-walkthrough-2-${headSha.slice(0, 12)}-${reviewId}`,
       ),
     );
-    const next = beginInsightRun(progress.value, {
+    const next = beginInsightRun(progress, {
       ...activeRun,
       id: replacementId,
       startedAt: later,

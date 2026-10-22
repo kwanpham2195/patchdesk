@@ -3,9 +3,11 @@ import { err, ok, type Result } from "./result";
 import {
   walkthroughChapterIdSchema,
   walkthroughSectionIdSchema,
-  type WalkthroughPayload,
-  type WalkthroughReceiptResult,
-  type WalkthroughRefusalReason,
+} from "./walkthrough-selectors.js";
+import type {
+  WalkthroughPayload,
+  WalkthroughReceiptResult,
+  WalkthroughRefusalReason,
 } from "./walkthrough-protocol";
 
 /** Ordered admission state retains IDs and counts, not all chapter/section prose or raw hunks. */

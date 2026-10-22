@@ -1,8 +1,6 @@
 import { retainGuide } from "#src/domain/guide";
 import { readFile } from "node:fs/promises";
 
-import * as v from "valibot";
-
 import {
   briefManifest,
   normalizeBrief,
@@ -18,10 +16,6 @@ import {
 import type { InsightRevision, InsightType } from "#src/domain/insight-record";
 import type { RawJsonValue } from "#src/domain/json";
 import {
-  normalizeNarrativeWalkthrough,
-  type NarrativeWalkthroughError,
-} from "#src/domain/narrative-walkthrough";
-import {
   mapFindingLocation,
   parseUnifiedPatch,
   type FindingLocation,
@@ -35,13 +29,9 @@ import {
 } from "#src/domain/review-result";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightInvocationInput } from "./insight-run-coordinator";
-import { parseWalkthroughOutput } from "./walkthrough-operation";
 
 /** Bounded validateResult rejection reason, surfaced only in the diagnostic detail. */
-export type ValidateResultReason =
-  | "invalid_result"
-  | NarrativeWalkthroughError["reason"]
-  | BriefError["reason"];
+export type ValidateResultReason = "invalid_result" | BriefError["reason"];
 
 export async function validateInsightResult(
   type: InsightType,
@@ -55,6 +45,7 @@ export async function validateInsightResult(
    */
   reach?: BriefReachComputer,
 ): Promise<Result<unknown, ValidateResultReason>> {
+  if (type === "walkthrough") return err("invalid_result");
   if (type === "guide") {
     if (input.guide === undefined) return err("invalid_result");
     const guide = retainGuide(value, input.guide);
@@ -139,22 +130,7 @@ export async function validateInsightResult(
       ),
     );
   }
-  // This result came from the current alias-manifest workflow. Persist its
-  // marker even when a provider omits the requested constant JSON field.
-  const currentOutput = currentWalkthroughOutput(value);
-  const parsedWalkthrough = parseWalkthroughOutput(currentOutput);
-  if (parsedWalkthrough._tag === "err") return err("malformed");
-  const normalized = normalizeNarrativeWalkthrough(
-    parsedWalkthrough.value,
-    patch,
-    {
-      profileId: input.profileId,
-      sessionId: revision.sessionId,
-      headSha: revision.headSha,
-      patchHash: revision.patchHash,
-    },
-  );
-  return normalized._tag === "ok" ? normalized : err(normalized.error.reason);
+  return err("invalid_result");
 }
 
 /**
@@ -223,14 +199,4 @@ async function withBriefReach(
   return outcome._tag === "ok"
     ? { ...brief, reach: outcome.value }
     : { ...brief, reachUnavailable: outcome.reason };
-}
-
-function currentWalkthroughOutput(value: RawJsonValue): RawJsonValue {
-  if (Array.isArray(value)) return value;
-  const record = v.safeParse(v.looseObject({}), value);
-  if (!record.success) return value;
-  // SAFETY: value is RawJsonValue and record.output holds the exact same own properties
-  // (valibot's looseObject passes unknown keys through unchanged), so each property is itself
-  // RawJsonValue by the JSON value grammar.
-  return { ...record.output, citationVersion: 2 } as RawJsonValue;
 }

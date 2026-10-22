@@ -36,7 +36,6 @@ import type {
 import {
   allowlistedCodexEnvironment,
   NATIVE_INSIGHT_PROMPT_BYTES,
-  NATIVE_INSIGHT_INSTRUCTIONS,
   codexInsightIsolationArgs,
   parseCodexInsightThread,
 } from "./codex-insight-policy";
@@ -50,7 +49,6 @@ const MAX_MODELS = 512;
 const MAX_MODEL_BYTES = 4 * 1024 * 1024;
 const MAX_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_PROMPT_BYTES = 256 * 1024;
-export const MAX_WALKTHROUGH_PROMPT_BYTES = NATIVE_INSIGHT_PROMPT_BYTES;
 /** Hard bound for one composed Analysis prompt; mirrors MAX_ANALYSIS_PROMPT_BYTES in model-review-runner.ts. */
 export const MAX_ANALYSIS_CODEX_PROMPT_BYTES = NATIVE_INSIGHT_PROMPT_BYTES;
 const RUN_TIMEOUT_MS = 5 * 60_000;
@@ -224,33 +222,6 @@ const turnCompletedParamsSchema = v.looseObject({
 const agentMessageDeltaParamsSchema = v.looseObject({
   delta: v.optional(v.string()),
 });
-/**
- * Builds a sanitized Codex child prompt for a Walkthrough. `walkthroughPrompt` carries the
- * app-owned immutable patch and context artifacts, so the unsafe-content guard applies only to
- * `policy`: applying it to the patch would reject ordinary code such as ` /**`.
- */
-export function buildCodexWalkthroughPrompt(input: {
-  readonly walkthroughPrompt: string;
-  readonly policy: string;
-}): Result<string, "invalid_prompt"> {
-  if (UNSAFE_PROMPT_PATTERN.test(input.policy)) return err("invalid_prompt");
-  const prompt = [
-    "Patchdesk owns all Review lifecycle, Finding mapping, publication, and merge authority.",
-    "Insight type: walkthrough",
-    NATIVE_INSIGHT_INSTRUCTIONS,
-    "Return exactly one JSON object. Do not wrap it in a Markdown code fence, and do not add any prose before or after it.",
-    '{"citationVersion":2,"title":string,"focus":string,"chapters":[{"title":string,"sections":[{"title":string,"prose":string,"hunkIds":[string]}]}]}',
-    // The chapter, section, and character limits are stated once, by the shared walkthrough prompt.
-    "Use no other keys.",
-    "Every entry in hunkIds must be an alias from the supplied HUNK ALIAS MANIFEST, and each section's prose must contain the exact repo-relative path of every hunk it cites. A section whose citations fail this rule is discarded.",
-    input.walkthroughPrompt,
-    `Patchdesk policy:\n${input.policy}`,
-  ].join("\n\n");
-  if (Buffer.byteLength(prompt, "utf8") > MAX_WALKTHROUGH_PROMPT_BYTES)
-    return err("invalid_prompt");
-  return ok(prompt);
-}
-
 /** Parses a Codex turn's completed text, tolerating a fenced ```json (or ```) reply. */
 export function parseTurnJson(text: string): Result<unknown, "invalid_json"> {
   const trimmed = text.trim();

@@ -51,11 +51,6 @@ import type {
   InsightInvoker,
 } from "./insight-run-coordinator";
 import { readObjectField } from "./read-object-field";
-import {
-  parseWalkthroughOutput,
-  type WalkthroughInput,
-  type WalkthroughOutput,
-} from "./walkthrough-operation";
 
 const MAX_CHILD_STDIN_BYTES = 2 * 1024 * 1024;
 /** The child bounds its own detail; this is the app-side backstop. */
@@ -154,6 +149,8 @@ export class PiInsightChildInvoker implements InsightInvoker {
     input: InsightInvocationInput,
     options: InsightInvocationOptions,
   ): Promise<Result<unknown, PiInsightChildFailure>> {
+    if (input.type === "walkthrough")
+      return err({ reason: "runtime_unavailable" });
     if (input.provider !== "pi") return err({ reason: "execution_failed" });
     const reasoning = input.reasoning;
     if (reasoning === "minimal" || reasoning === "xhigh")
@@ -193,21 +190,6 @@ export class PiInsightChildInvoker implements InsightInvoker {
         options.signal,
       );
     }
-    if (input.type === "walkthrough")
-      return this.invokeWalkthrough(
-        {
-          profileId: input.profileId,
-          sessionId: input.sessionId,
-          contextPath: input.contextPath,
-          patchPath: input.patchPath,
-          model: input.model,
-          reasoning,
-          language: input.language,
-          evidence,
-        },
-        await resolveWalkthroughTimeoutMs(input, options.signal),
-        options,
-      );
     if (input.type === "brief") {
       const briefInput: BriefInput = {
         profileId: input.profileId,
@@ -265,29 +247,6 @@ export class PiInsightChildInvoker implements InsightInvoker {
   }
 
   /**
-   * The walkthrough half of `invoke`, kept a method of its own because it is
-   * the `WalkthroughChildInvoker` port: `invokeWalkthroughWithResolvedTimeout`
-   * owns resolving the patch-scaled bound under the run's signal, and it can
-   * only do that through a seam it calls.
-   */
-  async invokeWalkthrough(
-    input: WalkthroughInput & { readonly evidence: InsightEvidenceReference },
-    timeoutMs: number,
-    options?: { readonly signal?: AbortSignal },
-  ): Promise<Result<WalkthroughOutput, PiInsightChildFailure>> {
-    const result = await this.runChild(
-      { type: "walkthrough", input },
-      timeoutMs,
-      options?.signal,
-    );
-    if (result._tag === "err") return result;
-    const parsed = parseWalkthroughOutput(result.value);
-    return parsed._tag === "ok"
-      ? ok(parsed.value)
-      : err({ reason: "invalid_result" });
-  }
-
-  /**
    * Runs the tool-driven Guide child. Unlike `runChild`, the child keeps a private channel to the app for the whole run;
    * the app answers each frame through `handler`. A child that reported its own failure has known effects; one that was
    * killed, timed out or broke the protocol may have a request in flight, so its effects are unknown.
@@ -313,7 +272,7 @@ export class PiInsightChildInvoker implements InsightInvoker {
     );
   }
 
-  /** Internal Walkthrough session; public legacy dispatch remains unchanged until the reader cutover. */
+  /** Walkthrough generation uses only the admitted private-channel session. */
   invokeWalkthroughSession(
     input: Parameters<WalkthroughProducer["invokeWalkthroughSession"]>[0],
   ): Promise<PiGuideChildOutcome> {

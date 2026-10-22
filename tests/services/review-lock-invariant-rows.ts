@@ -310,18 +310,6 @@ export const lockRows: ReadonlyArray<LockRow> = [
     ),
   },
   {
-    name: "InsightRunCoordinator.updateWalkthroughProgress",
-    kind: "queues",
-    build: insightBuild((insights) =>
-      insights.updateWalkthroughProgress({
-        profileId,
-        reviewId,
-        runId: insightRunId,
-        progress: { reviewedSectionIds: [], supportReviewed: false },
-      }),
-    ),
-  },
-  {
     name: "InsightRunCoordinator.updateAnalysisVerification",
     kind: "queues",
     build: insightBuild((insights) =>

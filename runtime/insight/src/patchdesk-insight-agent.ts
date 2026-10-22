@@ -27,7 +27,6 @@ import {
   parseModelReviewResult,
   requiredVerdictForFindings,
 } from "#app/domain/review-result";
-import { walkthroughOutputSchema } from "#app/services/walkthrough-operation";
 
 export const MAX_RUNTIME_STDIN_BYTES = 2 * 1024 * 1024;
 export const MAX_RUNTIME_STDOUT_BYTES = 2 * 1024 * 1024;
@@ -67,18 +66,6 @@ export const analysisInvocationSchema = v.strictObject({
   prompt: v.pipe(v.string(), v.minLength(1), v.maxLength(6 * 1024 * 1024)),
 });
 
-export const walkthroughResultSchema = walkthroughOutputSchema;
-
-export const walkthroughInvocationSchema = v.strictObject({
-  profileId,
-  sessionId,
-  contextPath: boundedPath,
-  patchPath: boundedPath,
-  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  reasoning: reasoningSchema,
-  prompt: v.pipe(v.string(), v.minLength(1), v.maxLength(4 * 1024 * 1024)),
-});
-
 export const briefResultSchema = briefOutputSchema;
 
 export const briefInvocationSchema = v.strictObject({
@@ -98,18 +85,6 @@ export const productionAnalysisInvocationSchema = v.strictObject({
   reviewInputPath: boundedPath,
   patchPath: boundedPath,
   worktreePath: boundedPath,
-  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  reasoning: reasoningSchema,
-  language: languageSchema,
-  evidence: insightEvidenceReferenceSchema,
-});
-
-/** Production child Walkthrough input likewise never accepts model prompt text. */
-export const productionWalkthroughInvocationSchema = v.strictObject({
-  profileId,
-  sessionId,
-  contextPath: boundedPath,
-  patchPath: boundedPath,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
   language: languageSchema,
@@ -165,7 +140,12 @@ export type WalkthroughSessionInvocation = v.InferOutput<
 /** Guide generation uses the shared model schema and canonical artifact paths. */
 export const guideResultSchema = guideModelOutputSchema;
 export const guideInvocationSchema = v.strictObject({
-  ...walkthroughInvocationSchema.entries,
+  profileId,
+  sessionId,
+  contextPath: boundedPath,
+  patchPath: boundedPath,
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: reasoningSchema,
   prompt: v.pipe(
     v.string(),
     v.minLength(1),
@@ -174,13 +154,17 @@ export const guideInvocationSchema = v.strictObject({
 });
 export type GuideInvocation = v.InferOutput<typeof guideInvocationSchema>;
 export const productionGuideInvocationSchema = v.strictObject({
-  ...productionWalkthroughInvocationSchema.entries,
+  profileId,
+  sessionId,
+  contextPath: boundedPath,
+  patchPath: boundedPath,
+  model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  reasoning: reasoningSchema,
+  language: languageSchema,
+  evidence: insightEvidenceReferenceSchema,
 });
 
 export type AnalysisInvocation = v.InferOutput<typeof analysisInvocationSchema>;
-export type WalkthroughInvocation = v.InferOutput<
-  typeof walkthroughInvocationSchema
->;
 export type BriefInvocation = v.InferOutput<typeof briefInvocationSchema>;
 export type InspectorOperations = {
   readonly listChangedFiles: () => Promise<
@@ -202,7 +186,6 @@ export type InspectorOperations = {
 /** The one value a submission records, already parsed by its own result schema. */
 type SubmittedInsightResult =
   | v.InferOutput<typeof modelReviewResultSchema>
-  | v.InferOutput<typeof walkthroughResultSchema>
   | v.InferOutput<typeof briefResultSchema>
   | v.InferOutput<typeof guideResultSchema>;
 
@@ -286,19 +269,10 @@ export async function loadPatchdeskReviewSkill(
 /** The one result schema each agent submits through `submit_patchdesk_result`. */
 type PatchdeskResultSchema =
   | typeof modelReviewResultSchema
-  | typeof walkthroughResultSchema
   | typeof briefResultSchema
   | typeof guideResultSchema;
 
-/**
- * Projects one Valibot schema onto the JSON Schema Pi validates tool arguments
- * against. Exactly one constraint cannot be expressed and is dropped: the
- * top-level `v.check` in `src/services/walkthrough-operation.ts` capping a
- * Walkthrough's total section count across chapters. The tool's own
- * `v.safeParse` still enforces it before anything is recorded, so `ignore`
- * rather than `warn` -- `warn` printed that one known omission to stderr on
- * every walkthrough child run.
- */
+/** Projects tool arguments; the owning Valibot parser still enforces constraints JSON Schema cannot express. */
 export function jsonSchemaFor(
   schema: PatchdeskResultSchema | v.GenericSchema,
 ): AgentTool["parameters"] {
@@ -578,29 +552,6 @@ export function createAnalysisAgent(
         "report_incomplete_analysis",
       ],
       usesSkill: true,
-      usesSandbox: false,
-      usesMcp: false,
-      usesSubagent: false,
-    },
-  };
-}
-
-/** Creates an invocation-scoped Walkthrough agent with only result submission. */
-export function createWalkthroughAgent(
-  input: WalkthroughInvocation,
-): CreatedInsightAgent {
-  const state: SubmissionState = { submitted: false };
-  return {
-    spec: {
-      systemPrompt: `${input.prompt}\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.`,
-      model: input.model,
-      thinkingLevel: input.reasoning,
-      tools: [createResultTool(walkthroughResultSchema, state)],
-    },
-    state: executionState(state),
-    capabilities: {
-      customTools: ["submit_patchdesk_result"],
-      usesSkill: false,
       usesSandbox: false,
       usesMcp: false,
       usesSubagent: false,

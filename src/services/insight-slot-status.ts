@@ -8,6 +8,7 @@ import { isNotFound } from "#src/adapters/storage/json-file";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { definedProps } from "#src/domain/defined-props";
 import { guidePublicationCodec } from "#src/domain/guide-result";
+import { walkthroughPublicationCodec } from "#src/domain/walkthrough-result";
 import type { ReviewSessionId } from "#src/domain/ids";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import {
@@ -164,14 +165,22 @@ export class InsightSlotStatus {
         runId: activeRun.runId,
         journalId: activeRun.journalId,
       });
-    // A published Guide names its run in GuidePublication1; the publication belongs to the last admitted run.
+    // Each explanation publication names its run; its codec must match the admitted type.
     if (publication !== null && runToken(input.runId) === nextToken - 1) {
-      const published = await this.artifacts.readObject(
-        input.profileId,
-        input.reviewId,
-        guidePublicationCodec,
-        publication,
-      );
+      const published =
+        input.type === "walkthrough"
+          ? await this.artifacts.readObject(
+              input.profileId,
+              input.reviewId,
+              walkthroughPublicationCodec,
+              publication,
+            )
+          : await this.artifacts.readObject(
+              input.profileId,
+              input.reviewId,
+              guidePublicationCodec,
+              publication,
+            );
       if (published._tag === "err") return failed();
       if (published.value.runId === input.runId)
         return ok({ status: "completed" });

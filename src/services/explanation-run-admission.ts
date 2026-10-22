@@ -13,6 +13,7 @@ import {
   type GuideResumeRequest,
 } from "./guide-generation-resume";
 import type { GuideGenerationStarter } from "./guide-generation-service";
+import type { WalkthroughGenerationService } from "./walkthrough-generation-service";
 import { guideStartFailure } from "./guide-preparation-runtime";
 import type {
   InsightCoordinatorFailure,
@@ -44,13 +45,18 @@ export class ExplanationRunAdmission {
       profileId: WorkspaceProfileId,
       reviewId: ReviewId,
     ) => Promise<Result<void, InsightCoordinatorFailure>>,
+    private readonly walkthrough:
+      | Pick<WalkthroughGenerationService, "start" | "resume">
+      | undefined,
   ) {}
 
   async start(
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
-    if (this.guide === undefined) return err("not_available");
+    const generator =
+      input.type === "walkthrough" ? this.walkthrough : this.guide;
+    if (generator === undefined) return err("not_available");
     if (
       (input.provider ?? "pi") !== "pi" ||
       input.reasoning === "minimal" ||
@@ -64,7 +70,7 @@ export class ExplanationRunAdmission {
     );
     if (admitted._tag === "err") return admitted;
     const { review, model, session, hash } = admitted.value;
-    const started = await this.guide.start({
+    const started = await generator.start({
       profileId: input.profileId,
       reviewId: input.reviewId,
       revision: review.updatedAt,
@@ -92,15 +98,31 @@ export class ExplanationRunAdmission {
   async resumeGuide(
     input: GuideResumeRequest,
   ): Promise<Result<void, InsightCoordinatorFailure>> {
-    if (this.guide === undefined) return err("not_available");
+    return this.resume(input, this.guide);
+  }
+
+  async resumeWalkthrough(
+    input: GuideResumeRequest,
+  ): Promise<Result<void, InsightCoordinatorFailure>> {
+    return this.resume(input, this.walkthrough);
+  }
+
+  private async resume(
+    input: GuideResumeRequest,
+    generator:
+      | Pick<GuideGenerationStarter, "resume">
+      | Pick<WalkthroughGenerationService, "resume">
+      | undefined,
+  ): Promise<Result<void, InsightCoordinatorFailure>> {
+    if (generator === undefined) return err("not_available");
     const ownership = await this.ensureMutableOwned(
       input.profileId,
       input.reviewId,
     );
     if (ownership._tag === "err") return ownership;
-    const resumed = await this.guide.resume(input);
+    const resumed = await generator.resume(input);
     return resumed._tag === "ok"
-      ? resumed
+      ? ok(undefined)
       : err(guideResumeFailure(resumed.error));
   }
 }

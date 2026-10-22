@@ -45,12 +45,10 @@ import {
   beginInsightRun,
   requestInsightCancellation,
   setAnalysisVerificationStep,
-  updateWalkthroughProgress,
   type AnalysisVerification,
   type InsightFailureCategory,
   type InsightRevision,
   type InsightType,
-  type WalkthroughProgressUpdate,
   type AnalysisVerificationUpdate,
 } from "#src/domain/insight-record";
 import {
@@ -82,10 +80,7 @@ import { isTerminalStatus } from "./insight-slot-records";
 import type { ReviewContextPackService } from "./review-context-pack-service";
 import type { ChangeIntentUnreadable } from "./change-intent-resolution";
 import { InsightRunExecutor } from "./insight-run-executor";
-import {
-  guideResumeFailure,
-  type GuideResumeRequest,
-} from "./guide-generation-resume";
+import type { GuideResumeRequest } from "./guide-generation-resume";
 import type { WalkthroughGenerationService } from "./walkthrough-generation-service";
 import {
   ExplanationRunAdmission,
@@ -260,7 +255,7 @@ export class InsightRunCoordinator {
      * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
      */
     guide?: GuideGenerationStarter,
-    private readonly walkthrough?: Pick<WalkthroughGenerationService, "resume">,
+    walkthrough?: Pick<WalkthroughGenerationService, "start" | "resume">,
   ) {
     this.active = owned;
     this.explanation = new ExplanationRunAdmission(
@@ -268,6 +263,7 @@ export class InsightRunCoordinator {
       this.operations,
       (input, hooks) => this.resolveStart(input, hooks),
       (profileId, reviewId) => this.ensureMutableOwned(profileId, reviewId),
+      walkthrough,
     );
     this.preparation = new InsightRunPreparation(
       this.paths,
@@ -314,7 +310,7 @@ export class InsightRunCoordinator {
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
     const began = performance.now();
     const result =
-      input.type === "guide"
+      input.type === "guide" || input.type === "walkthrough"
         ? await this.explanation.start(input, hooks)
         : await this.operations.withReviewLock(
             input.profileId,
@@ -568,16 +564,7 @@ export class InsightRunCoordinator {
   async resumeWalkthrough(
     input: GuideResumeRequest,
   ): Promise<Result<void, InsightCoordinatorFailure>> {
-    const owned = await this.ensureMutableOwned(
-      input.profileId,
-      input.reviewId,
-    );
-    if (owned._tag === "err") return owned;
-    if (this.walkthrough === undefined) return err("not_available");
-    const resumed = await this.walkthrough.resume(input);
-    return resumed._tag === "err"
-      ? err(guideResumeFailure(resumed.error))
-      : ok(undefined);
+    return this.explanation.resumeWalkthrough(input);
   }
 
   async cancel(input: {
@@ -706,48 +693,6 @@ export class InsightRunCoordinator {
         this.ensureOwned(input.profileId, input.reviewId),
       ),
     );
-  }
-
-  async updateWalkthroughProgress(
-    input: WalkthroughProgressUpdate,
-  ): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
-    return this.operations.withReviewLock(input.profileId, input.reviewId, () =>
-      this.updateWalkthroughProgressUnlocked(input),
-    );
-  }
-
-  private async updateWalkthroughProgressUnlocked(
-    input: WalkthroughProgressUpdate,
-  ): Promise<Result<{ readonly status: "saved" }, InsightCoordinatorFailure>> {
-    const ownership = await this.ensureMutableOwned(
-      input.profileId,
-      input.reviewId,
-    );
-    if (ownership._tag === "err") return ownership;
-    const timestamp = parseIsoTimestamp(this.now());
-    if (timestamp._tag === "err") return err("storage_unavailable");
-    const changed = await this.insights.mutate({
-      profileId: input.profileId,
-      reviewId: input.reviewId,
-      type: "walkthrough",
-      now: timestamp.value,
-      operation: (record) => {
-        if (record.retained?.runId !== input.runId)
-          return err("not_available" as const);
-        return updateWalkthroughProgress(
-          record,
-          input.progress,
-          timestamp.value,
-        );
-      },
-    });
-    if (changed._tag === "err")
-      return err(
-        changed.error === "not_available"
-          ? "not_available"
-          : "storage_unavailable",
-      );
-    return ok({ status: "saved" });
   }
 
   async updateAnalysisVerification(

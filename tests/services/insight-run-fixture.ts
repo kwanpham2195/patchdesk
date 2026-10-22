@@ -1,5 +1,7 @@
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
+import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
+import type { WalkthroughProducer } from "#src/services/walkthrough-producer-pass";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { PiInsightChildInvoker } from "#src/services/pi-insight-child-invoker";
@@ -135,6 +137,7 @@ export function contextPackFixture(
 }
 
 type FixtureOptions = {
+  walkthroughInvoker?: WalkthroughProducer;
   guideInvoker?: Pick<PiInsightChildInvoker, "invokeGuide">;
   insightStore?: (paths: PatchdeskPaths) => InsightStore;
   operations?: ReviewOperationCoordinator;
@@ -157,6 +160,7 @@ export async function fixture(
   {
     insightStore,
     guideInvoker,
+    walkthroughInvoker,
     operations = new ReviewOperationCoordinator(),
     recordDiagnostics = false,
     reach,
@@ -263,7 +267,7 @@ export async function fixture(
     () => now,
   );
   const resources =
-    guideInvoker === undefined
+    guideInvoker === undefined && walkthroughInvoker === undefined
       ? undefined
       : createInProcessInsightResourceBundle();
   if (resources !== undefined) {
@@ -320,6 +324,24 @@ export async function fixture(
       : { notifier, profiles: { list: async () => ok(profiles) } },
     resources?.ownership.forScope(paths.dataDirectory()),
     guide,
+    resources === undefined || walkthroughInvoker === undefined
+      ? undefined
+      : new WalkthroughGenerationService(
+          paths,
+          new ExplanationPreparationService(
+            paths,
+            paths,
+            resources,
+            operations,
+            contextPack.service,
+            () => now,
+            slots,
+          ),
+          slots,
+          resources,
+          walkthroughInvoker,
+          () => now,
+        ),
   );
   stopFixtures.push(async () => {
     await resources?.dispose();

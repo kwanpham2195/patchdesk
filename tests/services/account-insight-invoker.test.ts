@@ -7,7 +7,6 @@ import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { AccountInsightInvoker } from "#src/services/account-insight-invoker";
 import {
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
-  MAX_WALKTHROUGH_PROMPT_BYTES,
   type CodexRunInput,
 } from "#src/adapters/codex/codex-app-server-client";
 import { prepareGuidePrompt } from "#src/services/guide-operation";
@@ -19,9 +18,6 @@ import { insightEvidenceReference } from "#src/services/insight-evidence-referen
 
 // Matches PiInsightChildInvoker's Analysis run bound.
 const EXPECTED_ANALYSIS_TIMEOUT_MS = 20 * 60_000;
-
-// Five-minute floor plus one step for this fixture's single-hunk patch.
-const EXPECTED_WALKTHROUGH_TIMEOUT_MS = 6 * 60_000;
 
 const roots: string[] = [];
 afterEach(async () =>
@@ -325,48 +321,31 @@ describe("AccountInsightInvoker", () => {
     });
   });
 
-  it("builds a walkthrough prompt with the HUNK ALIAS MANIFEST and patch, and returns the run result unchanged", async () => {
+  it("refuses Codex account Walkthrough generation without a native turn", async () => {
     const value = await fixture({ type: "walkthrough" });
-    await expect(
-      value.invoker.invoke(value.input, {
-        signal: new AbortController().signal,
-      }),
-    ).resolves.toEqual({ _tag: "ok", value: { findings: [] } });
-    expect(value.calls).toHaveLength(1);
-    // SAFETY: the fake run() above only ever receives the CodexRunInput this test's invoker builds.
-    const invocation = value.calls[0]?.[0] as {
-      readonly prompt?: unknown;
-      readonly maxPromptBytes?: unknown;
-      readonly runTimeoutMs?: unknown;
-    };
-    expect(invocation.prompt).toEqual(expect.any(String));
-    // SAFETY: the prompt assertion just above proves invocation.prompt is a string.
-    const prompt = invocation.prompt as string;
-    expect(prompt).toContain("EVIDENCE ENTRY:");
-    expect(prompt).not.toContain("diff --git a/a.ts b/a.ts");
-    expect(invocation.maxPromptBytes).toBe(MAX_WALKTHROUGH_PROMPT_BYTES);
-    expect(invocation.runTimeoutMs).toBe(EXPECTED_WALKTHROUGH_TIMEOUT_MS);
-    expect(value.calls[0]?.[0].outputSchema).toMatchObject({
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        citationVersion: { type: "integer", enum: [2] },
-        focus: { type: "string", maxLength: 320 },
-        chapters: { type: "array", maxItems: 12 },
-      },
-    });
-  });
-
-  it("names the prompt-preparation failure in the phase for an oversized patch", async () => {
-    const value = await fixture({ type: "walkthrough" });
-    await writeFile(value.patch, Buffer.alloc(2 * 1024 * 1024 + 1, 0x78));
     await expect(
       value.invoker.invoke(value.input, {
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual({
       _tag: "err",
-      error: { reason: "execution_failed", phase: "prompt_artifact_too_large" },
+      error: { reason: "runtime_unavailable" },
+    });
+    expect(value.calls).toEqual([]);
+  });
+
+  it("refuses pi CLI account Walkthrough generation without a native turn", async () => {
+    const value = await fixture({
+      type: "walkthrough",
+      provider: "pi-cli-account",
+    });
+    await expect(
+      value.invoker.invoke(value.input, {
+        signal: new AbortController().signal,
+      }),
+    ).resolves.toEqual({
+      _tag: "err",
+      error: { reason: "runtime_unavailable" },
     });
     expect(value.calls).toHaveLength(0);
   });
@@ -443,7 +422,7 @@ describe("AccountInsightInvoker", () => {
     },
   );
 
-  it.each(["analysis", "walkthrough", "brief"] as const)(
+  it.each(["analysis", "brief"] as const)(
     "writes the %s prompt's language rule in the language the run chose",
     async (type) => {
       const value = await fixture({ type, language: "vi" });

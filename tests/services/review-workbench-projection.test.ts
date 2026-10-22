@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { parseRetainedInsight } from "#src/domain/insight-record";
-import { RetainedInsightReader } from "#src/services/retained-insight-reader";
-import { projectStoredInsight } from "#src/domain/insight";
 import { err, ok } from "#src/domain/result";
 import {
   at,
@@ -14,7 +12,6 @@ import {
   review,
   reviewId,
   sessionId,
-  session,
   snapshot,
   snapshotData,
 } from "./review-workbench-projection-fixture";
@@ -670,168 +667,6 @@ describe("ReviewWorkbenchProjectionService", () => {
         revision: { freshness: "unavailable" },
       },
     });
-  });
-});
-
-// This fixture's Session `patchPath` ("/does-not-exist") never resolves, so
-// every retained Walkthrough here fails artifact verification and is
-// rendered through `loadWalkthroughRecord`'s readable-without-artifact
-// fallback. These tests pin that fallback's graceful degradation for
-// malformed, missing, and over-length stored data — the exact behavior the
-// oxlint-driven refactor from hand-rolled `typeof`/cast walking to a
-// valibot-based reader must reproduce byte-for-byte.
-describe("ReviewWorkbenchProjectionService walkthrough fallback degradation", () => {
-  const walkthroughRunId = "insight-walkthrough-1-aaaaaaaaaaaa-x";
-
-  function walkthroughRecord(value: RawJsonValue) {
-    // SAFETY: this fixture is cast `as never` because it stands in for a
-    // full, internal `InsightRecord<unknown>` the service never
-    // re-validates beyond the fields it reads; every field but `value`
-    // already matches its real runtime shape, and `value` is the field
-    // under test — deliberately malformed in most cases below.
-    return ok({
-      schemaVersion: 2,
-      reviewId,
-      type: "walkthrough",
-      nextToken: 1,
-      retained: {
-        runId: walkthroughRunId,
-        revision: { sessionId, headSha, patchHash: hash },
-        generatedAt: at,
-        provenance: {
-          provider: "pi",
-          model: "test-model",
-          reasoning: "medium",
-        },
-        value,
-      },
-      updatedAt: at,
-    }) as never;
-  }
-
-  async function projectWalkthrough(value: RawJsonValue) {
-    const fx = fixture();
-    // `loadStoredInsights` calls `loadTyped` twice -- once for the analysis
-    // record, once for the walkthrough -- so the stub answers by the `type`
-    // argument rather than by call order.
-    // SAFETY: this implementation matches the loadTyped arguments and result variants used by the service.
-    fx.insights.loadTyped.mockImplementation((async (
-      ...args: ReadonlyArray<unknown>
-    ) =>
-      args[2] === "walkthrough"
-        ? walkthroughRecord(value)
-        : err({ reason: "not_found" })) as never);
-    // The retired helper remains under coverage until slice 2e removes it; the workbench no longer calls it.
-    const reader = new RetainedInsightReader(fx.sessions, fx.insights as never);
-    const result = await reader.loadLegacyWalkthroughRecord(session());
-    if (result._tag !== "ok") throw new Error("expected a legacy record");
-    return projectStoredInsight(
-      result.value.record,
-      session(),
-      undefined,
-      undefined,
-      undefined,
-      result.value.artifactStatus,
-    );
-  }
-
-  it("degrades a non-object retained value to every fallback default", async () => {
-    const projection = await projectWalkthrough("not an object");
-    expect(projection).toMatchObject({
-      status: "outdated",
-      artifactStatus: "mismatch",
-      retained: {
-        value: {
-          title: "Stored Walkthrough",
-          focus: "Stored source evidence is unavailable.",
-          chapters: [],
-          citationStatus: "unverified",
-        },
-      },
-    });
-  });
-
-  it("degrades one malformed chapter to its fallback title and empty sections, without dropping sibling chapters", async () => {
-    const projection = await projectWalkthrough({
-      title: "Real title",
-      chapters: [
-        "not an object",
-        { title: "Chapter Two", sections: [{ title: "S", prose: "P" }] },
-      ],
-    });
-    expect(projection.retained?.value.chapters).toEqual([
-      { id: "chapter-1", title: "Untitled chapter", sections: [] },
-      {
-        id: "chapter-2",
-        title: "Chapter Two",
-        sections: [
-          {
-            id: "section-2-1",
-            title: "S",
-            prose: "P",
-            hunkIds: [],
-            hunks: [],
-          },
-        ],
-      },
-    ]);
-  });
-
-  it("degrades a chapter with a missing sections array to an empty section list", async () => {
-    const projection = await projectWalkthrough({
-      chapters: [{ title: "Solo" }],
-    });
-    expect(projection.retained?.value.chapters).toEqual([
-      { id: "chapter-1", title: "Solo", sections: [] },
-    ]);
-  });
-
-  it("falls back non-string title/prose fields to their defaults instead of rejecting the record", async () => {
-    const projection = await projectWalkthrough({
-      title: 42,
-      chapters: [{ title: null, sections: [{ title: [], prose: {} }] }],
-    });
-    expect(projection.retained?.value.title).toBe("Stored Walkthrough");
-    expect(projection.retained?.value.chapters).toEqual([
-      {
-        id: "chapter-1",
-        title: "Untitled chapter",
-        sections: [
-          {
-            id: "section-1-1",
-            title: "Untitled section",
-            prose: "Stored section text is unavailable.",
-            hunkIds: [],
-            hunks: [],
-          },
-        ],
-      },
-    ]);
-  });
-
-  it("truncates an over-length title instead of rejecting the record", async () => {
-    const projection = await projectWalkthrough({
-      title: "x".repeat(500),
-      chapters: [],
-    });
-    expect(projection.retained?.value.title).toBe("x".repeat(200));
-  });
-
-  it("caps chapters at 12 and sections at 32, keeping the leading entries", async () => {
-    const projection = await projectWalkthrough({
-      chapters: Array.from({ length: 15 }, (_unused, chapterIndex) => ({
-        title: `Chapter ${chapterIndex + 1}`,
-        sections: Array.from({ length: 40 }, (_unused2, sectionIndex) => ({
-          title: `Section ${sectionIndex + 1}`,
-          prose: "p",
-        })),
-      })),
-    });
-    const chapters = projection.retained?.value.chapters ?? [];
-    expect(chapters).toHaveLength(12);
-    expect(chapters[0]?.title).toBe("Chapter 1");
-    expect(chapters[11]?.title).toBe("Chapter 12");
-    expect(chapters[0]?.sections).toHaveLength(32);
   });
 });
 

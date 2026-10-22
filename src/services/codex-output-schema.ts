@@ -15,7 +15,6 @@ import {
   type AnalysisInvocationOutcome,
 } from "#src/domain/analysis-invocation-outcome";
 import { err, type Result } from "#src/domain/result";
-import { walkthroughOutputSchema } from "./walkthrough-operation";
 
 /**
  * Codex sends `turn/start` output schemas to the Responses API in strict mode:
@@ -26,8 +25,7 @@ import { walkthroughOutputSchema } from "./walkthrough-operation";
  */
 function codexOutputSchema(schema: v.GenericSchema): JsonSchema {
   return toJsonSchema(schema, {
-    // Checks JSON Schema cannot carry, such as the Walkthrough's aggregate
-    // section limit, stay with Patchdesk's own validation after the turn.
+    // Semantic checks that JSON Schema cannot carry stay with validation after the turn.
     errorMode: "ignore",
     overrideSchema: strictCodexNode,
   });
@@ -70,11 +68,6 @@ export const briefCodexOutputSchema = codexOutputSchema(briefOutputSchema);
 /** Codex requires a closed object root with required nullable terminal payloads. */
 export const analysisCodexOutputSchema = codexOutputSchema(
   analysisInvocationOutcomeSchema,
-);
-
-/** Codex's constraint for a Walkthrough turn; Patchdesk still checks the aggregate section rule after the turn. */
-export const walkthroughCodexOutputSchema = codexOutputSchema(
-  walkthroughOutputSchema,
 );
 
 const codexStrictResultSchema: v.GenericSchema<RawJsonValue> = v.lazy(() =>

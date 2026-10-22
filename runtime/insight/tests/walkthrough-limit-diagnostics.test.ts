@@ -1,63 +1,37 @@
 import { describe, expect, it } from "vitest";
-import {
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxText,
-  fauxToolCall,
-} from "@earendil-works/pi-ai";
+import * as v from "valibot";
+import { insightArtifactRunIdSchema } from "#app/domain/insight-artifact-scalars";
+import { createWalkthroughSessionTools } from "#runtime/src/walkthrough-session-tools";
 
-import { runPatchdeskChild } from "#runtime/src/patchdesk-insight-runner";
-
-describe("Walkthrough child output diagnostics", () => {
+describe("Walkthrough child input diagnostics", () => {
   it("returns field counts without generated prose when Pi rejects a tool submission", async () => {
-    const provider = fauxProvider({
-      provider: "faux",
-      models: [{ id: "test" }],
-    });
-    provider.setResponses([
-      fauxAssistantMessage(
-        fauxToolCall("submit_patchdesk_result", {
-          citationVersion: 2,
-          title: "Walkthrough",
-          focus: "Read the change.",
-          chapters: [
-            {
-              title: "Review",
-              sections: [
-                {
-                  title: "One change",
-                  prose: "private prose ".repeat(27),
-                  hunkIds: Array.from({ length: 127 }, () => "h1"),
-                },
-              ],
-            },
-          ],
-        }),
-        { stopReason: "toolUse" },
-      ),
-      fauxAssistantMessage(fauxText("Unable to submit a valid result.")),
-    ]);
-    const result = await runPatchdeskChild(
+    const tools = createWalkthroughSessionTools(
       {
-        type: "walkthrough",
-        input: {
-          profileId: "profile",
-          sessionId: "session",
-          contextPath: "/immutable/context",
-          patchPath: "/immutable/patch",
-          model: "faux/test",
-          reasoning: "low",
-          prompt: "Submit one result.",
+        runId: v.parse(
+          insightArtifactRunIdSchema,
+          "insight-walkthrough-1-aaaaaaaaaaaa-review",
+        ),
+        generation: 0,
+        cancelEpoch: 0,
+        connection: "test-connection",
+      },
+      {
+        call: async () => {
+          throw new Error("Rejected fields must not reach the app");
         },
       },
-      { providers: [provider.provider] },
+      { finished: false, halted: false, unconfirmed: false },
+      () => undefined,
     );
-    expect(result).toEqual({
-      ok: false,
-      reason: "invalid_result",
-      detail:
-        "walkthrough_chapters[0].sections[0].prose_378_gt_320,chapters[0].sections[0].hunkIds_127_gt_32",
+    const tool = tools.find((candidate) => candidate.name === "open_section");
+    if (tool === undefined) throw new Error("Missing section tool");
+    const result = tool.execute("call-1", {
+      opId: "section-1",
+      chapterId: "c1",
+      title: "One change",
+      prose: "private prose ".repeat(27),
     });
-    if (!result.ok) expect(result.detail).not.toContain("private prose");
+    await expect(result).rejects.toThrow("prose_377_gt_320");
+    await expect(result).rejects.not.toThrow("private prose");
   });
 });

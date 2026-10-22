@@ -35,10 +35,6 @@ import {
 } from "#app/services/model-review-runner";
 import type { ReviewInspector } from "#app/services/review-inspector";
 import { prepareBriefPrompt } from "#app/services/brief-operation";
-import {
-  prepareWalkthroughPrompt,
-  walkthroughOutputLimitDiagnostic,
-} from "#app/services/walkthrough-operation";
 
 import { runGuideSession } from "./guide-runtime";
 import { runWalkthroughSession } from "./walkthrough-runtime";
@@ -57,15 +53,11 @@ import {
   briefResultSchema,
   productionAnalysisInvocationSchema,
   productionBriefInvocationSchema,
-  productionWalkthroughInvocationSchema,
   assertSupportedNode,
   createAnalysisAgent,
   createBriefAgent,
-  createWalkthroughAgent,
   loadPatchdeskReviewSkill,
   modelReviewResultSchema,
-  walkthroughResultSchema,
-  walkthroughInvocationSchema,
   type InsightAgentSpec,
   type InspectorOperations,
 } from "./patchdesk-insight-agent";
@@ -75,10 +67,6 @@ const childProtocolSchema = v.variant("type", [
   v.strictObject({
     type: v.literal("analysis"),
     input: analysisInvocationSchema,
-  }),
-  v.strictObject({
-    type: v.literal("walkthrough"),
-    input: walkthroughInvocationSchema,
   }),
   v.strictObject({
     type: v.literal("brief"),
@@ -94,10 +82,6 @@ const productionProtocolSchema = v.variant("type", [
   v.strictObject({
     type: v.literal("analysis"),
     input: productionAnalysisInvocationSchema,
-  }),
-  v.strictObject({
-    type: v.literal("walkthrough"),
-    input: productionWalkthroughInvocationSchema,
   }),
   v.strictObject({
     type: v.literal("brief"),
@@ -275,12 +259,6 @@ export async function runPatchdeskChild(
         return {
           ok: false,
           reason: "invalid_result",
-          ...definedProps({
-            detail:
-              invocation.type === "walkthrough" && raw.success
-                ? walkthroughLimitDetail(raw.output)
-                : undefined,
-          }),
         };
       }
       const failure = runFailureMessage(agent);
@@ -299,12 +277,6 @@ export async function runPatchdeskChild(
       return {
         ok: false,
         reason: "invalid_result",
-        ...definedProps({
-          detail:
-            invocation.type === "walkthrough"
-              ? rejectedWalkthroughLimitDetail(agent)
-              : undefined,
-        }),
       };
     } catch (cause: unknown) {
       if (abortRequested || options.signal?.aborted)
@@ -321,34 +293,6 @@ export async function runPatchdeskChild(
     void cause;
     return { ok: false, reason: "runtime_unavailable" };
   }
-}
-
-function walkthroughLimitDetail(value: RawJsonValue): string | undefined {
-  const limits = walkthroughOutputLimitDiagnostic(value);
-  return limits === undefined ? undefined : `walkthrough_${limits}`;
-}
-
-/** The last submitted tool arguments are available even when Pi rejects them before tool execution. */
-function rejectedWalkthroughLimitDetail(agent: Agent): string | undefined {
-  const messages = agent.state.messages;
-  for (
-    let messageIndex = messages.length - 1;
-    messageIndex >= 0;
-    messageIndex--
-  ) {
-    const message = messages[messageIndex];
-    if (message?.role !== "assistant") continue;
-    for (
-      let partIndex = message.content.length - 1;
-      partIndex >= 0;
-      partIndex--
-    ) {
-      const part = message.content[partIndex];
-      if (part?.type === "toolCall" && part.name === "submit_patchdesk_result")
-        return walkthroughLimitDetail(part.arguments);
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -481,7 +425,6 @@ function resultSchemaFor(
   type: PatchdeskChildInvocation["type"],
 ):
   | typeof modelReviewResultSchema
-  | typeof walkthroughResultSchema
   | typeof briefResultSchema
   | typeof guideResultSchema {
   switch (type) {
@@ -489,8 +432,6 @@ function resultSchemaFor(
       return guideResultSchema;
     case "analysis":
       return modelReviewResultSchema;
-    case "walkthrough":
-      return walkthroughResultSchema;
     case "brief":
       return briefResultSchema;
   }
@@ -504,8 +445,6 @@ async function createAgent(
   },
 ) {
   if (invocation.type === "guide") return createGuideAgent(invocation.input);
-  if (invocation.type === "walkthrough")
-    return createWalkthroughAgent(invocation.input);
   if (invocation.type === "brief") return createBriefAgent(invocation.input);
   if (options.skillPath === undefined || options.inspectors === undefined)
     return undefined;
@@ -673,23 +612,6 @@ export async function runProductionChild(
         childOptions,
       );
     }
-    if (canonical.type === "walkthrough") {
-      const { language, ...input } = canonical.input;
-      const prompt = await prepareWalkthroughPrompt({
-        ...input,
-        patchPath: bundle.patchPath,
-        contextPath: join(
-          bundle.directory,
-          bundle.sources[1]?.name ?? "missing",
-        ),
-        language,
-      });
-      if (prompt._tag === "err") return { ok: false, reason: "invalid_input" };
-      return await runPatchdeskChild(
-        { type: "walkthrough", input: { ...input, prompt: prompt.value } },
-        childOptions,
-      );
-    }
     if (canonical.type === "brief") {
       const { language, ...input } = canonical.input;
       const prompt = await prepareBriefPrompt({
@@ -810,8 +732,7 @@ export function canonicalizeProductionInvocation(
     paths.preparedContextFile(profile.value, session.value)
   )
     return undefined;
-  if (invocation.type === "walkthrough" || invocation.type === "guide")
-    return { ...invocation, rejectedResultPath };
+  if (invocation.type === "guide") return { ...invocation, rejectedResultPath };
   if (
     invocation.input.reviewInputPath !==
       paths.preparedReviewInputFile(profile.value, session.value) ||
