@@ -5,7 +5,6 @@ import * as v from "valibot";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { WalkthroughProgressStore } from "#src/adapters/storage/walkthrough-progress-store";
-import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import type { WalkthroughProducer } from "#src/services/walkthrough-producer-pass";
 import { WalkthroughResultReader } from "#src/services/walkthrough-result-reader";
 import { WalkthroughProgressService } from "#src/services/walkthrough-result-progress";
@@ -152,26 +151,33 @@ describe("large Walkthrough retention", () => {
         },
         { timeout: 110_000, interval: 100 },
       );
+      if (value.resources === undefined)
+        throw new Error("Missing fixture resources");
       const reader = new WalkthroughResultReader(
         value.paths,
-        readBoundedInsightArtifactFile,
+        value.resources.uiReader,
       );
       const artifacts = new InsightArtifactStore(
         value.paths,
-        readBoundedInsightArtifactFile,
+        value.resources.uiReader,
       );
       const progress = new WalkthroughProgressService(
         new WalkthroughProgressStore(
           value.paths,
           artifacts,
-          readBoundedInsightArtifactFile,
+          value.resources.uiReader,
         ),
         reader,
         value.operations,
         value.reviews,
       );
       const pages = new WalkthroughPageService(reader, progress);
-      const summary = must(await pages.summary(profileId, value.review.id));
+      const summaries = await Promise.all([
+        pages.summary(profileId, value.review.id),
+        pages.summary(profileId, value.review.id),
+      ]);
+      const summary = must(summaries[0]);
+      expect(must(summaries[1])).toEqual(summary);
       expect(summary).toMatchObject({
         _tag: "ready",
         chapters: 1,
@@ -182,6 +188,23 @@ describe("large Walkthrough retention", () => {
       });
       if (summary._tag !== "ready")
         throw new Error("Expected published Walkthrough");
+      // Regression for #821: the reader failed on a published PR-scale Walkthrough.
+      const initialPages = await Promise.all([
+        pages.page({
+          profileId,
+          reviewId: value.review.id,
+          digest: summary.digest,
+          page: { kind: "navigation", cursor: null },
+        }),
+        pages.page({
+          profileId,
+          reviewId: value.review.id,
+          digest: summary.digest,
+          page: { kind: "section", sectionId: "s1" },
+        }),
+      ]);
+      expect(must(initialPages[0]).kind).toBe("navigation");
+      expect(must(initialPages[1]).kind).toBe("section");
       const cited: string[] = [];
       for (let section = 1; section <= summary.sections; section += 1) {
         const page: WalkthroughPage = must(

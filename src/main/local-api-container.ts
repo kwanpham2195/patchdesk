@@ -285,6 +285,7 @@ export async function buildLocalApiContainer(
   const walkthroughReader = new WalkthroughResultReader(
     paths,
     configuration.insightResources.uiReader,
+    logs,
   );
   const walkthroughProgress = new WalkthroughProgressService(
     new WalkthroughProgressStore(
@@ -295,6 +296,7 @@ export async function buildLocalApiContainer(
     walkthroughReader,
     reviewOperations,
     reviews,
+    logs,
   );
   const walkthroughPages = new WalkthroughPageService(
     walkthroughReader,

@@ -18,6 +18,7 @@ import {
 import type { StorageFailure } from "#src/adapters/storage/json-file";
 import { err, ok, type Result } from "#src/domain/result";
 import type { Active } from "./insight-run-coordinator";
+import type { AppLogService } from "./app-log-service";
 
 type Reader = typeof readBoundedInsightArtifactFile;
 
@@ -105,13 +106,14 @@ type Workers = {
 export async function acquireInsightResourceBundle(
   readerEntry: URL,
   jobEntry: URL,
+  logs: Pick<AppLogService, "write">,
 ): Promise<Result<InsightResourceBundle, StorageFailure>> {
   const [reader, jobs] = await Promise.all([
     acquireInsightArtifactWorker(readerEntry),
     acquireInsightArtifactJobWorker(jobEntry),
   ]);
   if (reader._tag === "ok" && jobs._tag === "ok")
-    return ok(createBundle({ reader: reader.value, jobs: jobs.value }));
+    return ok(createBundle({ reader: reader.value, jobs: jobs.value }, logs));
   await Promise.all([
     reader._tag === "ok" ? reader.value.dispose() : undefined,
     jobs._tag === "ok" ? jobs.value.dispose() : undefined,
@@ -126,20 +128,25 @@ export async function acquireInsightResourceBundle(
 }
 
 /** Test seam: runs the physical reader and hash in-process behind the same quotas; the desktop uses `acquireInsightResourceBundle`. */
-export function createInProcessInsightResourceBundle(): InsightResourceBundle {
+export function createInProcessInsightResourceBundle(
+  logs?: Pick<AppLogService, "write">,
+): InsightResourceBundle {
   const disposed = () => Promise.resolve(ok(undefined));
-  return createBundle({
-    reader: { read: readBoundedInsightArtifactFile, dispose: disposed },
-    jobs: {
-      hashFile: hashUtf8FileSha256,
-      capturePatch: captureInsightPatch,
-      prepareGuide: prepareGuideInputs,
-      validateGuide: validateGuideResult,
-      prepareWalkthrough: prepareWalkthroughInputs,
-      validateWalkthrough: validateWalkthroughResult,
-      dispose: disposed,
+  return createBundle(
+    {
+      reader: { read: readBoundedInsightArtifactFile, dispose: disposed },
+      jobs: {
+        hashFile: hashUtf8FileSha256,
+        capturePatch: captureInsightPatch,
+        prepareGuide: prepareGuideInputs,
+        validateGuide: validateGuideResult,
+        prepareWalkthrough: prepareWalkthroughInputs,
+        validateWalkthrough: validateWalkthroughResult,
+        dispose: disposed,
+      },
     },
-  });
+    logs,
+  );
 }
 
 const storageIoFailure: StorageFailure = {
@@ -150,7 +157,10 @@ const storageIoFailure: StorageFailure = {
 
 type Counter = { count: number; readonly limit: number };
 
-function createBundle(workers: Workers): InsightResourceBundle {
+function createBundle(
+  workers: Workers,
+  logs: Pick<AppLogService, "write"> | undefined,
+): InsightResourceBundle {
   let closed = false;
   let totalReads = 0;
   const ui: Counter = { count: 0, limit: uiReadQuota };
@@ -185,16 +195,44 @@ function createBundle(workers: Workers): InsightResourceBundle {
 
   function leasedReader(
     counterFor: () => Counter,
+    caller: "ui" | "authority" | "run",
     onIdle?: () => void,
   ): Reader {
     return async (ownedRoot, path) => {
-      const release = lease(counterFor());
+      const counter = counterFor();
+      const release = lease(counter);
       if (release === undefined) {
+        logs?.write({
+          process: "main",
+          level: "warn",
+          topic: "insight-artifact-read",
+          message: "Insight artifact read refused",
+          meta: {
+            category: closed ? "closed" : "quota_exhausted",
+            caller,
+            activeReads: counter.count,
+            totalReads,
+          },
+        });
         onIdle?.();
         return err(storageIoFailure);
       }
       try {
-        return await workers.reader.read(ownedRoot, path);
+        const result = await workers.reader.read(ownedRoot, path);
+        if (result._tag === "err" && result.error.reason === "io")
+          logs?.write({
+            process: "main",
+            level: "warn",
+            topic: "insight-artifact-read",
+            message: "Insight artifact read failed",
+            meta: {
+              category: "reader_io",
+              caller,
+              activeReads: counter.count,
+              totalReads,
+            },
+          });
+        return result;
       } finally {
         release();
         onIdle?.();
@@ -203,8 +241,8 @@ function createBundle(workers: Workers): InsightResourceBundle {
   }
 
   return {
-    uiReader: leasedReader(() => ui),
-    authorityReader: leasedReader(() => authority),
+    uiReader: leasedReader(() => ui, "ui"),
+    authorityReader: leasedReader(() => authority, "authority"),
     runReader(runId) {
       const counter = (): Counter => {
         const existing = runs.get(runId);
@@ -213,7 +251,7 @@ function createBundle(workers: Workers): InsightResourceBundle {
         runs.set(runId, created);
         return created;
       };
-      return leasedReader(counter, () => {
+      return leasedReader(counter, "run", () => {
         if (runs.get(runId)?.count === 0) runs.delete(runId);
       });
     },

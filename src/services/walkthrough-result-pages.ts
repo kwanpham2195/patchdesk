@@ -52,13 +52,11 @@ export class WalkthroughPageService {
     if (source._tag === "err") return source;
     const { view, run, failure } = source.value;
     if (view === undefined) return ok({ _tag: "none", run, failure });
-    const [title, focus, progress] = await Promise.all([
-      view.store.readText(view.root.title, 800),
-      view.store.readText(view.root.focus, 1280),
-      this.progress.describe(view),
-    ]);
+    const title = await view.store.readText(view.root.title, 800);
     if (title._tag === "err") return err(walkthroughReadFailure(title.error));
+    const focus = await view.store.readText(view.root.focus, 1280);
     if (focus._tag === "err") return err(walkthroughReadFailure(focus.error));
+    const progress = await this.progress.describe(view);
     if (progress._tag === "err") return progress;
     if (
       title.value.length > 200 ||
@@ -156,11 +154,7 @@ export class WalkthroughPageService {
       if (section._tag === "err") return section;
       const record = section.value;
       if (record.id !== `s${ordinal + 1}`) return err("invalid_result");
-      const [title, chapter, reviewed] = await Promise.all([
-        view.store.readText(record.title, 640),
-        walkthroughChapter(view, record.chapterId, ordinal),
-        this.progress.reviewed(view, record.id),
-      ]);
+      const title = await view.store.readText(record.title, 640);
       if (title._tag === "err") return err(walkthroughReadFailure(title.error));
       if (
         title.value.length > 160 ||
@@ -168,7 +162,9 @@ export class WalkthroughPageService {
         title.value.length === 0
       )
         return err("invalid_result");
+      const chapter = await walkthroughChapter(view, record.chapterId, ordinal);
       if (chapter._tag === "err") return chapter;
+      const reviewed = await this.progress.reviewed(view, record.id);
       if (reviewed._tag === "err") return reviewed;
       const item = {
         sectionId: record.id,
@@ -226,13 +222,9 @@ export class WalkthroughPageService {
     const section = await walkthroughSection(view, sectionId);
     if (section._tag === "err") return section;
     const ordinal = Number(sectionId.slice(1)) - 1;
-    const [title, prose, chapter, reviewed] = await Promise.all([
-      view.store.readText(section.value.title, 640),
-      view.store.readText(section.value.prose, 1280),
-      walkthroughChapter(view, section.value.chapterId, ordinal),
-      this.progress.reviewed(view, sectionId),
-    ]);
+    const title = await view.store.readText(section.value.title, 640);
     if (title._tag === "err") return err(walkthroughReadFailure(title.error));
+    const prose = await view.store.readText(section.value.prose, 1280);
     if (prose._tag === "err") return err(walkthroughReadFailure(prose.error));
     if (
       title.value.length > 160 ||
@@ -243,7 +235,13 @@ export class WalkthroughPageService {
       prose.value.length === 0
     )
       return err("invalid_result");
+    const chapter = await walkthroughChapter(
+      view,
+      section.value.chapterId,
+      ordinal,
+    );
     if (chapter._tag === "err") return chapter;
+    const reviewed = await this.progress.reviewed(view, sectionId);
     if (reviewed._tag === "err") return reviewed;
     return ok({
       kind: "section",

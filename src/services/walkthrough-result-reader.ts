@@ -34,6 +34,7 @@ import type {
 } from "#src/domain/walkthrough-progress";
 import type { GuideRunStatus } from "#src/domain/guide-progress";
 import { err, ok, type Result } from "#src/domain/result";
+import type { AppLogService } from "./app-log-service";
 
 /** One strictly selected root and the bounded storage capabilities its pages need. */
 export type WalkthroughResultView = {
@@ -68,6 +69,7 @@ export class WalkthroughResultReader {
   constructor(
     private readonly paths: PatchdeskPaths,
     reader: typeof readBoundedInsightArtifactFile,
+    private readonly logs?: Pick<AppLogService, "write">,
   ) {
     this.slots = new InsightSlotStore(paths, reader);
     this.artifacts = new InsightArtifactStore(paths, reader);
@@ -103,13 +105,11 @@ export class WalkthroughResultReader {
   > {
     const slot = await this.slots.read(profileId, reviewId, "walkthrough");
     if (slot._tag === "err") return err(walkthroughReadFailure(slot.error));
-    const [view, run, failure] = await Promise.all([
-      this.published(profileId, reviewId, slot.value),
-      this.active(profileId, reviewId, slot.value),
-      this.failure(profileId, reviewId, slot.value),
-    ]);
+    const view = await this.published(profileId, reviewId, slot.value);
     if (view._tag === "err") return view;
+    const run = await this.active(profileId, reviewId, slot.value);
     if (run._tag === "err") return run;
+    const failure = await this.failure(profileId, reviewId, slot.value);
     if (failure._tag === "err") return failure;
     if (failure.value !== null && failure.value.runId === view.value?.runId)
       return err("invalid_result");
@@ -125,21 +125,20 @@ export class WalkthroughResultReader {
   > {
     if (slot?.retained?.tag !== "generated" || slot.publication === null)
       return ok(undefined);
-    const [root, publication] = await Promise.all([
-      this.artifacts.readObject(
-        profileId,
-        reviewId,
-        walkthroughResultRootCodec,
-        slot.retained.root,
-      ),
-      this.artifacts.readObject(
-        profileId,
-        reviewId,
-        walkthroughPublicationCodec,
-        slot.publication,
-      ),
-    ]);
+    // Each request uses one read lease so concurrent UI requests share the four-read quota.
+    const root = await this.artifacts.readObject(
+      profileId,
+      reviewId,
+      walkthroughResultRootCodec,
+      slot.retained.root,
+    );
     if (root._tag === "err") return err(walkthroughReadFailure(root.error));
+    const publication = await this.artifacts.readObject(
+      profileId,
+      reviewId,
+      walkthroughPublicationCodec,
+      slot.publication,
+    );
     if (publication._tag === "err")
       return err(walkthroughReadFailure(publication.error));
     const pub = publication.value;
@@ -154,22 +153,20 @@ export class WalkthroughResultReader {
       root.value.chapters.count < 1
     )
       return err("invalid_result");
-    const [binding, validation] = await Promise.all([
-      this.artifacts.readObject(
-        profileId,
-        reviewId,
-        insightBindingCodec,
-        root.value.binding,
-      ),
-      this.artifacts.readObject(
-        profileId,
-        reviewId,
-        walkthroughValidationCodec,
-        root.value.validation,
-      ),
-    ]);
+    const binding = await this.artifacts.readObject(
+      profileId,
+      reviewId,
+      insightBindingCodec,
+      root.value.binding,
+    );
     if (binding._tag === "err")
       return err(walkthroughReadFailure(binding.error));
+    const validation = await this.artifacts.readObject(
+      profileId,
+      reviewId,
+      walkthroughValidationCodec,
+      root.value.validation,
+    );
     if (validation._tag === "err")
       return err(walkthroughReadFailure(validation.error));
     const {
@@ -195,14 +192,17 @@ export class WalkthroughResultReader {
     );
     if (identity._tag === "err")
       return err(walkthroughReadFailure(identity.error));
-    const identities = await Promise.all([
-      store.readText(identity.value.profileId, 4096),
-      store.readText(identity.value.reviewId, 4096),
-      store.readText(identity.value.runId, 4096),
-      store.readText(identity.value.sessionId, 4096),
-    ]);
-    for (const value of identities)
+    const identities = [];
+    for (const text of [
+      identity.value.profileId,
+      identity.value.reviewId,
+      identity.value.runId,
+      identity.value.sessionId,
+    ]) {
+      const value = await store.readText(text, 4096);
       if (value._tag === "err") return err(walkthroughReadFailure(value.error));
+      identities.push(value);
+    }
     const [profile, review, run, session] = identities;
     if (
       profile?._tag !== "ok" ||
@@ -278,6 +278,13 @@ export class WalkthroughResultReader {
         this.paths.insightJournalsDirectory(profileId, reviewId),
       );
     } catch {
+      this.logs?.write({
+        process: "main",
+        level: "warn",
+        topic: "insight-artifact-read",
+        message: "Walkthrough provenance read failed",
+        meta: { category: "journal_directory_io" },
+      });
       return err("storage_unavailable");
     }
     for (const name of names) {

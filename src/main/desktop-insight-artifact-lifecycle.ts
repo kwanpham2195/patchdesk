@@ -4,6 +4,7 @@ import {
 } from "#src/services/insight-resource-bundle";
 import type { LocalApiStartupResult } from "./app-lifecycle";
 import type { LocalApiServer } from "./local-api";
+import type { AppLogService } from "#src/services/app-log-service";
 
 type DesktopInsightArtifactLifecycle = {
   start(): Promise<LocalApiStartupResult<LocalApiServer>>;
@@ -16,6 +17,7 @@ export function createDesktopInsightArtifactLifecycle(
   startApi: (
     resources: InsightResourceBundle,
   ) => Promise<LocalApiStartupResult<LocalApiServer>>,
+  logs: Pick<AppLogService, "write">,
 ): DesktopInsightArtifactLifecycle {
   let terminal = false;
   let starting: Promise<LocalApiStartupResult<LocalApiServer>> | undefined;
@@ -56,6 +58,7 @@ export function createDesktopInsightArtifactLifecycle(
     const acquired = await acquireInsightResourceBundle(
       new URL("insight-artifact-worker.js", workerDirectory),
       new URL("insight-artifact-job.js", workerDirectory),
+      logs,
     );
     if (acquired._tag === "err") return { _tag: "recovery-failed" };
     const resources = acquired.value;

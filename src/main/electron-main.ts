@@ -371,6 +371,7 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
 
     return startup;
   },
+  logs,
 );
 const desktopLifecycle = createDesktopLifecycle({
   localApi: {
