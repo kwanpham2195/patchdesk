@@ -111,6 +111,11 @@ export class InsightSlotWriter {
       }
     }
     if (change.failure !== undefined) {
+      if (change.failure.detail !== undefined)
+        staged.push({
+          schema: "Index<BlobBlock>",
+          root: change.failure.detail.data.blocks.root,
+        });
       const record = await this.artifacts.writeObject(
         journal.profileId,
         journal.reviewId,

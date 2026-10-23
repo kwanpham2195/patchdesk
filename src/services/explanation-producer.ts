@@ -1,3 +1,6 @@
+import type { InsightFailureDiagnostic } from "#src/domain/insight-failure-diagnostic";
+import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
+import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
 import type { ExplanationConnectionIdentity } from "#src/domain/explanation-channel";
 import type {
   GuideChildFrame,
@@ -29,7 +32,7 @@ import type { GuidePass } from "./guide-result-publication";
 /** Finish is accepted by the operation service, not inferred from this terminal report. */
 export type ExplanationProducerOutcome =
   | { readonly _tag: "finished" }
-  | {
+  | (InsightFailureDiagnostic & {
       readonly _tag: "failed";
       readonly reason:
         | "cancelled"
@@ -44,12 +47,28 @@ export type ExplanationProducerOutcome =
         | "evidence_mismatch";
       readonly detail?: string;
       readonly effectKnown: boolean;
-    };
+    });
 
 /** Generation deadlines are explicit; discovery and individual RPC deadlines remain transport-owned. */
 export type ExplanationDeadline =
   | { readonly kind: "no-total-deadline/1" }
   | { readonly kind: "walkthrough-deadline/1"; readonly deadlineAt: string };
+
+/** Only the native adapter's fixed version preflight refusal can acquire this label. */
+export function explanationVersionDiagnostic(
+  outcome: ExplanationProducerOutcome,
+  provider: InsightProvider,
+): "unsupported_codex_version" | undefined {
+  return provider === "codex-cli-account" &&
+    outcome._tag === "failed" &&
+    outcome.effectKnown &&
+    outcome.reason === "runtime_unavailable" &&
+    outcome.phase === "native_policy_unsupported" &&
+    outcome.code === "unsupported_codex_version" &&
+    outcome.detail === CODEX_EXPLANATION_VERSION_MESSAGE
+    ? "unsupported_codex_version"
+    : undefined;
+}
 
 type ProducerInput = {
   readonly profileId: string;
@@ -61,6 +80,7 @@ type ProducerInput = {
   readonly identity: ExplanationConnectionIdentity;
   readonly deadline: ExplanationDeadline;
   readonly signal: AbortSignal;
+  readonly onActivity?: InsightActivitySink | undefined;
 };
 
 /** API execution alone receives the exact-request FD3 channel. */

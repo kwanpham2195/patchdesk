@@ -43,7 +43,11 @@ export function resolveCodexInsightProvider(
   const required = managed.output.requirements;
   const selected = required?.modelProvider ?? value.model_provider;
   // Only this verified native version's default is supported, not an assumed default for unknown servers.
-  if (selected === null && nativeVersion !== "0.162.1")
+  if (
+    selected === null &&
+    nativeVersion !== "0.162.1" &&
+    nativeVersion !== "0.163.0"
+  )
     return err("native_policy_unsupported");
   const id = selected ?? "openai";
   const definition =

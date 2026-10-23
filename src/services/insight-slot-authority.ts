@@ -13,6 +13,8 @@ import {
 import type { InsightStore } from "#src/adapters/storage/insight-store";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { IsoTimestamp } from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
+import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
 import { insightBindingCodec } from "#src/domain/insight-run-binding-contract";
@@ -45,6 +47,7 @@ import { ExplanationRunTransactions } from "./explanation-run-transactions";
 import {
   explanationStartCount,
   nativeTurnStatus,
+  nativePreflightMayOwnProcess,
 } from "./native-explanation-turns";
 import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
@@ -148,18 +151,35 @@ export class InsightSlotAuthority {
     input: InsightRunRef,
     mutable: () => Promise<Result<void, E>>,
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
-    return this.advanceActive(input, mutable, ({ state }): Decision => {
-      if (state.status === "cancelling" || isTerminalStatus(state.status))
-        return ok(undefined);
-      if (state.status === "complete") return err("not_active");
-      const cancelEpoch = state.cancelEpoch + 1;
-      return ok(
-        (state.status === "paused" && state.nativeExecution === undefined) ||
-          explanationStartCount(state) === 0
-          ? settleUnowned(state, cancelEpoch)
-          : { status: "cancelling", cancelEpoch },
-      );
-    });
+    return this.advanceActive(
+      input,
+      mutable,
+      async ({ state }): Promise<Decision> => {
+        if (state.status === "cancelling" || isTerminalStatus(state.status))
+          return ok(undefined);
+        if (state.status === "complete") return err("not_active");
+        const cancelEpoch = state.cancelEpoch + 1;
+        if (
+          state.status === "running" ||
+          state.status === "waiting" ||
+          state.status === "paused"
+        ) {
+          const preflight = await nativePreflightMayOwnProcess(
+            this.artifacts,
+            { run: input },
+            state,
+          );
+          if (preflight._tag === "err") return failed();
+          if (preflight.value) return ok({ status: "cancelling", cancelEpoch });
+        }
+        return ok(
+          (state.status === "paused" && state.nativeExecution === undefined) ||
+            explanationStartCount(state) === 0
+            ? settleUnowned(state, cancelEpoch)
+            : { status: "cancelling", cancelEpoch },
+        );
+      },
+    );
   }
 
   /**
@@ -262,12 +282,31 @@ export class InsightSlotAuthority {
 
   /** Journal terminal transaction with its FailureRecord first, then the slot releases the run into replacementFailure. */
   async settleRun(
-    input: InsightRunRef & Pick<InsightFailureRecord, "code" | "phase">,
+    input: InsightRunRef &
+      Pick<InsightFailureRecord, "code" | "phase"> & {
+        readonly diagnostic?: "unsupported_codex_version" | undefined;
+      },
   ): Promise<Result<Outcome, InsightSlotFailure>> {
     return this.advanceActive(
       input,
       async () => ok(undefined),
-      (snapshot) => settleDecision(snapshot, input.code, input.phase),
+      async (snapshot) => {
+        if (input.diagnostic === undefined)
+          return settleDecision(snapshot, input.code, input.phase);
+        if (
+          input.code !== "capability_unavailable" ||
+          (input.type !== "guide" && input.type !== "walkthrough")
+        )
+          return failed();
+        const detail = await this.artifacts.writeTextRoot(
+          input.profileId,
+          input.reviewId,
+          CODEX_EXPLANATION_VERSION_MESSAGE,
+        );
+        return detail._tag === "err"
+          ? failed()
+          : settleDecision(snapshot, input.code, input.phase, detail.value);
+      },
     );
   }
 
@@ -341,6 +380,28 @@ export class InsightSlotAuthority {
           const { status } = state;
           if (isTerminalStatus(status)) return ok(undefined);
           if (status === "complete") return err("not_active");
+          if (
+            status === "running" ||
+            status === "waiting" ||
+            status === "paused" ||
+            status === "cancelling"
+          ) {
+            const preflight = await nativePreflightMayOwnProcess(
+              this.artifacts,
+              { run },
+              state,
+            );
+            if (preflight._tag === "err") return failed();
+            if (preflight.value)
+              return ok({
+                status: status === "cancelling" ? "cancelling" : "paused",
+                failure: {
+                  code: "producer_unsettled",
+                  phase: "generation",
+                  recovery: "resume_required",
+                },
+              });
+          }
           if (status === "cancelling") {
             if (
               state.nativeExecution !== undefined &&
@@ -352,7 +413,11 @@ export class InsightSlotAuthority {
                 state,
               );
               if (native._tag === "err") return failed();
-              if (!native.value.ceased)
+              if (
+                !native.value.ceased ||
+                (native.value.generation === state.generation &&
+                  !native.value.known)
+              )
                 return ok({ status: "cancelling", usageUnknown: true });
             }
             return ok(settleUnowned(state));
@@ -438,7 +503,7 @@ export class InsightSlotAuthority {
   private async advanceActive<E>(
     run: InsightRunRef,
     guard: () => Promise<Result<void, E>>,
-    decide: (snapshot: InsightJournalSnapshot) => Decision,
+    decide: (snapshot: InsightJournalSnapshot) => Decision | Promise<Decision>,
   ): Promise<Result<Outcome, InsightSlotFailure | E>> {
     return this.locked(run, async () => {
       const allowed = await guard();
@@ -573,6 +638,7 @@ function settleDecision(
   snapshot: InsightJournalSnapshot,
   code: InsightFailureRecord["code"],
   phase: InsightFailureRecord["phase"],
+  detail?: InsightFailureRecord["detail"],
 ): Decision {
   const { status } = snapshot.state;
   if (isTerminalStatus(status)) return ok(undefined);
@@ -585,7 +651,12 @@ function settleDecision(
         : code === "superseded"
           ? "superseded"
           : "failed",
-    failure: { code, phase, recovery: "terminal" },
+    failure: {
+      code,
+      phase,
+      recovery: "terminal",
+      ...definedProps({ detail }),
+    },
   };
   // A dispatched request may still have been served, so its usage is unknown rather than zero.
   return ok(

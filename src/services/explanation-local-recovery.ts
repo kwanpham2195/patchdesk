@@ -18,7 +18,10 @@ import type { ExplanationDeadline } from "./explanation-producer";
 import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 import type { InsightSlotKey } from "./insight-slot-records";
-import { nativeTurnStatus } from "./native-explanation-turns";
+import {
+  nativeTurnStatus,
+  nativePreflightMayOwnProcess,
+} from "./native-explanation-turns";
 
 /** Reconstructs only a frozen, ceased native pass. It never creates a producer, Authorization or generation. */
 export async function recoverNativeExplanationPass(
@@ -43,6 +46,19 @@ export async function recoverNativeExplanationPass(
   );
   if (read._tag === "err") return err("storage_unavailable");
   const { state } = read.value;
+  if (
+    state.status === "running" ||
+    state.status === "paused" ||
+    state.status === "cancelling"
+  ) {
+    const preflight = await nativePreflightMayOwnProcess(
+      artifacts,
+      { run },
+      state,
+    );
+    if (preflight._tag === "err") return err("storage_unavailable");
+    if (preflight.value) return ok(undefined);
+  }
   if (
     owned.has(run.runId) &&
     state.status !== "paused" &&

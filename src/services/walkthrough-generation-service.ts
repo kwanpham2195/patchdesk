@@ -1,3 +1,5 @@
+import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
+import { definedProps } from "#src/domain/defined-props";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import { InsightSlotStore } from "#src/adapters/storage/insight-slot-store";
@@ -28,6 +30,7 @@ import type {
 import {
   explanationStartCount,
   nativeTurnStatus,
+  nativePreflightMayOwnProcess,
 } from "./native-explanation-turns";
 import {
   slotPointerDigest,
@@ -41,6 +44,7 @@ import {
 import { WalkthroughProducerPass } from "./walkthrough-producer-pass";
 import { WalkthroughPublisher } from "./walkthrough-result-publication";
 import { hasExplanationProducer } from "./explanation-producer";
+import { explanationVersionDiagnostic } from "./explanation-producer";
 import { recoverNativeExplanationPass } from "./explanation-local-recovery";
 import type { InsightSlotKey } from "./insight-slot-records";
 
@@ -63,6 +67,7 @@ export class WalkthroughGenerationService {
     private readonly resources: InsightResourceBundle,
     private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
+    onActivity?: (run: InsightRunRef, event: InsightActivityEvent) => void,
   ) {
     this.artifacts = new InsightArtifactStore(
       destination,
@@ -74,6 +79,7 @@ export class WalkthroughGenerationService {
       authority,
       producers,
       now,
+      onActivity,
     );
     this.publisher = new WalkthroughPublisher(
       authority.explanation,
@@ -165,6 +171,12 @@ export class WalkthroughGenerationService {
         { run: active.value },
         snapshot.value.state,
       );
+      const preflight = await nativePreflightMayOwnProcess(
+        this.artifacts,
+        { run: active.value },
+        snapshot.value.state,
+      );
+      if (preflight._tag === "err" || preflight.value) return err("busy");
       if (native._tag === "err" || !native.value.ceased) return err("busy");
       this.owned.delete(request.runId);
     }
@@ -260,9 +272,19 @@ export class WalkthroughGenerationService {
         state.value.state.status === "paused"
           ? await nativeTurnStatus(this.artifacts, { run }, state.value.state)
           : undefined;
+      const preflight =
+        state._tag === "ok" && state.value.state.status === "paused"
+          ? await nativePreflightMayOwnProcess(
+              this.artifacts,
+              { run },
+              state.value.state,
+            )
+          : ok(false);
       if (
         shutdown ||
         (state._tag === "ok" &&
+          preflight._tag === "ok" &&
+          !preflight.value &&
           (native === undefined ||
             (native._tag === "ok" && native.value.ceased)) &&
           (isTerminalStatus(state.value.state.status) ||
@@ -437,7 +459,9 @@ export class WalkthroughGenerationService {
       state.status === "paused"
     )
       return;
-    let nativeKnown = true;
+    let nativeKnown =
+      pass.request.selection.provider === "pi" ||
+      (outcome._tag === "failed" && outcome.effectKnown);
     if (
       state.nativeExecution !== undefined &&
       state.nativeExecution.starts.count > 0
@@ -466,10 +490,12 @@ export class WalkthroughGenerationService {
         );
         return;
       }
-      nativeKnown =
-        native.value.generation !== state.generation || native.value.known;
+      if (native.value.generation === state.generation)
+        nativeKnown = native.value.known;
     }
     if (state.status === "cancelling" || controller.signal.aborted) {
+      // Process cessation does not resolve an unknown tool mutation.
+      if (!nativeKnown) return;
       await this.settle(run, "cancelled", "generation");
       return;
     }
@@ -489,12 +515,23 @@ export class WalkthroughGenerationService {
       return;
     }
     if (runtime.value.frozen === null) {
+      const diagnostic = explanationVersionDiagnostic(
+        outcome,
+        pass.request.selection.provider,
+      );
+      const preflight = await nativePreflightMayOwnProcess(
+        this.artifacts,
+        { run },
+        state,
+      );
+      if (preflight._tag === "err") return;
       if (
         (!nativeKnown ||
           (state.nativeExecution === undefined &&
             outcome._tag === "failed" &&
             !outcome.effectKnown)) &&
-        explanationStartCount(state) > 0
+        (explanationStartCount(state) > 0 ||
+          pass.request.selection.provider !== "pi")
       ) {
         await this.authority.explanation.produce(
           run,
@@ -504,9 +541,16 @@ export class WalkthroughGenerationService {
             current.cancelEpoch === pass.cancelEpoch
               ? ok({
                   status: "paused",
-                  usageUnknown: true,
+                  ...definedProps({
+                    usageUnknown:
+                      explanationStartCount(current) > 0
+                        ? (true as const)
+                        : undefined,
+                  }),
                   failure: {
-                    code: "paid_dispatch_unknown",
+                    code: preflight.value
+                      ? "producer_unsettled"
+                      : "paid_dispatch_unknown",
                     phase: "generation",
                     recovery: "resume_required",
                   },
@@ -516,8 +560,13 @@ export class WalkthroughGenerationService {
       } else
         await this.settle(
           run,
-          expired ? "resource_exhausted" : "unresolved_work",
+          diagnostic !== undefined
+            ? "capability_unavailable"
+            : expired
+              ? "resource_exhausted"
+              : "unresolved_work",
           "generation",
+          diagnostic,
         );
       return;
     }
@@ -625,7 +674,8 @@ export class WalkthroughGenerationService {
     run: InsightRunRef,
     code: InsightFailureRecord["code"],
     phase: InsightFailureRecord["phase"],
+    diagnostic?: "unsupported_codex_version",
   ): Promise<void> {
-    await this.authority.settleRun({ ...run, code, phase });
+    await this.authority.settleRun({ ...run, code, phase, diagnostic });
   }
 }

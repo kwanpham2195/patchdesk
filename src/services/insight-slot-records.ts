@@ -72,7 +72,10 @@ export type InsightJournalStatus = InsightJournalState["status"];
 export type InsightJournalChange = {
   readonly status: InsightJournalStatus;
   readonly cancelEpoch?: number;
-  readonly failure?: Pick<InsightFailureRecord, "code" | "phase" | "recovery">;
+  readonly failure?: Pick<
+    InsightFailureRecord,
+    "code" | "phase" | "recovery" | "detail"
+  >;
   readonly usageUnknown?: true;
   /** R<GuidePreparedInput1> a verified Guide preparation installs; the writer lists it among the transaction's objects. */
   readonly guidePreparation?: InsightArtifactReference;

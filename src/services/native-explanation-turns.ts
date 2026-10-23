@@ -26,6 +26,45 @@ export function explanationStartCount(state: InsightJournalState): number {
   return state.nativeExecution?.starts.count ?? state.dispatches.count;
 }
 
+/** An active native generation without its own start may own preflight processes; older cessation proves nothing. */
+export async function nativePreflightMayOwnProcess(
+  artifacts: InsightArtifactStore,
+  context: Pick<GuideRunContext, "run">,
+  state: InsightJournalState,
+): Promise<Result<boolean, "storage">> {
+  if (context.run.type !== "guide" && context.run.type !== "walkthrough")
+    return ok(false);
+  const { profileId, reviewId } = context.run;
+  const authorization = await artifacts.readObject(
+    profileId,
+    reviewId,
+    insightAuthorizationCodec,
+    state.authorization,
+  );
+  if (
+    authorization._tag === "err" ||
+    authorization.value.runId !== context.run.runId
+  )
+    return err("storage");
+  const selection = await artifacts.readObject(
+    profileId,
+    reviewId,
+    insightProvenanceCodec,
+    authorization.value.selection,
+  );
+  if (selection._tag === "err") return err("storage");
+  if (selection.value.provider === "pi") return ok(false);
+  if (
+    state.nativeExecution === undefined ||
+    state.nativeExecution.starts.count === 0
+  )
+    return ok(true);
+  const native = await nativeTurnStatus(artifacts, context, state);
+  return native._tag === "err"
+    ? native
+    : ok(native.value.generation !== state.generation);
+}
+
 /** Bounded reads used by conclusion, recovery, Resume and reader projections. */
 export async function nativeTurnStatus(
   artifacts: InsightArtifactStore,
@@ -332,10 +371,6 @@ export class NativeExplanationTurns implements NativeExplanationLifecycle {
   /** Called immediately after the operation service accepts finish, before releasing its response. */
   async finish(): Promise<void> {
     if (this.finished.signal.aborted) return;
-    try {
-      await this.observe({ kind: "interrupt_requested" });
-    } finally {
-      this.finished.abort();
-    }
+    this.finished.abort();
   }
 }

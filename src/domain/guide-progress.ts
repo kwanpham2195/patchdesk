@@ -254,6 +254,7 @@ const guideFailureSchema = v.nullable(
     reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
     category: v.nullable(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
     retryable: v.boolean(),
+    diagnostic: v.exactOptional(v.literal("unsupported_codex_version")),
   }),
 );
 

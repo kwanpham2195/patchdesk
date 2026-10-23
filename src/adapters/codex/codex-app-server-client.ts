@@ -1,13 +1,27 @@
 import {
+  runCodexExplanation,
+  type CodexExplanationInput,
+} from "./codex-explanation-session";
+import type { ExplanationProducerOutcome } from "#src/services/explanation-producer";
+import {
+  RpcChild,
+  classifyRpcFailure,
+  type CodexProcessFactory,
+} from "./codex-app-server-rpc";
+import { paginateModelList, type CodexModel } from "./codex-model-catalog";
+export type { CodexRpcMessage, JsonObject } from "./codex-app-server-rpc";
+export type { CodexModel } from "./codex-model-catalog";
+import type { CodexRpcMessage } from "./codex-app-server-rpc";
+export type CodexInsightRpc = Pick<RpcChild, "start" | "request" | "stop"> & {
+  readonly nativeVersion?: string | undefined;
+};
+const plainObjectSchema = v.looseObject({});
+import {
   insightFailureDiagnostic,
   type InsightFailureDiagnostic,
 } from "#src/domain/insight-failure-diagnostic";
 export { buildCodexAnalysisPrompt } from "./codex-analysis-prompt";
-import {
-  spawn,
-  type ChildProcess,
-  type SpawnOptions,
-} from "node:child_process";
+import { spawn } from "node:child_process";
 import * as v from "valibot";
 import {
   createCodexInsightHome,
@@ -25,28 +39,16 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { InsightReasoning } from "#src/domain/insight-provider";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import type { InsightFailureCategory } from "#src/domain/insight-record";
-import { stopInsightProcess } from "#src/adapters/process/insight-process-cleanup";
-import { isNotFound } from "#src/adapters/storage/json-file";
+
 import { createCodexActivityEmitter } from "./codex-activity";
-import type {
-  CodexActivityEmitter,
-  InsightActivitySink,
-} from "./codex-activity";
+import type { InsightActivitySink } from "./codex-activity";
 
 import {
-  allowlistedCodexEnvironment,
   NATIVE_INSIGHT_PROMPT_BYTES,
   codexInsightIsolationArgs,
   parseCodexInsightThread,
 } from "./codex-insight-policy";
 
-const CLIENT_NAME = "patchdesk";
-const CLIENT_VERSION = "0.1.0";
-const REQUEST_TIMEOUT_MS = 30_000;
-const MODEL_DISCOVERY_DEADLINE_MS = 30_000;
-const MAX_MODEL_PAGES = 50;
-const MAX_MODELS = 512;
-const MAX_MODEL_BYTES = 4 * 1024 * 1024;
 const MAX_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_PROMPT_BYTES = 256 * 1024;
 /** Hard bound for one composed Analysis prompt; mirrors MAX_ANALYSIS_PROMPT_BYTES in model-review-runner.ts. */
@@ -56,18 +58,6 @@ const RUN_TIMEOUT_MS = 5 * 60_000;
 /** Shared unsafe-prompt guard: rejects path disclosure, credential leakage, and repository-rule leakage. */
 export const UNSAFE_PROMPT_PATTERN =
   /(?:^|\s)\/[^\s]+|[A-Za-z]:[\\/]|CODEX_HOME|projectReviewCriteria|rulePaths|repository rules|(?:api[_-]?key|access[_-]?token|password|secret|credential|authorization|token)\s*(?:[:=]|\bbearer\b)|-----BEGIN [A-Z ]*PRIVATE KEY-----/iu;
-
-const COMMAND_APPROVAL_METHOD = "item/commandExecution/requestApproval";
-const FILE_APPROVAL_METHOD = "item/fileChange/requestApproval";
-const PERMISSIONS_APPROVAL_METHOD = "item/permissions/requestApproval";
-
-/** A renderer-safe model entry returned by Codex's live model/list method. */
-export type CodexModel = {
-  readonly id: string;
-  readonly label: string;
-  readonly reasoning: ReadonlyArray<InsightReasoning>;
-  readonly defaultReasoning?: InsightReasoning;
-};
 
 /** Typed failures returned by the Codex process adapter. */
 export type CodexAppServerFailure = InsightFailureDiagnostic & {
@@ -103,108 +93,9 @@ export type CodexRunInput = {
   readonly runTimeoutMs?: number;
 };
 
-type PendingRequest = {
-  readonly resolve: (value: JsonObject) => void;
-  readonly reject: (cause: RpcFailure) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
-};
-
-type RpcFailure =
-  | "cancelled"
-  | "timeout"
-  | "process_unavailable"
-  | "process_failed"
-  | "stopped"
-  | "invalid_rpc_result"
-  | {
-      readonly _tag: "rpc_error";
-      readonly code?: string | number | undefined;
-      readonly message?: string | undefined;
-    };
-
-type CodexProcessFactory = (
-  file: string,
-  args: ReadonlyArray<string>,
-  options: SpawnOptions,
-) => ChildProcess;
-
-/**
- * One line of the Codex app-server's stdio protocol, either direction: a response, a
- * server-to-client request, or a notification. `params`/`result`/`error` are left as `unknown`
- * here and parsed into their method-specific shape at the point each is consumed, so one
- * malformed field never invalidates the whole envelope.
- */
-export const codexRpcMessageSchema = v.looseObject({
-  id: v.optional(v.union([v.string(), v.number()])),
-  method: v.optional(v.string()),
-  params: v.optional(v.unknown()),
-  result: v.optional(v.unknown()),
-  error: v.optional(v.unknown()),
-});
-export type CodexRpcMessage = v.InferOutput<typeof codexRpcMessageSchema>;
-
-/** The `id`+`method`+`params` and `id`+`result`/`error` shapes this client writes to the child. */
-type OutgoingRpcMessage =
-  | { readonly method: string; readonly params: unknown }
-  | { readonly id: string; readonly method: string; readonly params: unknown }
-  | { readonly id: string | number; readonly result: unknown }
-  | {
-      readonly id: string | number;
-      readonly error: { readonly code: number; readonly message: string };
-    };
-
-const rpcErrorSchema = v.looseObject({
-  code: v.optional(v.union([v.string(), v.number()])),
-  message: v.optional(v.string()),
-});
-
-/** Bare "is a plain object" gate for a field the wire protocol leaves as `unknown`. */
-const plainObjectSchema = v.looseObject({});
-
-/**
- * A generic JSON value. Every RPC response's `result` is one of these before it is parsed into
- * its own method-specific shape (thread/start, turn/start, model/list, ...); each caller runs
- * its own schema over it rather than reading it as `unknown`.
- */
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ReadonlyArray<JsonValue>
-  | { readonly [key: string]: JsonValue };
-const jsonValueSchema: v.GenericSchema<JsonValue> = v.lazy(() =>
-  v.union([
-    v.string(),
-    v.number(),
-    v.boolean(),
-    v.null_(),
-    v.array(jsonValueSchema),
-    v.record(v.string(), jsonValueSchema),
-  ]),
-);
-/** An RPC response's `result`, confirmed to be a plain object. */
-const jsonObjectSchema = v.record(v.string(), jsonValueSchema);
-export type JsonObject = v.InferOutput<typeof jsonObjectSchema>;
-
 const turnStartResultSchema = v.looseObject({
   turn: v.looseObject({ id: v.string() }),
 });
-const modelListItemSchema = v.looseObject({
-  id: v.string(),
-  displayName: v.optional(v.string()),
-  hidden: v.optional(v.boolean()),
-  supportedReasoningEfforts: v.optional(
-    v.array(v.looseObject({ reasoningEffort: v.optional(v.string()) })),
-  ),
-  defaultReasoningEffort: v.optional(v.string()),
-});
-const modelListResultSchema = v.looseObject({
-  data: v.array(modelListItemSchema),
-  nextCursor: v.optional(v.nullable(v.string())),
-});
-type ModelListItem = v.InferOutput<typeof modelListItemSchema>;
-
 const turnItemSchema = v.looseObject({
   type: v.optional(v.string()),
   text: v.optional(v.string()),
@@ -261,6 +152,18 @@ export class CodexAppServerClient {
       ((file, args, spawnOptions) => spawn(file, args, spawnOptions));
     this.runTimeoutMs = options.runTimeoutMs ?? RUN_TIMEOUT_MS;
     this.homeFactory = options.homeFactory ?? createCodexInsightHome;
+  }
+
+  /** Runs logical explanation tools through the native lifecycle, with no strict final result. */
+  runExplanation(
+    input: CodexExplanationInput,
+  ): Promise<ExplanationProducerOutcome> {
+    return runCodexExplanation(
+      this.executablePath,
+      this.processFactory,
+      this.homeFactory,
+      input,
+    );
   }
 
   /** Lists the complete bounded live Codex model catalog using a throwaway child. */
@@ -428,7 +331,8 @@ export class CodexAppServerClient {
         reason: "runtime_unavailable",
         phase: "native_auth_unsupported",
       });
-    return await child.turn(
+    return await strictCodexTurn(
+      child,
       threadId,
       input.prompt,
       input.reasoning,
@@ -438,483 +342,6 @@ export class CodexAppServerClient {
       onActivity,
     );
   }
-}
-
-/**
- * Walks `model/list` to the end of its cursor chain on an already-started
- * child, under every discovery bound at once: a wall-clock deadline, a page
- * cap, a response-byte cap, a model-count cap, and a seen-cursor set that
- * stops a runtime looping the same cursor back. Shared by `listModels` (which
- * owns a throwaway child) and `runTurn` (which reuses the turn's own child) so
- * the two cannot drift apart on which bound is enforced.
- *
- * An empty catalog is a failure, not an empty success: a Codex runtime that
- * advertises no model at all is unusable, and every caller would otherwise
- * have to re-derive that.
- */
-async function paginateModelList(
-  child: RpcChild,
-  signal?: AbortSignal,
-): Promise<Result<ReadonlyArray<CodexModel>, CodexAppServerFailure>> {
-  const deadline = Date.now() + MODEL_DISCOVERY_DEADLINE_MS;
-  const models: CodexModel[] = [];
-  let bytes = 0;
-  const seenCursors = new Set<string>();
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_MODEL_PAGES; page += 1) {
-    if (signal?.aborted)
-      return err({ reason: "cancelled", phase: "model_list" });
-    if (Date.now() >= deadline)
-      return err({ reason: "timed_out", phase: "model_list" });
-    const params =
-      cursor === undefined
-        ? { includeHidden: false }
-        : { includeHidden: false, cursor };
-    const response = await child.request(
-      "model/list",
-      params,
-      signal,
-      deadline - Date.now(),
-    );
-    if (response._tag === "err")
-      return err({
-        reason: classifyRpcFailure(response.error),
-        phase: "model_list",
-      });
-    bytes += Buffer.byteLength(JSON.stringify(response.value), "utf8");
-    if (bytes > MAX_MODEL_BYTES)
-      return err({ reason: "runtime_unavailable", phase: "model_list" });
-    const parsedResult = v.safeParse(modelListResultSchema, response.value);
-    if (!parsedResult.success)
-      return err({ reason: "invalid_result", phase: "model_list" });
-    const pageModels = parseModelPage(parsedResult.output.data);
-    if (pageModels._tag === "err")
-      return err({ reason: "invalid_result", phase: "model_list" });
-    models.push(...pageModels.value);
-    if (models.length > MAX_MODELS)
-      return err({ reason: "runtime_unavailable", phase: "model_list" });
-    const nextCursor = parsedResult.output.nextCursor ?? undefined;
-    if (nextCursor === undefined)
-      return models.length === 0
-        ? err({ reason: "runtime_unavailable", phase: "model_list" })
-        : ok(models);
-    if (seenCursors.has(nextCursor))
-      return err({ reason: "runtime_unavailable", phase: "model_list" });
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  }
-  // The page cap ran out with a cursor still outstanding: the catalog is
-  // larger than discovery is willing to walk, so it is not usable as read.
-  return err({ reason: "runtime_unavailable", phase: "model_list" });
-}
-
-export type CodexInsightRpc = Pick<RpcChild, "start" | "request" | "stop"> & {
-  readonly nativeVersion?: string | undefined;
-};
-
-class RpcChild {
-  nativeVersion: string | undefined;
-  private readonly pending = new Map<string, PendingRequest>();
-  private readonly listeners = new Set<(message: CodexRpcMessage) => void>();
-  private child: ChildProcess | undefined;
-  private buffer = "";
-  private nextId = 0;
-  private stopped = false;
-  private stopPromise: Promise<void> | undefined;
-  private ownsProcessGroup = false;
-  private turnId: string | undefined;
-  private threadId: string | undefined;
-  private activity: CodexActivityEmitter | undefined;
-  private readonly approvalTasks = new Set<Promise<void>>();
-
-  constructor(private readonly processFactory: CodexProcessFactory) {}
-
-  async start(
-    executablePath: string,
-    cwd: string | undefined,
-    signal?: AbortSignal,
-    isolationArgs: ReadonlyArray<string> = [],
-    home?: string,
-  ): Promise<Result<void, CodexAppServerFailure>> {
-    if (signal?.aborted)
-      return err({ reason: "cancelled", phase: "initialize" });
-    try {
-      this.ownsProcessGroup = isolationArgs.length !== 0;
-      const spawnOptions: SpawnOptions = {
-        detached: this.ownsProcessGroup,
-        shell: false,
-        stdio: ["pipe", "pipe", "pipe"],
-        env:
-          home === undefined
-            ? allowlistedCodexEnvironment()
-            : { ...allowlistedCodexEnvironment(), CODEX_HOME: home },
-      };
-      this.child = this.processFactory(
-        executablePath,
-        [
-          ...isolationArgs,
-          ...(home === undefined
-            ? []
-            : ["-c", 'cli_auth_credentials_store="ephemeral"']),
-          "app-server",
-        ],
-        cwd === undefined ? spawnOptions : { ...spawnOptions, cwd },
-      );
-      if (
-        this.child.stdin === null ||
-        this.child.stdout === null ||
-        this.child.stderr === null
-      ) {
-        await this.stop();
-        return err({ reason: "runtime_unavailable", phase: "initialize" });
-      }
-      this.child.stdout.on("data", (chunk: Buffer | string) =>
-        this.read(chunk),
-      );
-      this.child.stderr.on("data", () => undefined);
-      this.child.once("error", () => this.failPending());
-      this.child.once("exit", () => this.failPending());
-      const clientInfo = {
-        name: CLIENT_NAME,
-        title: "Patchdesk",
-        version: CLIENT_VERSION,
-      };
-      const params =
-        isolationArgs.length === 0
-          ? { clientInfo }
-          : { clientInfo, capabilities: { experimentalApi: true } };
-      const initialized = await this.request("initialize", params, signal);
-      if (initialized._tag === "err") {
-        await this.stop();
-        return err({
-          reason: classifyRpcFailure(initialized.error),
-          phase: "initialize",
-        });
-      }
-      const userAgent = v.safeParse(v.string(), initialized.value.userAgent);
-      this.nativeVersion = userAgent.success
-        ? new RegExp(
-            `^${CLIENT_NAME}/([0-9]+\\.[0-9]+\\.[0-9]+)(?:\\s|$)`,
-          ).exec(userAgent.output)?.[1]
-        : undefined;
-      this.send({ method: "initialized", params: {} });
-      return ok(undefined);
-    } catch (cause: unknown) {
-      await this.stop();
-      return err({ reason: classifyThrownFailure(cause), phase: "initialize" });
-    }
-  }
-
-  async request<P>(
-    method: string,
-    params: P,
-    signal?: AbortSignal,
-    timeoutMs = REQUEST_TIMEOUT_MS,
-  ): Promise<Result<JsonObject, RpcFailure>> {
-    if (
-      this.child?.stdin === null ||
-      this.child?.stdin === undefined ||
-      this.stopped
-    )
-      return err("process_unavailable");
-    if (signal?.aborted) return err("cancelled");
-    const id = String(++this.nextId);
-    return new Promise((resolveResult) => {
-      const timer = setTimeout(
-        () => {
-          const pending = this.pending.get(id);
-          if (pending === undefined) return;
-          this.pending.delete(id);
-          pending.reject("timeout");
-        },
-        Math.min(REQUEST_TIMEOUT_MS, Math.max(1, timeoutMs)),
-      );
-      const resolve = (value: JsonObject): void => {
-        clearTimeout(timer);
-        resolveResult(ok(value));
-      };
-      const reject = (cause: RpcFailure): void => {
-        clearTimeout(timer);
-        resolveResult(err(cause));
-      };
-      this.pending.set(id, { resolve, reject, timer });
-      this.send({ id, method, params });
-      const onAbort = (): void => {
-        signal?.removeEventListener("abort", onAbort);
-        if (this.pending.delete(id)) {
-          clearTimeout(timer);
-          resolveResult(err("cancelled"));
-        }
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-
-  async turn(
-    threadId: string,
-    prompt: string,
-    reasoning: InsightReasoning,
-    worktreePath: string,
-    outputSchema: JsonSchema | undefined,
-    signal?: AbortSignal,
-    onActivity?: InsightActivitySink,
-  ): Promise<Result<unknown, CodexAppServerFailure>> {
-    this.threadId = threadId;
-    const activity = createCodexActivityEmitter(onActivity, worktreePath);
-    this.activity = activity;
-    let text = "";
-    let resolveTurn: (
-      result: Result<unknown, CodexAppServerFailure>,
-    ) => void = () => undefined;
-    const finished = new Promise<Result<unknown, CodexAppServerFailure>>(
-      (resolve) => {
-        resolveTurn = resolve;
-      },
-    );
-    const onMessage = (message: CodexRpcMessage): void => {
-      const { method, params } = message;
-      if (method === undefined || !v.is(plainObjectSchema, params)) return;
-      activity.notification(message);
-      if (method === "item/agentMessage/delta") {
-        const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
-        const delta = deltaParsed.success
-          ? deltaParsed.output.delta
-          : undefined;
-        if (delta !== undefined) text += delta;
-        if (Buffer.byteLength(text, "utf8") > MAX_STREAM_BYTES)
-          resolveTurn(err({ reason: "invalid_result", phase: "turn" }));
-        return;
-      }
-      if (method === "turn/completed") {
-        const turnParsed = v.safeParse(turnCompletedParamsSchema, params);
-        const turn = turnParsed.success ? turnParsed.output.turn : undefined;
-        if (turn?.status !== "completed") {
-          resolveTurn(err({ reason: "execution_failed", phase: "turn" }));
-          return;
-        }
-        // The completed turn carries the authoritative final message; the
-        // protocol does not guarantee that every message arrives as a delta.
-        const answer = finalAgentMessageText(turn) ?? text;
-        const parsed = parseTurnJson(answer);
-        resolveTurn(
-          parsed._tag === "ok"
-            ? ok(parsed.value)
-            : err({ reason: "invalid_result", phase: "turn" }),
-        );
-        return;
-      }
-      if (method === "error")
-        resolveTurn(err({ reason: "execution_failed", phase: "turn" }));
-    };
-    const remove = this.listenersAdd(onMessage);
-    const onAbort = (): void => {
-      this.cancel();
-      resolveTurn(err({ reason: "cancelled", phase: "turn" }));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    try {
-      activity.turnStarted();
-      const started = await this.request(
-        "turn/start",
-        {
-          threadId,
-          input: [{ type: "text", text: prompt, text_elements: [] }],
-          effort: reasoning,
-          outputSchema,
-        },
-        signal,
-      );
-      if (started._tag === "err")
-        return err({
-          reason: classifyRpcFailure(started.error),
-          phase: "turn_start",
-        });
-      const startedParsed = v.safeParse(turnStartResultSchema, started.value);
-      this.turnId = startedParsed.success
-        ? startedParsed.output.turn.id
-        : undefined;
-      if (this.turnId === undefined)
-        return err({ reason: "invalid_result", phase: "turn_start" });
-      return await finished;
-    } finally {
-      signal?.removeEventListener("abort", onAbort);
-      remove();
-    }
-  }
-
-  cancel(): void {
-    if (this.threadId !== undefined && this.turnId !== undefined)
-      this.send({
-        method: "turn/interrupt",
-        params: { threadId: this.threadId, turnId: this.turnId },
-      });
-  }
-
-  stop(): Promise<void> {
-    // Repeated shutdown must preserve failed cessation so the private home remains guarded.
-    this.stopPromise ??= (async () => {
-      this.cancel();
-      await Promise.allSettled([...this.approvalTasks]);
-      this.approvalTasks.clear();
-      this.stopped = true;
-      for (const pending of this.pending.values()) {
-        clearTimeout(pending.timer);
-        pending.reject("stopped");
-      }
-      this.pending.clear();
-      this.listeners.clear();
-      if (this.child !== undefined)
-        await stopInsightProcess(this.child, this.ownsProcessGroup);
-      this.child = undefined;
-    })();
-    return this.stopPromise;
-  }
-
-  private listenersAdd(
-    listener: (message: CodexRpcMessage) => void,
-  ): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private send(message: OutgoingRpcMessage): void {
-    if (
-      this.child?.stdin === null ||
-      this.child?.stdin === undefined ||
-      this.stopped
-    )
-      return;
-    this.child.stdin.write(`${JSON.stringify(message)}\n`);
-  }
-
-  private read(chunk: Buffer | string): void {
-    this.buffer += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
-    if (Buffer.byteLength(this.buffer, "utf8") > MAX_STREAM_BYTES) {
-      this.failPending();
-      return;
-    }
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.trim().length === 0) continue;
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch {
-        this.failPending();
-        continue;
-      }
-      const parsed = v.safeParse(codexRpcMessageSchema, value);
-      if (parsed.success) this.route(parsed.output);
-    }
-  }
-
-  private route(message: CodexRpcMessage): void {
-    const { id, method } = message;
-    if (id !== undefined && method === undefined) {
-      const pending = this.pending.get(String(id));
-      if (pending === undefined) return;
-      this.pending.delete(String(id));
-      const errorParsed = v.safeParse(rpcErrorSchema, message.error);
-      if (errorParsed.success) {
-        const { code, message: errorMessage } = errorParsed.output;
-        const base = { _tag: "rpc_error" as const };
-        const withCode = code === undefined ? base : { ...base, code };
-        const rpcError =
-          errorMessage === undefined
-            ? withCode
-            : { ...withCode, message: errorMessage };
-        pending.reject(rpcError);
-      } else {
-        const result = message.result;
-        if (result === undefined || !v.is(jsonObjectSchema, result))
-          pending.reject("invalid_rpc_result");
-        else pending.resolve(result);
-      }
-      return;
-    }
-    if (id !== undefined && method !== undefined) {
-      const task = this.handleRequest(id, method);
-      this.approvalTasks.add(task);
-      return;
-    }
-    if (method !== undefined)
-      for (const listener of this.listeners) listener(message);
-  }
-
-  private async handleRequest(
-    id: string | number,
-    method: string,
-  ): Promise<void> {
-    if (method === PERMISSIONS_APPROVAL_METHOD) {
-      // An empty profile grants no filesystem root or network, which is the denial; the response has no `decision` field.
-      this.send({ id, result: { permissions: {}, scope: "turn" } });
-      return;
-    }
-    if (method === FILE_APPROVAL_METHOD) {
-      this.send({ id, result: { decision: "decline" } });
-      return;
-    }
-    if (method === COMMAND_APPROVAL_METHOD) {
-      // An unexpected user approval cannot substitute for the selected native reviewer.
-      this.activity?.approvalAnswered("declined");
-      this.send({ id, result: { decision: "decline" } });
-      return;
-    }
-    this.send({ id, error: { code: -32601, message: "unsupported_request" } });
-  }
-
-  private failPending(): void {
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject("process_failed");
-    }
-    this.pending.clear();
-  }
-}
-
-function parseModelPage(
-  data: ReadonlyArray<ModelListItem>,
-): Result<ReadonlyArray<CodexModel>, "invalid_models"> {
-  const models: CodexModel[] = [];
-  let bytes = 0;
-  for (const item of data) {
-    if (item.id.length > 200) return err("invalid_models");
-    bytes += Buffer.byteLength(JSON.stringify(item), "utf8");
-    if (bytes > MAX_MODEL_BYTES) return err("invalid_models");
-    if (item.hidden === true) continue;
-    const efforts: Array<InsightReasoning> =
-      item.supportedReasoningEfforts?.flatMap(
-        (effort): ReadonlyArray<InsightReasoning> => {
-          const value = effort.reasoningEffort;
-          if (value === "minimal") return ["minimal"];
-          if (value === "low") return ["low"];
-          if (value === "medium") return ["medium"];
-          if (value === "high") return ["high"];
-          if (value === "xhigh") return ["xhigh"];
-          return [];
-        },
-      ) ?? [];
-    if (efforts.length === 0) continue;
-    const defaultValue = item.defaultReasoningEffort;
-    const defaultReasoning =
-      defaultValue === "minimal" ||
-      defaultValue === "low" ||
-      defaultValue === "medium" ||
-      defaultValue === "high" ||
-      defaultValue === "xhigh"
-        ? defaultValue
-        : undefined;
-    const model: CodexModel = {
-      id: item.id,
-      label: item.displayName ?? item.id,
-      reasoning: [...new Set(efforts)],
-    };
-    models.push(
-      defaultReasoning === undefined ? model : { ...model, defaultReasoning },
-    );
-  }
-  return ok(models);
 }
 
 /** Reads the authoritative final agent message from a completed turn payload. */
@@ -934,31 +361,94 @@ function finalAgentMessageText(
   return answer;
 }
 
-function classifyThrownFailure(
-  cause: unknown,
-): CodexAppServerFailure["reason"] {
-  if (isNotFound(cause)) return "runtime_unavailable";
-  return "execution_failed";
-}
-function classifyRpcFailure(
-  cause: RpcFailure,
-): CodexAppServerFailure["reason"] {
-  if (cause === "cancelled") return "cancelled";
-  if (cause === "timeout") return "timed_out";
-  if (
-    cause !== "process_unavailable" &&
-    cause !== "process_failed" &&
-    cause !== "stopped" &&
-    cause !== "invalid_rpc_result"
-  ) {
-    const detail = `${cause.code ?? ""} ${cause.message ?? ""}`.toLowerCase();
-    if (detail.includes("login") || detail.includes("auth"))
-      return "authentication_required";
-    if (detail.includes("rate") || detail.includes("concurren"))
-      return "rate_limited";
-    if (detail.includes("timeout")) return "timed_out";
-    if (detail.includes("cancel")) return "cancelled";
-    if (detail.includes("invalid")) return "invalid_result";
+async function strictCodexTurn(
+  child: RpcChild,
+  threadId: string,
+  prompt: string,
+  reasoning: InsightReasoning,
+  worktreePath: string,
+  outputSchema: JsonSchema | undefined,
+  signal?: AbortSignal,
+  onActivity?: InsightActivitySink,
+): Promise<Result<unknown, CodexAppServerFailure>> {
+  child.bindTurn(threadId);
+  const activity = createCodexActivityEmitter(onActivity, worktreePath);
+  child.activity = activity;
+  let text = "";
+  let resolveTurn: (
+    result: Result<unknown, CodexAppServerFailure>,
+  ) => void = () => undefined;
+  const finished = new Promise<Result<unknown, CodexAppServerFailure>>(
+    (resolve) => {
+      resolveTurn = resolve;
+    },
+  );
+  const onMessage = (message: CodexRpcMessage): void => {
+    const { method, params } = message;
+    if (method === undefined || !v.is(plainObjectSchema, params)) return;
+    activity.notification(message);
+    if (method === "item/agentMessage/delta") {
+      const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);
+      const delta = deltaParsed.success ? deltaParsed.output.delta : undefined;
+      if (delta !== undefined) text += delta;
+      if (Buffer.byteLength(text, "utf8") > MAX_STREAM_BYTES)
+        resolveTurn(err({ reason: "invalid_result", phase: "turn" }));
+      return;
+    }
+    if (method === "turn/completed") {
+      const turnParsed = v.safeParse(turnCompletedParamsSchema, params);
+      const turn = turnParsed.success ? turnParsed.output.turn : undefined;
+      if (turn?.status !== "completed") {
+        resolveTurn(err({ reason: "execution_failed", phase: "turn" }));
+        return;
+      }
+      // The completed turn carries the authoritative final message; the
+      // protocol does not guarantee that every message arrives as a delta.
+      const answer = finalAgentMessageText(turn) ?? text;
+      const parsed = parseTurnJson(answer);
+      resolveTurn(
+        parsed._tag === "ok"
+          ? ok(parsed.value)
+          : err({ reason: "invalid_result", phase: "turn" }),
+      );
+      return;
+    }
+    if (method === "error")
+      resolveTurn(err({ reason: "execution_failed", phase: "turn" }));
+  };
+  const remove = child.listenersAdd(onMessage);
+  const onAbort = (): void => {
+    child.cancel();
+    resolveTurn(err({ reason: "cancelled", phase: "turn" }));
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    activity.turnStarted();
+    const started = await child.request(
+      "turn/start",
+      {
+        threadId,
+        input: [{ type: "text", text: prompt, text_elements: [] }],
+        effort: reasoning,
+        outputSchema,
+      },
+      signal,
+    );
+    if (started._tag === "err")
+      return err({
+        reason: classifyRpcFailure(started.error),
+        phase: "turn_start",
+      });
+    const startedParsed = v.safeParse(turnStartResultSchema, started.value);
+    const turnId = startedParsed.success
+      ? startedParsed.output.turn.id
+      : undefined;
+    if (turnId === undefined)
+      return err({ reason: "invalid_result", phase: "turn_start" });
+    child.bindTurn(threadId, turnId);
+    return await finished;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    remove();
   }
-  return "execution_failed";
 }
