@@ -14,9 +14,8 @@ async function expectPreviewReachable(preview: Locator): Promise<void> {
       );
     }),
   ).toBe(true);
-  const jump = preview.getByRole("button").first();
   expect(
-    await jump.evaluate((node) => {
+    await preview.evaluate((node) => {
       const bounds = node.getBoundingClientRect();
       return node.contains(
         document.elementFromPoint(
@@ -153,17 +152,17 @@ test("Guide first, middle and last previews escape transformed ancestry and acce
       name: "Guide preview Keep the recovery owner together",
     });
     await expectPreviewReachable(preview);
-    const action = preview.getByRole("button", {
-      name: "src/recovery.ts",
-      exact: true,
-    });
-    await action.hover();
+    await preview.hover();
     await expect(preview).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 660 });
     await expectPreviewReachable(preview);
-    await action.click();
+    await rail.click({
+      position: { x: railBounds.width / 2, y: railBounds.height / 2 },
+    });
     await expect(preview).toHaveCount(0);
-    await expect(page.locator("[data-guide-file='g2/f1']")).toBeInViewport();
+    await expect(
+      page.locator("[data-guide-minimap-group='g2']"),
+    ).toBeInViewport();
     await expect(
       page
         .getByRole("list", { name: "Keep the recovery owner together files" })
@@ -172,12 +171,9 @@ test("Guide first, middle and last previews escape transformed ancestry and acce
     await rail.focus();
     await rail.press("Home");
     await page.keyboard.press("Tab");
-    await expect(
-      page
-        .getByRole("note", { name: "Guide preview Recover pending requests" })
-        .getByRole("button", { name: "src/recovery.ts", exact: true }),
-    ).toBeFocused();
-    await page.keyboard.press("Escape");
+    await expect(rail).not.toBeFocused();
+    await rail.focus();
+    await rail.press("Escape");
     await expect(rail).toBeFocused();
   } finally {
     await closeServer(server);
@@ -220,7 +216,7 @@ test("Guide keeps long names and preview text readable while navigating many gro
     ).toBe(true);
     await option.click();
     await expect(picker).toContainText("After refresh");
-    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
     const preview = page.getByRole("note", { name: /^Guide preview / });
     await expectPreviewReachable(preview);
     expect(
@@ -232,13 +228,11 @@ test("Guide keeps long names and preview text readable while navigating many gro
         ),
       ),
     ).toBe(true);
-    await preview
-      .getByRole("button", {
-        name: "assets/retained/recovery/evidence/icon.png",
-        exact: true,
-      })
-      .click();
-    await expect(page.locator("[data-guide-file='g2/f5']")).toBeInViewport();
+    await expect(preview.getByRole("button")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(
+      page.locator("[data-guide-minimap-group='g2']"),
+    ).toBeInViewport();
     await expect(preview).toHaveCount(0);
     await page.setViewportSize({ width: 1440, height: 600 });
     // The standalone fixture has a fixed outer height; bound its Guide to the short window.
@@ -286,17 +280,15 @@ test("Guide restores compact Escape focus without suppressing the next wide rail
   try {
     await page.setViewportSize({ width: 560, height: 900 });
     await page.goto(`${serverOrigin(server)}/#guide-fixture`);
-    const files = page.getByRole("button", { name: "Files", exact: true });
-    await files.click();
+    const trigger = page.getByRole("button", { name: "Preview", exact: true });
+    await trigger.click();
     const preview = page.getByRole("note", {
       name: "Guide preview Recover pending requests",
     });
-    await preview
-      .getByRole("button", { name: "src/recovery.ts", exact: true })
-      .focus();
+    await expect(preview.getByRole("button")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(preview).toHaveCount(0);
-    await expect(files).toBeFocused();
+    await expect(trigger).toBeFocused();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: /^Jump to Guide group:/ }).focus();
     await expect(preview).toBeVisible();
@@ -343,7 +335,7 @@ test("Guide narrow navigation remains reachable inside a long file and selects h
     await expect(
       page.getByRole("note", { name: /^Guide preview / }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "Files", exact: true }).click();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
     const preview = page.getByRole("note", {
       name: "Guide preview Keep the recovery owner together",
     });
@@ -354,10 +346,11 @@ test("Guide narrow navigation remains reachable inside a long file and selects h
     expect(
       await preview.evaluate((node) => node.getBoundingClientRect().width),
     ).toBeLessThanOrEqual(guideWidth);
-    await preview
-      .getByRole("button", { name: "src/recovery.ts", exact: true })
-      .click();
-    await expect(page.locator("[data-guide-file='g2/f1']")).toBeInViewport();
+    await expect(preview.getByRole("button")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(
+      page.locator("[data-guide-minimap-group='g2']"),
+    ).toBeInViewport();
     await expect(preview).toHaveCount(0);
     await expect(
       first.getByRole("button", { name: "File src/recovery.ts" }),
@@ -380,14 +373,17 @@ test("Guide narrow navigation remains reachable inside a long file and selects h
     await page
       .getByRole("option", { name: /Recover pending requests/ })
       .click();
-    await page.getByRole("button", { name: "Files", exact: true }).click();
-    await page
-      .getByRole("note", { name: "Guide preview Recover pending requests" })
-      .getByRole("button", { name: "src/recovery.ts", exact: true })
-      .click();
-    await expect(target).toBeInViewport();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(
+      page
+        .getByRole("note", { name: "Guide preview Recover pending requests" })
+        .getByRole("button"),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    const group = page.locator("[data-guide-minimap-group='g1']");
+    await expect(group).toBeInViewport();
     expect(
-      await target.evaluate((node) => {
+      await group.evaluate((node) => {
         const viewport = node.closest("[data-guide-viewport]");
         if (viewport === null) throw new Error("No Guide viewport");
         return Math.abs(

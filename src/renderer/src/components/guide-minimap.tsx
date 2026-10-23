@@ -67,8 +67,7 @@ export function GuideMinimap({
   const [previewOffset, setPreviewOffset] = useState(0);
   const [previewWidth, setPreviewWidth] = useState(320);
   const rail = useRef<HTMLButtonElement>(null);
-  const filesTrigger = useRef<HTMLButtonElement>(null);
-  const popup = useRef<HTMLDivElement>(null);
+  const previewTrigger = useRef<HTMLButtonElement>(null);
   const railScroller = useRef<HTMLDivElement>(null);
   const skipFocusPreview = useRef(false);
   const triggerId = useId();
@@ -117,7 +116,7 @@ export function GuideMinimap({
     };
   }, [groups, root]);
 
-  const select = (index: number, fileId?: string): void => {
+  const select = (index: number): void => {
     const group = groups[index];
     const content = root.current;
     const viewport = content?.closest<HTMLElement>(
@@ -132,9 +131,7 @@ export function GuideMinimap({
     )
       return;
     const target = content.querySelector<HTMLElement>(
-      fileId === undefined
-        ? `[data-guide-minimap-group='${group.id}']`
-        : `[data-guide-file='${group.id}/${fileId}']`,
+      `[data-guide-minimap-group='${group.id}']`,
     );
     if (target === null) return;
     setActiveIndex(null);
@@ -164,13 +161,13 @@ export function GuideMinimap({
     >
       <Popover
         open={activeIndex !== null}
-        triggerId={`${triggerId}-${compact ? "files" : "rail"}`}
+        triggerId={`${triggerId}-${compact ? "preview" : "rail"}`}
         onOpenChange={(open, details) => {
           if (open) {
             if (activeIndex === null) preview(currentIndex);
           } else {
             if (details.reason === "escape-key") {
-              const trigger = compact ? filesTrigger.current : rail.current;
+              const trigger = compact ? previewTrigger.current : rail.current;
               skipFocusPreview.current =
                 !compact && document.activeElement !== trigger;
               trigger?.focus({ preventScroll: true });
@@ -212,10 +209,10 @@ export function GuideMinimap({
             </SelectContent>
           </Select>
           <PopoverTrigger
-            id={`${triggerId}-files`}
-            render={<Button ref={filesTrigger} size="xs" variant="outline" />}
+            id={`${triggerId}-preview`}
+            render={<Button ref={previewTrigger} size="xs" variant="outline" />}
           >
-            Files
+            Preview
           </PopoverTrigger>
         </div>
         <GuideMinimapRail
@@ -237,17 +234,10 @@ export function GuideMinimap({
             }
             preview(currentIndex, true);
           }}
-          onFocusActions={() => {
-            const action =
-              popup.current?.querySelector<HTMLButtonElement>("button");
-            if (action === null || action === undefined) return false;
-            action.focus();
-            return true;
-          }}
+          onFocusActions={() => false}
         />
         {activeGroup === undefined ? null : (
           <PopoverContent
-            ref={popup}
             role="note"
             aria-label={`Guide preview ${activeGroup.title}`}
             side={compact ? "bottom" : "right"}
@@ -262,14 +252,10 @@ export function GuideMinimap({
             initialFocus={false}
             finalFocus={false}
             hideWhenAnchorHidden
-            style={{ width: compact ? previewWidth : 320 }}
-            className="block max-h-[min(22.5rem,var(--available-height))] max-w-[calc(100vw-1rem)] space-y-3 overflow-y-auto"
+            style={{ width: compact ? previewWidth : 320, height: 240 }}
+            className="max-h-(--available-height) max-w-[min(var(--available-width),calc(100vw-1rem))] gap-3 overflow-hidden"
           >
-            <GuidePreview
-              group={activeGroup}
-              index={activeIndex ?? 0}
-              onSelect={(fileId) => select(activeIndex ?? 0, fileId)}
-            />
+            <GuidePreview group={activeGroup} index={activeIndex ?? 0} />
           </PopoverContent>
         )}
       </Popover>
@@ -280,39 +266,22 @@ export function GuideMinimap({
 function GuidePreview({
   group,
   index,
-  onSelect,
 }: {
   readonly group: ComponentProps<typeof GuideMinimap>["groups"][number];
   readonly index: number;
-  readonly onSelect: (fileId: string) => void;
 }): React.JSX.Element {
   return (
     <>
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>
-          Group {index + 1} · {group.files?.length ?? 0} files
-        </span>
+      <div className="flex shrink-0 items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Group {index + 1}</span>
         {group.reviewed ? <Badge variant="success">Reviewed</Badge> : null}
       </div>
-      <p className="line-clamp-2 break-words text-sm font-medium">
+      <p className="line-clamp-2 shrink-0 break-words text-sm font-medium">
         {group.title}
       </p>
-      <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+      <p className="min-h-0 flex-1 overflow-hidden whitespace-pre-wrap break-words text-sm text-muted-foreground">
         {group.explanation}
       </p>
-      <div className="flex flex-col gap-1">
-        {group.files?.map((file) => (
-          <Button
-            key={file.id}
-            variant="ghost"
-            size="sm"
-            className="h-auto justify-start whitespace-normal break-all text-left font-mono text-xs"
-            onClick={() => onSelect(file.id)}
-          >
-            {file.path}
-          </Button>
-        ))}
-      </div>
     </>
   );
 }
