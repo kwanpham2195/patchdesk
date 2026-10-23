@@ -40,20 +40,32 @@ import {
 import type { InsightResourceBundle } from "./insight-resource-bundle";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 import { isTerminalStatus, type InsightRunRef } from "./insight-slot-records";
+import type { InsightSlotKey } from "./insight-slot-records";
+import { recoverNativeExplanationPass } from "./explanation-local-recovery";
 import type {
-  PiGuideChildOutcome,
-  PiInsightChildInvoker,
-} from "./pi-insight-child-invoker";
+  ExplanationProducers,
+  ExplanationProducerOutcome,
+} from "./explanation-producer";
+import {
+  NativeExplanationTurns,
+  nativeTurnStatus,
+} from "./native-explanation-turns";
+import {
+  hasExplanationProducer,
+  selectExplanationProducer,
+} from "./explanation-producer";
+import type { InsightReasoning } from "#src/domain/insight-provider";
 
 /** The preparation request plus the head and base the run represents, so publication can recheck them. */
 export type GuideStartRequest = GuidePreparationRequest & {
   readonly headSha: string;
   readonly baseSha: string;
-  readonly reasoning: "low" | "medium" | "high";
+  readonly reasoning: InsightReasoning;
 };
 
 /** What the coordinator needs from Guide generation. */
 export type GuideGenerationStarter = {
+  recover(key: InsightSlotKey): Promise<Result<void, "storage_unavailable">>;
   start(
     request: GuideStartRequest,
   ): Promise<
@@ -63,8 +75,6 @@ export type GuideGenerationStarter = {
     request: GuideResumeRequest,
   ): Promise<Result<void, GuideResumeFailure>>;
 };
-
-type ChildInvoker = Pick<PiInsightChildInvoker, "invokeGuide">;
 
 /**
  * Drives a Guide from the public Start: C1 preparation, then an owned child with app-owned durable tools and request
@@ -90,7 +100,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
     private readonly preparation: ExplanationPreparationService,
     private readonly authority: InsightSlotAuthority,
     private readonly resources: InsightResourceBundle,
-    private readonly invoker: ChildInvoker,
+    private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
   ) {
     this.artifacts = new InsightArtifactStore(
@@ -125,6 +135,11 @@ export class GuideGenerationService implements GuideGenerationStarter {
   ): Promise<
     Result<{ readonly run: AdmittedRun }, GuidePreparationFailureReason>
   > {
+    if (
+      !hasExplanationProducer(this.producers, request.selection.provider) ||
+      request.reasoning !== request.selection.reasoning
+    )
+      return err("invalid_source");
     const operation = this.preparation.begin(request);
     const admitted = await operation.admission;
     if (admitted._tag === "err") return admitted;
@@ -146,13 +161,22 @@ export class GuideGenerationService implements GuideGenerationStarter {
   async resume(
     request: GuideResumeRequest,
   ): Promise<Result<void, GuideResumeFailure>> {
+    const recovered = await this.recover({
+      profileId: request.profileId,
+      reviewId: request.reviewId,
+      type: "guide",
+    });
+    if (recovered._tag === "err") return err("storage");
     const planned = await this.resumption.prepare(request);
     if (planned._tag === "err") return planned;
     const { pass, resume } = planned.value;
     const activeId = parseInsightRunId(pass.run.runId);
     if (activeId._tag === "err") return err("invalid");
     const { run } = pass;
-    if (this.owned.has(run.runId)) return err("busy");
+    if (this.owned.has(run.runId)) {
+      if (!(await this.resting(run))) return err("busy");
+      this.owned.delete(run.runId);
+    }
     const controller = new AbortController();
     const resumed = await this.authority.explanation.resume(run, resume, () =>
       this.preparation.representedInputs(pass.request, pass.request),
@@ -179,6 +203,57 @@ export class GuideGenerationService implements GuideGenerationStarter {
       },
       this.finishDrive(run, () => this.runPass(advanced, controller)),
     );
+    return ok(undefined);
+  }
+
+  /** Revalidates and publishes a frozen native result locally, without another paid generation. */
+  async recover(
+    key: InsightSlotKey,
+  ): Promise<Result<void, "storage_unavailable">> {
+    if (key.type !== "guide") return ok(undefined);
+    const planned = await recoverNativeExplanationPass(
+      this.artifacts,
+      this.authority,
+      this.preparation,
+      key,
+      this.owned,
+    );
+    if (planned._tag === "err") return planned;
+    if (planned.value === undefined) return ok(undefined);
+    const { pass } = planned.value;
+    const slot = await this.slots.readCurrent(
+      key.profileId,
+      key.reviewId,
+      "guide",
+    );
+    if (slot._tag === "err" || slot.value === undefined)
+      return err("storage_unavailable");
+    const controller = new AbortController();
+    const id = parseInsightRunId(pass.run.runId);
+    if (id._tag === "err") return err("storage_unavailable");
+    this.owned.set(pass.run.runId, {
+      ...pass.run,
+      runId: id.value,
+      controller,
+      preparing: false,
+    });
+    const baseline = {
+      version: slot.value.record.version,
+      digest: slotPointerDigest(slot.value),
+    };
+    const completion = this.finishDrive(pass.run, () =>
+      this.conclusion.conclude(
+        pass,
+        { _tag: "finished" },
+        controller,
+        baseline,
+      ),
+    );
+    this.resources.work.track(() => {
+      this.stopping.add(pass.run.runId);
+      controller.abort();
+    }, completion);
+    await completion;
     return ok(undefined);
   }
 
@@ -232,6 +307,14 @@ export class GuideGenerationService implements GuideGenerationStarter {
     );
     if (read._tag === "err") return false;
     const status = read.value.state.status;
+    if (status === "paused" && read.value.state.nativeExecution !== undefined) {
+      const native = await nativeTurnStatus(
+        this.artifacts,
+        { run },
+        read.value.state,
+      );
+      return native._tag === "ok" && native.value.ceased;
+    }
     return (
       isTerminalStatus(status) || status === "complete" || status === "paused"
     );
@@ -344,7 +427,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
       return;
     }
     const halt = { unknown: false };
-    let outcome: PiGuideChildOutcome;
+    let outcome: ExplanationProducerOutcome;
     try {
       const context: GuideRunContext = {
         run,
@@ -356,28 +439,77 @@ export class GuideGenerationService implements GuideGenerationStarter {
         this.artifacts,
         this.now,
       );
-      outcome = await this.invoker.invokeGuide({
+      const producer = await selectExplanationProducer(
+        this.producers,
+        this.artifacts,
+        this.authority.explanation,
+        pass,
+      );
+      const identity = {
+        runId: run.runId,
+        generation: pass.generation,
+        cancelEpoch: pass.cancelEpoch,
+        connection: randomBytes(18).toString("base64url"),
+      };
+      const input = {
         profileId: run.profileId,
         sessionId: request.sessionId,
         model: request.selection.model,
         reasoning: request.reasoning,
         language: request.selection.language,
         evidence: pass.evidence,
-        identity: {
-          runId: run.runId,
-          generation: pass.generation,
-          cancelEpoch: pass.cancelEpoch,
-          connection: randomBytes(18).toString("base64url"),
-        },
-        handler: async (frame) => {
-          // After one unknown outcome nothing further is recorded or permitted on this connection.
-          if (halt.unknown) return { status: "unknown" };
-          const answered = await this.route(context, staging, frame);
-          if (answered.status === "unknown") halt.unknown = true;
-          return answered;
-        },
+        identity,
+        deadline: { kind: "no-total-deadline/1" } as const,
         signal: controller.signal,
-      });
+      };
+      if (producer === undefined)
+        outcome = {
+          _tag: "failed",
+          reason: "runtime_unavailable",
+          effectKnown: true,
+        };
+      else if (producer.transport === "api")
+        outcome = await producer.invokeGuide({
+          ...input,
+          handler: async (frame) => {
+            // After one unknown outcome nothing further is recorded or permitted on this connection.
+            if (halt.unknown) return { status: "unknown" };
+            const answered = await this.route(context, staging, frame);
+            if (answered.status === "unknown") halt.unknown = true;
+            return answered;
+          },
+        });
+      else {
+        const lifecycle = new NativeExplanationTurns(
+          this.authority.explanation,
+          this.artifacts,
+          context,
+          request,
+          identity.connection,
+          this.now,
+          controller.signal,
+        );
+        outcome = await producer.invokeGuide({
+          ...input,
+          lifecycle,
+          tool: async (call) => {
+            if (!lifecycle.started)
+              return { status: "refused", reason: "stale_identity" };
+            if (halt.unknown) return { status: "unknown" };
+            const answer = await this.operations.handle(context, call);
+            if (answer.status === "unknown") halt.unknown = true;
+            if (call.tool === "finish" && answer.status === "receipt")
+              await lifecycle.finish();
+            return answer;
+          },
+        });
+      }
+    } catch {
+      outcome = {
+        _tag: "failed",
+        reason: "execution_failed",
+        effectKnown: false,
+      };
     } finally {
       permit.value.release();
     }
@@ -409,7 +541,9 @@ export class GuideGenerationService implements GuideGenerationStarter {
 }
 
 /** After an unknown mutation or admission the child's own report cannot prove its effects known. */
-function uncertain(outcome: PiGuideChildOutcome): PiGuideChildOutcome {
+function uncertain(
+  outcome: ExplanationProducerOutcome,
+): ExplanationProducerOutcome {
   return outcome._tag === "failed"
     ? { ...outcome, effectKnown: false }
     : { _tag: "failed", reason: "execution_failed", effectKnown: false };

@@ -89,6 +89,9 @@ export type InsightJournalChange = {
   };
   /** The journal's dispatches index after a durable dispatch intent was appended. */
   readonly dispatches?: InsightArtifactIndexDescriptor;
+  readonly nativeExecution?: NonNullable<
+    InsightJournalState["nativeExecution"]
+  >;
   /** A resume advances the journal to this generation together with a raised cancel epoch and a `resume` Authorization. */
   readonly generation?: number;
   readonly authorization?: InsightArtifactReference;

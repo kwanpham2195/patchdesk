@@ -59,6 +59,30 @@ export class InsightSlotWriter {
     snapshot: InsightJournalSnapshot,
     change: InsightJournalChange,
   ): Promise<Result<InsightJournalSnapshot, InsightSlotFailure>> {
+    const native = change.nativeExecution ?? snapshot.state.nativeExecution;
+    const dispatches = change.dispatches ?? snapshot.state.dispatches;
+    if (native !== undefined || dispatches.count > 0) {
+      const authorization = await this.artifacts.readObject(
+        journal.profileId,
+        journal.reviewId,
+        insightAuthorizationCodec,
+        change.authorization ?? snapshot.state.authorization,
+      );
+      if (authorization._tag === "err") return failed();
+      const selection = await this.artifacts.readObject(
+        journal.profileId,
+        journal.reviewId,
+        insightProvenanceCodec,
+        authorization.value.selection,
+      );
+      if (
+        selection._tag === "err" ||
+        (native !== undefined
+          ? selection.value.provider === "pi" || dispatches.count > 0
+          : selection.value.provider !== "pi")
+      )
+        return failed();
+    }
     const staged: Array<{
       readonly schema: string;
       readonly root: InsightArtifactReference;
@@ -131,6 +155,16 @@ export class InsightSlotWriter {
         root: change.publication,
       });
     staged.push(...(change.staged ?? []));
+    if (change.nativeExecution !== undefined) {
+      staged.push({
+        schema: "Index<NativeTurnStart1>",
+        root: change.nativeExecution.starts.root,
+      });
+      staged.push({
+        schema: "Index<NativeTurnObservation1>",
+        root: change.nativeExecution.observations.root,
+      });
+    }
     const committed = await this.journals.applyInternalTransaction(
       journal,
       snapshot,
@@ -148,6 +182,7 @@ export class InsightSlotWriter {
           walkthroughRuntime: change.walkthroughRuntime,
           policy: change.policy,
           dispatches: change.dispatches,
+          nativeExecution: change.nativeExecution,
           authorization: change.authorization,
           publication: change.publication,
         }),

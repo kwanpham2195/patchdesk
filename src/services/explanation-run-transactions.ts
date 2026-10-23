@@ -60,18 +60,28 @@ export type ExplanationAuthorityInternals = {
 /** What an explicit Resume names: the unresolved evidence it acknowledges and the Authorization it records. */
 export type ExplanationResumeInput = {
   readonly generation: number;
-  readonly dispatchCount: number;
   readonly authorization: InsightArtifactReference;
 } & (
+  | { readonly dispatchCount: number; readonly native?: never }
   | {
-      readonly guideRuntime: InsightArtifactReference;
-      readonly walkthroughRuntime?: never;
+      readonly native: {
+        readonly startCount: number;
+        readonly startsRoot: string;
+        readonly observationsRoot: string;
+      };
+      readonly dispatchCount?: never;
     }
-  | {
-      readonly walkthroughRuntime: InsightArtifactReference;
-      readonly guideRuntime?: never;
-    }
-);
+) &
+  (
+    | {
+        readonly guideRuntime: InsightArtifactReference;
+        readonly walkthroughRuntime?: never;
+      }
+    | {
+        readonly walkthroughRuntime: InsightArtifactReference;
+        readonly guideRuntime?: never;
+      }
+  );
 
 /**
  * Guide and Walkthrough journal and slot transitions over the shared authority locks. Lock order is unchanged: producer
@@ -160,8 +170,17 @@ export class ExplanationRunTransactions {
           state.walkthroughRuntime !== undefined &&
           input.walkthroughRuntime !== undefined) &&
       state.generation === input.generation &&
-      state.dispatches.count === input.dispatchCount &&
-      input.dispatchCount > 0
+      (input.native === undefined
+        ? state.nativeExecution === undefined &&
+          state.dispatches.count === input.dispatchCount &&
+          input.dispatchCount > 0
+        : state.dispatches.count === 0 &&
+          state.nativeExecution !== undefined &&
+          state.nativeExecution.starts.count === input.native.startCount &&
+          input.native.startCount > 0 &&
+          state.nativeExecution.starts.root.hash === input.native.startsRoot &&
+          state.nativeExecution.observations.root.hash ===
+            input.native.observationsRoot)
         ? ok({
             status: "running",
             generation: state.generation + 1,

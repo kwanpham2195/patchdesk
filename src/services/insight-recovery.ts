@@ -22,6 +22,7 @@ import type {
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
+import type { InsightSlotKey } from "./insight-slot-records";
 
 /**
  * Fails the Insight runs a crash left marked active, one Review at a time and
@@ -38,6 +39,9 @@ export class InsightRecovery {
     private readonly now: () => IsoTimestamp,
     private readonly slots: Pick<InsightSlotAuthority, "recover" | "hasSlot">,
     private readonly diagnostics?: Pick<ReviewDiagnosticService, "record">,
+    private readonly recoverExplanation?: (
+      key: InsightSlotKey,
+    ) => Promise<Result<void, "storage_unavailable"> | undefined>,
   ) {}
 
   async recover(input: {
@@ -47,6 +51,8 @@ export class InsightRecovery {
   }): Promise<
     Result<InsightRunResponse | undefined, InsightCoordinatorFailure>
   > {
+    const local = await this.recoverExplanation?.(input);
+    if (local?._tag === "err") return local;
     const slot = await this.slots.recover(input, this.active);
     return slot._tag === "err"
       ? err("storage_unavailable")
@@ -184,14 +190,11 @@ export class InsightRecovery {
     for (const { target, present } of slotChecks) {
       if (present._tag === "ok" && !present.value) continue;
       // react-doctor-disable-next-line react-doctor/async-await-in-loop -- slot reads go through the artifact worker, which refuses more than four pending reads, so recovery runs one slot at a time
-      const recovered = await this.slots.recover(
-        {
-          profileId: target.profileId,
-          reviewId: target.review.id,
-          type: target.type,
-        },
-        this.active,
-      );
+      const recovered = await this.recover({
+        profileId: target.profileId,
+        reviewId: target.review.id,
+        type: target.type,
+      });
       if (recovered._tag === "err")
         await this.recordRecoveryDiagnostic(
           target.profileId,

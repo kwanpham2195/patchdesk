@@ -25,6 +25,8 @@ import {
   insightLegacyFailureCodec,
 } from "#src/domain/insight-run-binding-contract";
 import { err, ok, type Result } from "#src/domain/result";
+import { nativeTurnStatus } from "./native-explanation-turns";
+import { definedProps } from "#src/domain/defined-props";
 
 /** The one published Guide a Review's slot names, with the handles page reads need. */
 export type GuideResultView = {
@@ -198,12 +200,41 @@ export class GuideResultReader {
       if (intent?._tag !== "ok") return err("storage_unavailable");
       lastRequestHash = intent.value.requestHash;
     }
+    const native =
+      state.nativeExecution === undefined ||
+      state.nativeExecution.starts.count === 0
+        ? undefined
+        : await nativeTurnStatus(
+            this.artifacts,
+            {
+              run: {
+                profileId,
+                reviewId,
+                type: "guide",
+                runId: active.runId,
+                journalId: active.journalId,
+              },
+            },
+            state,
+          );
+    if (native?._tag === "err") return err("storage_unavailable");
     return ok({
       runId: active.runId,
       status,
       generation: state.generation,
       dispatches: state.dispatches.count,
       lastRequestHash,
+      ...definedProps({
+        native:
+          native?._tag === "ok"
+            ? {
+                transport: "native" as const,
+                starts: state.nativeExecution?.starts.count ?? 0,
+                lastStartHash: native.value.newest.hash,
+                cessationConfirmed: native.value.ceased,
+              }
+            : undefined,
+      }),
     });
   }
 

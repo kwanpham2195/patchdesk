@@ -1,38 +1,21 @@
 import { randomBytes } from "node:crypto";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
-import type { ExplanationConnectionIdentity } from "#src/domain/explanation-channel";
-import type {
-  WalkthroughAppOutcome,
-  WalkthroughChildFrame,
-} from "#src/domain/walkthrough-protocol";
+import type { WalkthroughAppOutcome } from "#src/domain/walkthrough-protocol";
 import type { IsoTimestamp } from "#src/domain/ids";
-import type { GuideStartRequest } from "./guide-generation-service";
-import type { PiGuideChildOutcome } from "./pi-insight-child-invoker";
+import type {
+  ExplanationProducers,
+  ExplanationProducerOutcome,
+} from "./explanation-producer";
+import { NativeExplanationTurns } from "./native-explanation-turns";
+import { selectExplanationProducer } from "./explanation-producer";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
 import { ExplanationRequestDispatch } from "./explanation-request-dispatch";
 import { WalkthroughRunOperations } from "./walkthrough-generation-operations";
 import type { WalkthroughPass } from "./walkthrough-generation-resume";
 
-/** Internal producer capability; no public Start or reader selects it yet. */
-export type WalkthroughProducer = {
-  invokeWalkthroughSession(input: {
-    readonly profileId: string;
-    readonly sessionId: string;
-    readonly model: string;
-    readonly reasoning: "low" | "medium" | "high";
-    readonly language: GuideStartRequest["selection"]["language"];
-    readonly evidence: WalkthroughPass["evidence"];
-    readonly identity: ExplanationConnectionIdentity;
-    readonly deadlineAt: string;
-    readonly signal: AbortSignal;
-    readonly handler: (
-      frame: WalkthroughChildFrame,
-    ) => Promise<WalkthroughAppOutcome>;
-  }): Promise<PiGuideChildOutcome>;
-};
 type ProducerOutcome = {
   readonly expired: boolean;
-  readonly outcome: PiGuideChildOutcome;
+  readonly outcome: ExplanationProducerOutcome;
 };
 
 /** One owned channel and deadline timer; uncertainty closes every further tool and paid-request admission. */
@@ -41,7 +24,7 @@ export class WalkthroughProducerPass {
   constructor(
     private readonly artifacts: InsightArtifactStore,
     private readonly authority: InsightSlotAuthority,
-    private readonly invoker: WalkthroughProducer,
+    private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
   ) {
     this.operations = new WalkthroughRunOperations(
@@ -58,11 +41,13 @@ export class WalkthroughProducerPass {
     const { run, request } = pass;
     let unknown = false;
     let expired = false;
+    const deadline = new AbortController();
+    const signal = AbortSignal.any([controller.signal, deadline.signal]);
     const remaining = Date.parse(pass.deadlineAt) - Date.parse(this.now());
     const timer = setTimeout(
       () => {
         expired = true;
-        controller.abort();
+        deadline.abort();
       },
       Math.max(0, remaining),
     );
@@ -77,49 +62,95 @@ export class WalkthroughProducerPass {
       this.now,
       "walkthrough",
     );
-    let outcome: PiGuideChildOutcome;
+    let outcome: ExplanationProducerOutcome;
     try {
       if (remaining <= 0) {
         expired = true;
-        controller.abort();
+        deadline.abort();
         outcome = { _tag: "failed", reason: "timed_out", effectKnown: true };
-      } else
-        outcome = await this.invoker.invokeWalkthroughSession({
+      } else {
+        const producer = await selectExplanationProducer(
+          this.producers,
+          this.artifacts,
+          this.authority.explanation,
+          pass,
+        );
+        const identity = {
+          runId: run.runId,
+          generation: pass.generation,
+          cancelEpoch: pass.cancelEpoch,
+          connection: randomBytes(18).toString("base64url"),
+        };
+        const input = {
           profileId: run.profileId,
           sessionId: request.sessionId,
           model: request.selection.model,
           reasoning: request.reasoning,
           language: request.selection.language,
           evidence: pass.evidence,
-          deadlineAt: pass.deadlineAt,
-          identity: {
-            runId: run.runId,
-            generation: pass.generation,
-            cancelEpoch: pass.cancelEpoch,
-            connection: randomBytes(18).toString("base64url"),
-          },
-          signal: controller.signal,
-          handler: async (frame) => {
-            if (unknown) return { status: "unknown" };
-            let answer: WalkthroughAppOutcome;
-            switch (frame.kind) {
-              case "tool":
-                answer = await this.operations.handle(context, frame.call);
-                break;
-              case "request_open":
-                answer = dispatch.open(frame.totalBytes);
-                break;
-              case "request_chunk":
-                answer = dispatch.chunk(frame);
-                break;
-              case "request_commit":
-                answer = await dispatch.commit(context, frame);
-                break;
-            }
-            if (answer.status === "unknown") unknown = true;
-            return answer;
-          },
-        });
+          deadline: {
+            kind: "walkthrough-deadline/1",
+            deadlineAt: pass.deadlineAt,
+          } as const,
+          identity,
+          signal,
+        };
+        if (producer === undefined)
+          outcome = {
+            _tag: "failed",
+            reason: "runtime_unavailable",
+            effectKnown: true,
+          };
+        else if (producer.transport === "api")
+          outcome = await producer.invokeWalkthroughSession({
+            ...input,
+            handler: async (frame) => {
+              if (unknown) return { status: "unknown" };
+              let answer: WalkthroughAppOutcome;
+              switch (frame.kind) {
+                case "tool":
+                  answer = await this.operations.handle(context, frame.call);
+                  break;
+                case "request_open":
+                  answer = dispatch.open(frame.totalBytes);
+                  break;
+                case "request_chunk":
+                  answer = dispatch.chunk(frame);
+                  break;
+                case "request_commit":
+                  answer = await dispatch.commit(context, frame);
+                  break;
+              }
+              if (answer.status === "unknown") unknown = true;
+              return answer;
+            },
+          });
+        else {
+          const lifecycle = new NativeExplanationTurns(
+            this.authority.explanation,
+            this.artifacts,
+            context,
+            request,
+            identity.connection,
+            this.now,
+            signal,
+          );
+          outcome = await producer.invokeWalkthroughSession({
+            ...input,
+            lifecycle,
+            tool: async (call) => {
+              if (!lifecycle.started)
+                return { status: "refused", reason: "stale_identity" };
+              if (unknown) return { status: "unknown" };
+              const answer = await this.operations.handle(context, call);
+              if (answer.status === "unknown") unknown = true;
+              if (call.tool === "finish" && answer.status === "receipt")
+                await lifecycle.finish();
+              return answer;
+            },
+          });
+        }
+      }
     } catch {
       outcome = {
         _tag: "failed",

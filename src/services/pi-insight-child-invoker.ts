@@ -3,27 +3,25 @@ import {
   insightFailureDiagnostic,
   sanitizedInsightFailureDetail,
 } from "#src/domain/insight-failure-diagnostic";
-import {
-  insightEvidenceReference,
-  type InsightEvidenceReference,
-} from "./insight-evidence-reference";
+import { insightEvidenceReference } from "./insight-evidence-reference";
 import { resolveWalkthroughTimeoutMs } from "./child-invocation";
 import { join } from "node:path";
 
 import { providerEnvironmentNames } from "#src/adapters/pi/pi-provider-catalog";
 import { runExplanationChild } from "#src/adapters/process/explanation-child-channel";
 import { runGuideChild } from "#src/adapters/process/guide-child-channel";
-import type {
-  ExplanationConnectionIdentity,
-  ExplanationFrameIdentity,
-} from "#src/domain/explanation-channel";
+import type { ExplanationFrameIdentity } from "#src/domain/explanation-channel";
 import { guideChildFrameSchema } from "#src/domain/guide-protocol";
 import {
   walkthroughChildFrameSchema,
   type WalkthroughChildFrame,
   type WalkthroughAppOutcome,
 } from "#src/domain/walkthrough-protocol";
-import type { WalkthroughProducer } from "./walkthrough-producer-pass";
+import type {
+  ApiExplanationProducer,
+  ExplanationDeadline,
+  ExplanationProducerOutcome,
+} from "./explanation-producer";
 import type {
   GuideAppOutcome,
   GuideChildFrame,
@@ -107,18 +105,10 @@ export const unavailablePiInsightInvoker: InsightInvoker = {
   },
 };
 
-/** How a tool-driven Guide child ended. `effectKnown` is false when a recorded request may have reached the provider. */
-export type PiGuideChildOutcome =
-  | { readonly _tag: "finished" }
-  | {
-      readonly _tag: "failed";
-      readonly reason: PiInsightChildFailure["reason"];
-      readonly detail?: string;
-      readonly effectKnown: boolean;
-    };
-
 /** Runs a bounded app-owned one-shot child with the selected built-in provider's ambient credentials. */
 export class PiInsightChildInvoker implements InsightInvoker {
+  /** Only this API transport receives request staging frames and FD3 permissions. */
+  readonly transport = "api" as const;
   constructor(
     private readonly commands: CommandRunner,
     private readonly projectRoot: string,
@@ -251,37 +241,29 @@ export class PiInsightChildInvoker implements InsightInvoker {
    * the app answers each frame through `handler`. A child that reported its own failure has known effects; one that was
    * killed, timed out or broke the protocol may have a request in flight, so its effects are unknown.
    */
-  async invokeGuide(input: {
-    readonly profileId: string;
-    readonly sessionId: string;
-    readonly model: string;
-    readonly reasoning: "low" | "medium" | "high";
-    readonly language: InsightLanguage;
-    readonly evidence: InsightEvidenceReference;
-    readonly identity: ExplanationConnectionIdentity;
-    readonly handler: (frame: GuideChildFrame) => Promise<GuideAppOutcome>;
-    readonly signal: AbortSignal;
-  }): Promise<PiGuideChildOutcome> {
+  async invokeGuide(
+    input: Parameters<ApiExplanationProducer["invokeGuide"]>[0],
+  ): Promise<ExplanationProducerOutcome> {
     return this.invokeExplanation<GuideChildFrame, GuideAppOutcome>(
       input,
       "guide_session",
       guideChildFrameSchema,
       { status: "refused", reason: "storage" },
-      undefined,
+      input.deadline,
       runGuideChild,
     );
   }
 
   /** Walkthrough generation uses only the admitted private-channel session. */
   invokeWalkthroughSession(
-    input: Parameters<WalkthroughProducer["invokeWalkthroughSession"]>[0],
-  ): Promise<PiGuideChildOutcome> {
+    input: Parameters<ApiExplanationProducer["invokeWalkthroughSession"]>[0],
+  ): Promise<ExplanationProducerOutcome> {
     return this.invokeExplanation<WalkthroughChildFrame, WalkthroughAppOutcome>(
       input,
       "walkthrough_session",
       walkthroughChildFrameSchema,
       { status: "refused", reason: "storage" },
-      input.deadlineAt,
+      input.deadline,
     );
   }
 
@@ -296,15 +278,21 @@ export class PiInsightChildInvoker implements InsightInvoker {
     kind: "guide_session" | "walkthrough_session",
     frameSchema: v.GenericSchema<unknown, TFrame>,
     storageFailure: TOutcome,
-    deadlineAt?: string,
+    deadline: ExplanationDeadline,
     transport: typeof runExplanationChild<
       TFrame,
       TOutcome
     > = runExplanationChild,
-  ): Promise<PiGuideChildOutcome> {
+  ): Promise<ExplanationProducerOutcome> {
     const unknown = (
       reason: PiInsightChildFailure["reason"],
-    ): PiGuideChildOutcome => ({ _tag: "failed", reason, effectKnown: false });
+    ): ExplanationProducerOutcome => ({
+      _tag: "failed",
+      reason,
+      effectKnown: false,
+    });
+    if (input.reasoning === "minimal" || input.reasoning === "xhigh")
+      return { _tag: "failed", reason: "execution_failed", effectKnown: true };
     if (input.signal.aborted)
       return { _tag: "failed", reason: "cancelled", effectKnown: true };
     const stdin = JSON.stringify({
@@ -316,7 +304,12 @@ export class PiInsightChildInvoker implements InsightInvoker {
         reasoning: input.reasoning,
         language: input.language,
         evidence: input.evidence,
-        ...definedProps({ deadlineAt }),
+        ...definedProps({
+          deadlineAt:
+            deadline.kind === "walkthrough-deadline/1"
+              ? deadline.deadlineAt
+              : undefined,
+        }),
         channel: {
           runId: input.identity.runId,
           generation: input.identity.generation,

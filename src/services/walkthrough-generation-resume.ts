@@ -26,6 +26,7 @@ import type { InsightSlotAuthority } from "./insight-slot-authority";
 import type { InsightRunRef } from "./insight-slot-records";
 import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
+import { nativeTurnStatus } from "./native-explanation-turns";
 
 /** A resumed generation uses the original exact deadline, evidence, selection and spent/unknown dispatch history. */
 export type WalkthroughPass = {
@@ -68,14 +69,34 @@ export class WalkthroughResumePreparation {
     if (
       state.status !== "paused" ||
       state.generation !== request.expectedGeneration ||
-      state.dispatches.count !== request.acknowledgedDispatches ||
-      state.dispatches.count === 0 ||
       state.walkthroughPreparation === undefined ||
       state.walkthroughRuntime === undefined ||
       state.failure === null
     )
       return err("stale");
     const store = new InsightResultStore(this.artifacts, profileId, reviewId);
+    const nativeRequest = "transport" in request;
+    const native =
+      state.nativeExecution === undefined
+        ? undefined
+        : await nativeTurnStatus(this.artifacts, { run }, state);
+    if (nativeRequest !== (state.nativeExecution !== undefined))
+      return err("stale");
+    if (
+      nativeRequest &&
+      (native?._tag !== "ok" ||
+        native.value.generation !== state.generation ||
+        !native.value.ceased ||
+        request.acknowledgedStarts !== state.nativeExecution?.starts.count ||
+        request.lastStartHash !== native.value.newest.hash)
+    )
+      return err("stale");
+    if (
+      !nativeRequest &&
+      (state.dispatches.count === 0 ||
+        state.dispatches.count !== request.acknowledgedDispatches)
+    )
+      return err("stale");
     const policy = await this.artifacts.readObject(
       profileId,
       reviewId,
@@ -130,25 +151,32 @@ export class WalkthroughResumePreparation {
       failure.value.recovery !== "resume_required"
     )
       return err("stale");
-    const entries = await store.readIndex(
-      "WalkthroughDispatchIntent1",
-      state.dispatches,
-      state.dispatches.count - 1,
-      1,
-    );
+    const entries = nativeRequest
+      ? ok([])
+      : await store.readIndex(
+          "WalkthroughDispatchIntent1",
+          state.dispatches,
+          state.dispatches.count - 1,
+          1,
+        );
     const entry = entries._tag === "ok" ? entries.value[0] : undefined;
-    if (entry === undefined) return err("storage");
-    const intent = await this.artifacts.readObject(
-      profileId,
-      reviewId,
-      walkthroughDispatchIntentCodec,
-      entry.value,
-    );
-    if (intent._tag === "err") return err("storage");
+    if (!nativeRequest && entry === undefined) return err("storage");
+    const intent =
+      entry === undefined
+        ? undefined
+        : await this.artifacts.readObject(
+            profileId,
+            reviewId,
+            walkthroughDispatchIntentCodec,
+            entry.value,
+          );
+    if (intent?._tag === "err") return err("storage");
     if (
-      intent.value.requestHash !== request.lastRequestHash ||
-      intent.value.binding.hash !== state.binding.hash ||
-      intent.value.requestOrdinal !== state.dispatches.count
+      !nativeRequest &&
+      (intent === undefined ||
+        intent.value.requestHash !== request.lastRequestHash ||
+        intent.value.binding.hash !== state.binding.hash ||
+        intent.value.requestOrdinal !== state.dispatches.count)
     )
       return err("stale");
     const [identity, selection] = await Promise.all([
@@ -177,8 +205,12 @@ export class WalkthroughResumePreparation {
     const reasoning = selection.value.reasoning;
     if (
       session._tag === "err" ||
-      selection.value.provider !== "pi" ||
-      (reasoning !== "low" && reasoning !== "medium" && reasoning !== "high")
+      (nativeRequest
+        ? selection.value.provider === "pi"
+        : selection.value.provider !== "pi" ||
+          (reasoning !== "low" &&
+            reasoning !== "medium" &&
+            reasoning !== "high"))
     )
       return err("invalid");
     const start: GuideStartRequest = {
@@ -190,7 +222,7 @@ export class WalkthroughResumePreparation {
       headSha: binding.value.headSha,
       baseSha: binding.value.baseSha,
       selection: {
-        provider: "pi",
+        provider: selection.value.provider,
         model: model.value,
         reasoning,
         language: selection.value.language,
@@ -207,7 +239,9 @@ export class WalkthroughResumePreparation {
       this.artifacts.writeTextRoot(
         profileId,
         reviewId,
-        `Acknowledged ${state.dispatches.count} possibly sent requests, newest ${request.lastRequestHash}; explicit new generation ${state.generation + 1}. No request is replayed.`,
+        nativeRequest
+          ? `Acknowledged ${request.acknowledgedStarts} native starts, newest ${request.lastStartHash}; generation ${state.generation + 1} may spend again and cannot recover the previous response.`
+          : `Acknowledged ${state.dispatches.count} possibly sent requests, newest ${request.lastRequestHash}; explicit new generation ${state.generation + 1}. No request is replayed.`,
       ),
       store.emptyIndex("WalkthroughReceipt1"),
     ]);
@@ -242,7 +276,15 @@ export class WalkthroughResumePreparation {
       run,
       {
         generation: state.generation,
-        dispatchCount: state.dispatches.count,
+        ...(nativeRequest && state.nativeExecution !== undefined
+          ? {
+              native: {
+                startCount: state.nativeExecution.starts.count,
+                startsRoot: state.nativeExecution.starts.root.hash,
+                observationsRoot: state.nativeExecution.observations.root.hash,
+              },
+            }
+          : { dispatchCount: state.dispatches.count }),
         authorization: authorization.value,
         walkthroughRuntime: runtime.value,
       },

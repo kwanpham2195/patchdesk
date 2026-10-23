@@ -61,7 +61,10 @@ export class ExplanationRunAdmission {
     const generator =
       input.type === "walkthrough" ? this.walkthrough : this.guide;
     if (generator === undefined) return err("not_available");
-    if (input.reasoning === "minimal" || input.reasoning === "xhigh")
+    if (
+      (input.provider ?? "pi") === "pi" &&
+      (input.reasoning === "minimal" || input.reasoning === "xhigh")
+    )
       return err("not_available");
     const admitted = await this.operations.withReviewLock(
       input.profileId,
@@ -69,7 +72,7 @@ export class ExplanationRunAdmission {
       () => this.resolveStart(input, hooks),
     );
     if (admitted._tag === "err") return admitted;
-    const { review, model, session, hash } = admitted.value;
+    const { review, provider, model, session, hash } = admitted.value;
     const started = await generator.start({
       profileId: input.profileId,
       reviewId: input.reviewId,
@@ -80,7 +83,7 @@ export class ExplanationRunAdmission {
       baseSha: session.key.baseSha,
       reasoning: input.reasoning,
       selection: {
-        provider: "pi",
+        provider,
         model,
         reasoning: input.reasoning,
         language: input.language,

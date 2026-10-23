@@ -17,7 +17,11 @@ import {
 import { err, ok, type Result } from "#src/domain/result";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuideStartRequest } from "./guide-generation-service";
-import type { PiGuideChildOutcome } from "./pi-insight-child-invoker";
+import type { ExplanationProducerOutcome } from "./explanation-producer";
+import {
+  explanationStartCount,
+  nativeTurnStatus,
+} from "./native-explanation-turns";
 import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
 import type { InsightResourceBundle } from "./insight-resource-bundle";
@@ -233,7 +237,7 @@ export class GuidePassConclusion {
   /** Decides the pass's end from the journal, never from the child's word alone. */
   async conclude(
     pass: GuidePass,
-    outcome: PiGuideChildOutcome,
+    outcome: ExplanationProducerOutcome,
     controller: AbortController,
     baseline: GuideBaseline,
   ): Promise<void> {
@@ -251,11 +255,30 @@ export class GuidePassConclusion {
       state.generation !== pass.generation
     )
       return;
+    let nativeKnown = true;
+    if (
+      state.nativeExecution !== undefined &&
+      state.nativeExecution.starts.count > 0
+    ) {
+      const native = await nativeTurnStatus(
+        this.artifacts,
+        { run: ref },
+        state,
+      );
+      if (
+        native._tag === "err" ||
+        (native.value.generation === state.generation && !native.value.ceased)
+      ) {
+        await this.pause(pass);
+        return;
+      }
+      nativeKnown =
+        native.value.generation !== state.generation || native.value.known;
+    }
     if (state.status === "cancelling" || controller.signal.aborted) {
       await this.settle(ref, "cancelled", "generation");
       return;
     }
-    // Cancellation advances the epoch before the stopped pass can settle it.
     if (state.cancelEpoch !== pass.cancelEpoch) return;
     const runtimeRoot = state.guideRuntime;
     const runtime =
@@ -291,13 +314,27 @@ export class GuidePassConclusion {
         return;
       }
     }
+    if (!nativeKnown) {
+      await this.pause(pass);
+      return;
+    }
     if (outcome._tag === "failed") {
       // A recorded request that may have been served stays locked for explicit Resume; it is never replayed.
-      if (!outcome.effectKnown && state.dispatches.count > 0) {
-        await this.pause(ref);
+      if (
+        state.nativeExecution === undefined &&
+        !outcome.effectKnown &&
+        explanationStartCount(state) > 0
+      ) {
+        await this.pause(pass);
         return;
       }
-      await this.settle(ref, failureCode(outcome.reason), "generation");
+      await this.settle(
+        ref,
+        state.nativeExecution === undefined
+          ? failureCode(outcome.reason)
+          : "unresolved_work",
+        "generation",
+      );
       return;
     }
     await this.settle(ref, "unresolved_work", "generation");
@@ -420,14 +457,18 @@ export class GuidePassConclusion {
     }
   }
 
-  private async pause(ref: InsightRunRef): Promise<boolean> {
+  private async pause(pass: GuidePass): Promise<boolean> {
+    const ref = pass.run;
     try {
       const paused = await this.authority.explanation.produce(
         ref,
         async ({ state }) =>
-          state.status === "running" || state.status === "waiting"
+          state.generation === pass.generation &&
+          state.cancelEpoch === pass.cancelEpoch &&
+          (state.status === "running" || state.status === "waiting")
             ? ok({
                 status: "paused" as const,
+                usageUnknown: true,
                 failure: {
                   code: "paid_dispatch_unknown" as const,
                   phase: "generation" as const,
@@ -443,14 +484,12 @@ export class GuidePassConclusion {
   }
 }
 
-type PiGuideChildFailure = Extract<
-  PiGuideChildOutcome,
+type ProducerFailure = Extract<
+  ExplanationProducerOutcome,
   { _tag: "failed" }
 >["reason"];
 
-function failureCode(
-  reason: PiGuideChildFailure,
-): InsightFailureRecord["code"] {
+function failureCode(reason: ProducerFailure): InsightFailureRecord["code"] {
   switch (reason) {
     case "cancelled":
       return "cancelled";

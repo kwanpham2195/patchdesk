@@ -326,12 +326,11 @@ export function registerInsightRoutes(
     if (!parsed.success || profileId?._tag !== "ok" || reviewId?._tag !== "ok")
       return context.json({ error: "invalid_input" }, 400);
     const resumed = await resumable.resumeGuide({
+      ...parsed.output,
       profileId: profileId.value,
       reviewId: reviewId.value,
       runId: parsed.output.runId,
       expectedGeneration: parsed.output.expectedGeneration,
-      acknowledgedDispatches: parsed.output.acknowledgedDispatches,
-      lastRequestHash: parsed.output.lastRequestHash,
     });
     return resumed._tag === "ok"
       ? context.json({ status: "resumed" }, 202)

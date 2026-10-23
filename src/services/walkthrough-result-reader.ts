@@ -35,6 +35,8 @@ import type {
 import type { GuideRunStatus } from "#src/domain/guide-progress";
 import { err, ok, type Result } from "#src/domain/result";
 import type { AppLogService } from "./app-log-service";
+import { nativeTurnStatus } from "./native-explanation-turns";
+import { definedProps } from "#src/domain/defined-props";
 
 /** One strictly selected root and the bounded storage capabilities its pages need. */
 export type WalkthroughResultView = {
@@ -232,11 +234,7 @@ export class WalkthroughResultReader {
     );
     if (provenance._tag === "err")
       return err(walkthroughReadFailure(provenance.error));
-    if (
-      provenance.value.provider !== "pi" ||
-      provenance.value.origin !== "generated"
-    )
-      return err("invalid_result");
+    if (provenance.value.origin !== "generated") return err("invalid_result");
     const model = await store.readText(provenance.value.model, 4096);
     if (model._tag === "err") return err(walkthroughReadFailure(model.error));
     return ok({
@@ -256,7 +254,7 @@ export class WalkthroughResultReader {
         },
         generatedAt: pub.publishedAt,
         provenance: {
-          provider: "pi",
+          provider: provenance.value.provider,
           model: model.value,
           language: provenance.value.language,
         },
@@ -396,12 +394,41 @@ export class WalkthroughResultReader {
         return err(walkthroughReadFailure(intent.error));
       lastRequestHash = intent.value.requestHash;
     }
+    const native =
+      state.nativeExecution === undefined ||
+      state.nativeExecution.starts.count === 0
+        ? undefined
+        : await nativeTurnStatus(
+            this.artifacts,
+            {
+              run: {
+                profileId,
+                reviewId,
+                type: "walkthrough",
+                runId: active.runId,
+                journalId: active.journalId,
+              },
+            },
+            state,
+          );
+    if (native?._tag === "err") return err("storage_unavailable");
     return ok({
       runId: active.runId,
       status,
       generation: state.generation,
       dispatches: state.dispatches.count,
       lastRequestHash,
+      ...definedProps({
+        native:
+          native?._tag === "ok"
+            ? {
+                transport: "native" as const,
+                starts: state.nativeExecution?.starts.count ?? 0,
+                lastStartHash: native.value.newest.hash,
+                cessationConfirmed: native.value.ceased,
+              }
+            : undefined,
+      }),
     });
   }
 
