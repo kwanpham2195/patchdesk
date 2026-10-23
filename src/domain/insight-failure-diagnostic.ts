@@ -5,6 +5,7 @@ import {
 } from "./analysis-invocation-outcome";
 import type { Result } from "./result";
 import type { InsightFailureCategory } from "./insight-record";
+import { CODEX_EXPLANATION_VERSION_MESSAGE } from "./codex-explanation-version";
 
 /** Safe diagnostic fields; provider text is never copied into them. */
 export type InsightFailureDiagnostic = {
@@ -19,6 +20,16 @@ export function insightFailureDiagnostic(
   phase = "turn",
   detail?: string,
 ): Required<InsightFailureDiagnostic> {
+  if (
+    reason === "runtime_unavailable" &&
+    phase === "native_policy_unsupported" &&
+    detail === "unsupported_codex_version"
+  )
+    return {
+      phase,
+      code: "unsupported_codex_version",
+      detail: CODEX_EXPLANATION_VERSION_MESSAGE,
+    };
   const safePhase = /^[a-z_]{1,40}$/.test(phase) ? phase : "turn";
   return {
     phase: safePhase,

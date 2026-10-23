@@ -1,3 +1,5 @@
+import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
+import type { InsightRunRef } from "./insight-slot-records";
 import { changeIntentProvenance } from "#src/domain/change-intent";
 import {
   InsightFindingCommands,
@@ -854,6 +856,22 @@ export class InsightRunCoordinator {
       activity: this.activityOf(input),
       ...observed.value,
     });
+  }
+
+  /** Keeps one bounded native activity trace per Review/type, shared with ordinary run polling. */
+  recordExplanationActivity(
+    run: InsightRunRef,
+    event: InsightActivityEvent,
+  ): void {
+    const id = parseInsightRunId(run.runId);
+    if (id._tag === "err") return;
+    const key = activityTraceKey(run.profileId, run.reviewId, run.type);
+    let trace = this.traces.get(key);
+    if (trace?.runId !== id.value) {
+      trace = { runId: id.value, activity: new InsightActivityBuffer() };
+      this.traces.set(key, trace);
+    }
+    trace.activity.append(event);
   }
 
   private activityOf(input: {

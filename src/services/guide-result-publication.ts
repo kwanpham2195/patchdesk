@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { definedProps } from "#src/domain/defined-props";
 import * as v from "valibot";
 
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
@@ -18,9 +19,11 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuideStartRequest } from "./guide-generation-service";
 import type { ExplanationProducerOutcome } from "./explanation-producer";
+import { explanationVersionDiagnostic } from "./explanation-producer";
 import {
   explanationStartCount,
   nativeTurnStatus,
+  nativePreflightMayOwnProcess,
 } from "./native-explanation-turns";
 import type { ExplanationPreparationService } from "./explanation-preparation-service";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
@@ -255,7 +258,9 @@ export class GuidePassConclusion {
       state.generation !== pass.generation
     )
       return;
-    let nativeKnown = true;
+    let nativeKnown =
+      pass.request.selection.provider === "pi" ||
+      (outcome._tag === "failed" && outcome.effectKnown);
     if (
       state.nativeExecution !== undefined &&
       state.nativeExecution.starts.count > 0
@@ -272,10 +277,12 @@ export class GuidePassConclusion {
         await this.pause(pass);
         return;
       }
-      nativeKnown =
-        native.value.generation !== state.generation || native.value.known;
+      if (native.value.generation === state.generation)
+        nativeKnown = native.value.known;
     }
     if (state.status === "cancelling" || controller.signal.aborted) {
+      // Process cessation does not resolve an unknown tool mutation.
+      if (!nativeKnown) return;
       await this.settle(ref, "cancelled", "generation");
       return;
     }
@@ -328,12 +335,19 @@ export class GuidePassConclusion {
         await this.pause(pass);
         return;
       }
+      const diagnostic = explanationVersionDiagnostic(
+        outcome,
+        pass.request.selection.provider,
+      );
       await this.settle(
         ref,
-        state.nativeExecution === undefined
-          ? failureCode(outcome.reason)
-          : "unresolved_work",
+        diagnostic !== undefined
+          ? "capability_unavailable"
+          : state.nativeExecution === undefined
+            ? failureCode(outcome.reason)
+            : "unresolved_work",
         "generation",
+        diagnostic,
       );
       return;
     }
@@ -448,9 +462,15 @@ export class GuidePassConclusion {
     ref: InsightRunRef,
     code: InsightFailureRecord["code"],
     phase: InsightFailureRecord["phase"],
+    diagnostic?: "unsupported_codex_version",
   ): Promise<boolean> {
     try {
-      const settled = await this.authority.settleRun({ ...ref, code, phase });
+      const settled = await this.authority.settleRun({
+        ...ref,
+        code,
+        phase,
+        diagnostic,
+      });
       return settled._tag === "ok" || settled.error === "not_active";
     } catch {
       return false;
@@ -462,20 +482,35 @@ export class GuidePassConclusion {
     try {
       const paused = await this.authority.explanation.produce(
         ref,
-        async ({ state }) =>
-          state.generation === pass.generation &&
-          state.cancelEpoch === pass.cancelEpoch &&
-          (state.status === "running" || state.status === "waiting")
+        async ({ state }) => {
+          const preflight = await nativePreflightMayOwnProcess(
+            this.artifacts,
+            { run: ref },
+            state,
+          );
+          if (preflight._tag === "err")
+            return err("storage_unavailable" as const);
+          return state.generation === pass.generation &&
+            state.cancelEpoch === pass.cancelEpoch &&
+            (state.status === "running" || state.status === "waiting")
             ? ok({
                 status: "paused" as const,
-                usageUnknown: true,
+                ...definedProps({
+                  usageUnknown:
+                    explanationStartCount(state) > 0
+                      ? (true as const)
+                      : undefined,
+                }),
                 failure: {
-                  code: "paid_dispatch_unknown" as const,
+                  code: preflight.value
+                    ? ("producer_unsettled" as const)
+                    : ("paid_dispatch_unknown" as const),
                   phase: "generation" as const,
                   recovery: "resume_required" as const,
                 },
               })
-            : ok(undefined),
+            : ok(undefined);
+        },
       );
       return paused._tag === "ok";
     } catch {

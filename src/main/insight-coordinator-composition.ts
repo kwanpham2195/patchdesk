@@ -1,3 +1,4 @@
+import { AccountExplanationProducer } from "#src/services/account-explanation-producer";
 import { app } from "electron";
 
 import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
@@ -200,8 +201,15 @@ export function insightCoordinatorFactory({
             undefined,
             paths.rootsEnvironment(),
           );
+    const codexProducer = new AccountExplanationProducer(
+      paths,
+      () => discoverPathOnlyExecutable("codex"),
+      readHead,
+    );
     const explanationProducers: ExplanationProducers =
-      guideInvoker === undefined ? {} : { pi: guideInvoker };
+      guideInvoker === undefined
+        ? { "codex-cli-account": codexProducer }
+        : { pi: guideInvoker, "codex-cli-account": codexProducer };
     const hasProducer = Object.values(explanationProducers).length > 0;
     const guide = !hasProducer
       ? undefined
@@ -220,8 +228,9 @@ export function insightCoordinatorFactory({
           resources,
           explanationProducers,
           now,
+          (run, event) => coordinator.recordExplanationActivity(run, event),
         );
-    return new InsightRunCoordinator(
+    const coordinator = new InsightRunCoordinator(
       new ReviewStore(paths),
       new ReviewSessionStore(paths),
       store,
@@ -263,7 +272,9 @@ export function insightCoordinatorFactory({
             resources,
             explanationProducers,
             now,
+            (run, event) => coordinator.recordExplanationActivity(run, event),
           ),
     );
+    return coordinator;
   };
 }

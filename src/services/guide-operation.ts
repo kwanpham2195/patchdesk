@@ -108,9 +108,11 @@ export function composeGuidePrompt(
 }
 
 /** The tool-driven Guide instruction text; the model never submits a whole result or an independent answer. */
-const GUIDE_SESSION_INSTRUCTIONS = `Generate a Guide for the reviewer from the supplied immutable evidence.
+const guideSessionInstructions = (
+  reader: "api" | "native",
+) => `Generate a Guide for the reviewer from the supplied immutable evidence.
 Explain the main behavior change first, followed by supporting changes.
-Use read_evidence_page and search_evidence to inspect captured evidence.
+${reader === "native" ? "Use native inspection tools to inspect captured evidence, following the native evidence instructions below." : "Use read_evidence_page and search_evidence to inspect captured evidence."}
 Open each logical group with open_group, in the order it should be read.
 Give it a short title and explanation. Add supporting file IDs and a short
 relevance note for each appearance through add_members.
@@ -140,9 +142,10 @@ export function composeGuideSessionPrompt(
     "identity" | "bundleId" | "entryPageId"
   >,
   language: InsightLanguage,
+  reader: "api" | "native" = "api",
 ): string {
   return [
-    GUIDE_SESSION_INSTRUCTIONS,
+    guideSessionInstructions(reader),
     insightOutputGuidance("guide", language),
     evidenceReferencePrompt(evidence),
   ].join("\n\n");

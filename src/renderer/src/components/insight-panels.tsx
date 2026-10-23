@@ -1,4 +1,8 @@
 import { useState } from "react";
+import {
+  CODEX_EXPLANATION_SUPPORTED_VERSIONS,
+  CODEX_EXPLANATION_VERSION_MESSAGE,
+} from "#src/domain/codex-explanation-version";
 
 import { History, Pause, Play } from "lucide-react";
 
@@ -350,7 +354,7 @@ export function InsightFailed({
   const retainedHead = retainedHeadSha ?? projection.retained?.headSha;
   const [repreparing, setRepreparing] = useState(false);
   const [reprepareFailed, setReprepareFailed] = useState(false);
-  const message = failureMessage(category);
+  const message = failureMessage(category, guideFailure?.diagnostic);
   const needsReprepare =
     category === "review_worktree_unavailable" ||
     category === "evidence_unavailable" ||
@@ -374,6 +378,7 @@ export function InsightFailed({
     >
       <AlertDescription className="basis-full space-y-1">
         <p>{message}</p>
+        <CodexVersionDetails diagnostic={guideFailure?.diagnostic} />
         {retainedHead === undefined ? (
           <p>No retained result.</p>
         ) : (
@@ -408,7 +413,10 @@ export function InsightFailed({
 
 function failureMessage(
   category: InsightFailureCategory | null | undefined,
+  diagnostic?: NonNullable<GuideSummary["failure"]>["diagnostic"],
 ): string {
+  if (diagnostic === "unsupported_codex_version")
+    return CODEX_EXPLANATION_VERSION_MESSAGE;
   switch (category) {
     case "authentication_required":
       return "The provider needs authentication.";
@@ -441,6 +449,19 @@ function failureMessage(
     default:
       return "This Insight run failed.";
   }
+}
+
+function CodexVersionDetails({
+  diagnostic,
+}: {
+  readonly diagnostic: NonNullable<GuideSummary["failure"]>["diagnostic"];
+}): React.JSX.Element | null {
+  return diagnostic === "unsupported_codex_version" ? (
+    <p>
+      Supported Codex versions:{" "}
+      {CODEX_EXPLANATION_SUPPORTED_VERSIONS.join(", ")}.
+    </p>
+  ) : null;
 }
 
 export function InsightOutdated({

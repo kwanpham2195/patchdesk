@@ -79,6 +79,7 @@ function InsightResumeControls({
   const controls = useInsightResume(type, identity, run, onSettled);
   const noun = INSIGHT_NOUNS[type];
   const [acknowledged, setAcknowledged] = useState(false);
+  const resumeReady = hasResumeEvidence(run);
   return (
     <section
       aria-label={`${noun} run`}
@@ -87,24 +88,26 @@ function InsightResumeControls({
       {run.status === "paused" ? (
         <>
           <p>{resumeSpendDisclosure(run)}</p>
-          <label className="flex items-start gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(event) => setAcknowledged(event.target.checked)}
-            />
-            <span>
-              I understand that resuming starts a new generation from the same
-              prepared inputs, may spend again, and does not recover those
-              responses.
-            </span>
-          </label>
+          {resumeReady ? (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(event) => setAcknowledged(event.target.checked)}
+              />
+              <span>
+                I understand that resuming starts a new generation from the same
+                prepared inputs, may spend again, and does not recover those
+                responses.
+              </span>
+            </label>
+          ) : null}
           <div className="flex gap-2">
             <Button
               size="xs"
               disabled={
                 !acknowledged ||
-                !hasResumeEvidence(run) ||
+                !resumeReady ||
                 controls.busy ||
                 disabledReason !== undefined
               }
@@ -166,6 +169,11 @@ function hasResumeEvidence(run: NonNullable<GuideRunStatus>): boolean {
 }
 
 function resumeSpendDisclosure(run: NonNullable<GuideRunStatus>): string {
+  if (!hasResumeEvidence(run)) {
+    return (run.native?.starts ?? run.dispatches) > 0
+      ? "Recorded provider activity may have spent your account allowance. Resume is unavailable because cleanup or recovery is not confirmed."
+      : "No provider requests or native turn starts were recorded. Resume is unavailable because cleanup or recovery is not confirmed.";
+  }
   return run.native === undefined
     ? `Generation ${run.generation} stopped with ${run.dispatches} recorded provider request${run.dispatches === 1 ? "" : "s"} whose responses are unknown. Nothing was sent again.`
     : "A native turn may have spent your account allowance. Resume starts a new generation and may spend again; it cannot recover the previous response.";

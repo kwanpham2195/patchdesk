@@ -27,6 +27,7 @@ import {
 import { err, ok, type Result } from "#src/domain/result";
 import { nativeTurnStatus } from "./native-explanation-turns";
 import { definedProps } from "#src/domain/defined-props";
+import { ExplanationFailureDiagnosticReader } from "./explanation-failure-diagnostic-reader";
 
 /** The one published Guide a Review's slot names, with the handles page reads need. */
 export type GuideResultView = {
@@ -58,6 +59,7 @@ export class GuideResultReader {
   private readonly slots: InsightSlotStore;
   private readonly artifacts: InsightArtifactStore;
   private readonly journals: InsightRunJournalReader;
+  private readonly diagnostics: ExplanationFailureDiagnosticReader;
 
   constructor(
     paths: PatchdeskPaths,
@@ -66,6 +68,11 @@ export class GuideResultReader {
     this.slots = new InsightSlotStore(paths, reader);
     this.artifacts = new InsightArtifactStore(paths, reader);
     this.journals = new InsightRunJournalReader(paths, this.artifacts, reader);
+    this.diagnostics = new ExplanationFailureDiagnosticReader(
+      paths,
+      this.artifacts,
+      this.journals,
+    );
   }
 
   async current(
@@ -231,7 +238,9 @@ export class GuideResultReader {
                 transport: "native" as const,
                 starts: state.nativeExecution?.starts.count ?? 0,
                 lastStartHash: native.value.newest.hash,
-                cessationConfirmed: native.value.ceased,
+                cessationConfirmed:
+                  native.value.generation === state.generation &&
+                  native.value.ceased,
               }
             : undefined,
       }),
@@ -276,11 +285,20 @@ export class GuideResultReader {
       if (parsed === undefined) return err("invalid_result");
       category = parsed;
     }
+    const diagnostic =
+      category === "runtime_unavailable"
+        ? await this.diagnostics.read(
+            { profileId, reviewId, type: "guide", runId: runId.value },
+            failure.value,
+          )
+        : ok(undefined);
+    if (diagnostic._tag === "err") return diagnostic;
     return ok({
       runId: runId.value,
       reason: failure.value.reason,
       category,
       retryable: failure.value.retryable,
+      ...definedProps({ diagnostic: diagnostic.value }),
     });
   }
 

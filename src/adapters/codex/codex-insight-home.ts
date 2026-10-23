@@ -309,6 +309,7 @@ export async function discoverCodexInsightSession(
   cwd: string,
   home: CodexInsightHome,
   signal?: AbortSignal,
+  supportedVersions?: ReadonlyArray<string>,
 ): Promise<Result<CodexInsightSession, CodexAppServerFailure>> {
   const discovery = create();
   try {
@@ -320,6 +321,15 @@ export async function discoverCodexInsightSession(
       home.original,
     );
     if (started._tag === "err") return started;
+    if (
+      supportedVersions !== undefined &&
+      !supportedVersions.some((version) => version === discovery.nativeVersion)
+    )
+      return err({
+        reason: "runtime_unavailable",
+        phase: "native_policy_unsupported",
+        detail: "unsupported_codex_version",
+      });
     const config = await discovery.request(
       "config/read",
       { cwd, includeLayers: true },
@@ -390,6 +400,17 @@ export async function discoverCodexInsightSession(
         home.directory,
       );
       if (opened._tag === "err") return opened;
+      if (
+        supportedVersions !== undefined &&
+        !supportedVersions.some(
+          (version) => version === privateDiscovery.nativeVersion,
+        )
+      )
+        return err({
+          reason: "runtime_unavailable",
+          phase: "native_policy_unsupported",
+          detail: "unsupported_codex_version",
+        });
       const [privateConfig, privateSkills] = await Promise.all([
         privateDiscovery.request(
           "config/read",

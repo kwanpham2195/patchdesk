@@ -1,3 +1,4 @@
+import { codexRpcMessageSchema } from "#src/adapters/codex/codex-app-server-rpc";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
@@ -9,7 +10,6 @@ import * as v from "valibot";
 
 import {
   buildCodexAnalysisPrompt,
-  codexRpcMessageSchema,
   CodexAppServerClient as ProductionCodexClient,
   MAX_ANALYSIS_CODEX_PROMPT_BYTES,
   parseTurnJson,

@@ -37,6 +37,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { AppLogService } from "./app-log-service";
 import { nativeTurnStatus } from "./native-explanation-turns";
 import { definedProps } from "#src/domain/defined-props";
+import { ExplanationFailureDiagnosticReader } from "./explanation-failure-diagnostic-reader";
 
 /** One strictly selected root and the bounded storage capabilities its pages need. */
 export type WalkthroughResultView = {
@@ -67,6 +68,7 @@ export class WalkthroughResultReader {
   private readonly slots: InsightSlotStore;
   private readonly artifacts: InsightArtifactStore;
   private readonly journals: InsightRunJournalReader;
+  private readonly diagnostics: ExplanationFailureDiagnosticReader;
 
   constructor(
     private readonly paths: PatchdeskPaths,
@@ -76,6 +78,11 @@ export class WalkthroughResultReader {
     this.slots = new InsightSlotStore(paths, reader);
     this.artifacts = new InsightArtifactStore(paths, reader);
     this.journals = new InsightRunJournalReader(paths, this.artifacts, reader);
+    this.diagnostics = new ExplanationFailureDiagnosticReader(
+      paths,
+      this.artifacts,
+      this.journals,
+    );
   }
 
   /** Current means the retained pointer, not necessarily the workbench's latest revision. */
@@ -425,7 +432,9 @@ export class WalkthroughResultReader {
                 transport: "native" as const,
                 starts: state.nativeExecution?.starts.count ?? 0,
                 lastStartHash: native.value.newest.hash,
-                cessationConfirmed: native.value.ceased,
+                cessationConfirmed:
+                  native.value.generation === state.generation &&
+                  native.value.ceased,
               }
             : undefined,
       }),
@@ -473,11 +482,20 @@ export class WalkthroughResultReader {
       if (found === undefined) return err("invalid_result");
       category = found;
     }
+    const diagnostic =
+      category === "runtime_unavailable"
+        ? await this.diagnostics.read(
+            { profileId, reviewId, type: "walkthrough", runId: run.value },
+            failure.value,
+          )
+        : ok(undefined);
+    if (diagnostic._tag === "err") return diagnostic;
     return ok({
       runId: run.value,
       reason: failure.value.reason,
       category,
       retryable: failure.value.retryable,
+      ...definedProps({ diagnostic: diagnostic.value }),
     });
   }
 }

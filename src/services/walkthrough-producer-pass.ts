@@ -1,3 +1,5 @@
+import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
+import type { InsightRunRef } from "./insight-slot-records";
 import { randomBytes } from "node:crypto";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import type { WalkthroughAppOutcome } from "#src/domain/walkthrough-protocol";
@@ -26,6 +28,10 @@ export class WalkthroughProducerPass {
     private readonly authority: InsightSlotAuthority,
     private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
+    private readonly onActivity?: (
+      run: InsightRunRef,
+      event: InsightActivityEvent,
+    ) => void,
   ) {
     this.operations = new WalkthroughRunOperations(
       authority.explanation,
@@ -94,6 +100,8 @@ export class WalkthroughProducerPass {
           } as const,
           identity,
           signal,
+          onActivity: (event: InsightActivityEvent) =>
+            this.onActivity?.(run, event),
         };
         if (producer === undefined)
           outcome = {

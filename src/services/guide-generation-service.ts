@@ -1,3 +1,4 @@
+import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
 import { randomBytes } from "node:crypto";
 
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
@@ -49,6 +50,7 @@ import type {
 import {
   NativeExplanationTurns,
   nativeTurnStatus,
+  nativePreflightMayOwnProcess,
 } from "./native-explanation-turns";
 import {
   hasExplanationProducer,
@@ -102,6 +104,10 @@ export class GuideGenerationService implements GuideGenerationStarter {
     private readonly resources: InsightResourceBundle,
     private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
+    private readonly onActivity?: (
+      run: InsightRunRef,
+      event: InsightActivityEvent,
+    ) => void,
   ) {
     this.artifacts = new InsightArtifactStore(
       destination,
@@ -307,6 +313,14 @@ export class GuideGenerationService implements GuideGenerationStarter {
     );
     if (read._tag === "err") return false;
     const status = read.value.state.status;
+    if (status === "paused") {
+      const preflight = await nativePreflightMayOwnProcess(
+        this.artifacts,
+        { run },
+        read.value.state,
+      );
+      if (preflight._tag === "err" || preflight.value) return false;
+    }
     if (status === "paused" && read.value.state.nativeExecution !== undefined) {
       const native = await nativeTurnStatus(
         this.artifacts,
@@ -461,6 +475,8 @@ export class GuideGenerationService implements GuideGenerationStarter {
         identity,
         deadline: { kind: "no-total-deadline/1" } as const,
         signal: controller.signal,
+        onActivity: (event: InsightActivityEvent) =>
+          this.onActivity?.(run, event),
       };
       if (producer === undefined)
         outcome = {
