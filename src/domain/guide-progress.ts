@@ -140,15 +140,27 @@ const guidePageSelectorSchema = v.variant("kind", [
  * The maintainer's explicit Resume acknowledgment. It names the run, the generation and the unresolved dispatch
  * evidence, and states that the responses of those requests are unknown and a new generation will spend again.
  */
-export const guideResumeRequestSchema = v.strictObject({
+const resumeIdentity = {
   profileId: profileIdSchema,
   reviewId: reviewIdSchema,
   runId: v.string(),
   expectedGeneration: insightArtifactUnsignedSchema,
-  acknowledgedDispatches: insightArtifactPositiveSchema,
-  lastRequestHash: insightArtifactHashSchema,
   acknowledgeUnknownSpend: v.literal(true),
-});
+};
+/** A closed acknowledgment of API request intents or native turn starts, never both. */
+export const guideResumeRequestSchema = v.union([
+  v.strictObject({
+    ...resumeIdentity,
+    acknowledgedDispatches: insightArtifactPositiveSchema,
+    lastRequestHash: insightArtifactHashSchema,
+  }),
+  v.strictObject({
+    ...resumeIdentity,
+    transport: v.literal("native"),
+    acknowledgedStarts: insightArtifactPositiveSchema,
+    lastStartHash: insightArtifactHashSchema,
+  }),
+]);
 
 /** The Guide run in progress or resting, as the maintainer needs it after reopening. */
 const guideRunSchema = v.nullable(
@@ -159,6 +171,14 @@ const guideRunSchema = v.nullable(
     dispatches: insightArtifactUnsignedSchema,
     /** Set for a paused run: the newest unresolved request a Resume must acknowledge. */
     lastRequestHash: v.nullable(insightArtifactHashSchema),
+    native: v.exactOptional(
+      v.strictObject({
+        transport: v.literal("native"),
+        starts: insightArtifactUnsignedSchema,
+        lastStartHash: v.nullable(insightArtifactHashSchema),
+        cessationConfirmed: v.boolean(),
+      }),
+    ),
   }),
 );
 export type GuideRunStatus = v.InferOutput<typeof guideRunSchema>;

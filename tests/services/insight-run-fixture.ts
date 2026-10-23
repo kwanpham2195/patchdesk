@@ -1,7 +1,7 @@
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
-import type { WalkthroughProducer } from "#src/services/walkthrough-producer-pass";
+import type { ApiExplanationProducer } from "#src/services/explanation-producer";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import type { PiInsightChildInvoker } from "#src/services/pi-insight-child-invoker";
@@ -137,7 +137,7 @@ export function contextPackFixture(
 }
 
 type FixtureOptions = {
-  walkthroughInvoker?: WalkthroughProducer;
+  walkthroughInvoker?: Pick<ApiExplanationProducer, "invokeWalkthroughSession">;
   guideInvoker?: Pick<PiInsightChildInvoker, "invokeGuide">;
   insightStore?: (paths: PatchdeskPaths) => InsightStore;
   operations?: ReviewOperationCoordinator;
@@ -298,7 +298,15 @@ export async function fixture(
           ),
           slots,
           resources,
-          guideInvoker,
+          {
+            pi: {
+              transport: "api",
+              ...guideInvoker,
+              invokeWalkthroughSession: async () => {
+                throw new Error("Unexpected Walkthrough producer");
+              },
+            },
+          },
           () => now,
         );
   const coordinator = new InsightRunCoordinator(
@@ -339,7 +347,15 @@ export async function fixture(
           ),
           slots,
           resources,
-          walkthroughInvoker,
+          {
+            pi: {
+              transport: "api",
+              ...walkthroughInvoker,
+              invokeGuide: async () => {
+                throw new Error("Unexpected Guide producer");
+              },
+            },
+          },
           () => now,
         ),
   );

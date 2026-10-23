@@ -32,6 +32,7 @@ import {
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
+import type { ExplanationProducers } from "#src/services/explanation-producer";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
@@ -199,25 +200,27 @@ export function insightCoordinatorFactory({
             undefined,
             paths.rootsEnvironment(),
           );
-    const guide =
-      guideInvoker === undefined
-        ? undefined
-        : new GuideGenerationService(
+    const explanationProducers: ExplanationProducers =
+      guideInvoker === undefined ? {} : { pi: guideInvoker };
+    const hasProducer = Object.values(explanationProducers).length > 0;
+    const guide = !hasProducer
+      ? undefined
+      : new GuideGenerationService(
+          paths,
+          new ExplanationPreparationService(
             paths,
-            new ExplanationPreparationService(
-              paths,
-              paths,
-              resources,
-              operations,
-              pack,
-              now,
-              slots,
-            ),
-            slots,
+            paths,
             resources,
-            guideInvoker,
+            operations,
+            pack,
             now,
-          );
+            slots,
+          ),
+          slots,
+          resources,
+          explanationProducers,
+          now,
+        );
     return new InsightRunCoordinator(
       new ReviewStore(paths),
       new ReviewSessionStore(paths),
@@ -243,7 +246,7 @@ export function insightCoordinatorFactory({
       { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
       resources.ownership.forScope(paths.dataDirectory()),
       guide,
-      guideInvoker === undefined
+      !hasProducer
         ? undefined
         : new WalkthroughGenerationService(
             paths,
@@ -258,7 +261,7 @@ export function insightCoordinatorFactory({
             ),
             slots,
             resources,
-            guideInvoker,
+            explanationProducers,
             now,
           ),
     );

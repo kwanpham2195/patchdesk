@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { nativeExecutionSchema } from "./native-explanation-turn";
 
 import {
   encodeInsightArtifactDirect,
@@ -43,6 +44,7 @@ const journalStateSchema = v.pipe(
     authorization: reference,
     policy: reference,
     dispatches: index,
+    nativeExecution: v.exactOptional(nativeExecutionSchema),
     usage: reference,
     seal: nullableReference,
     status: v.picklist([
@@ -67,6 +69,14 @@ const journalStateSchema = v.pipe(
     walkthroughPreparation: v.exactOptional(reference),
     walkthroughRuntime: v.exactOptional(reference),
   }),
+  v.check(
+    (state) =>
+      state.nativeExecution === undefined ||
+      (state.dispatches.count === 0 &&
+        (state.guideRuntime !== undefined ||
+          state.walkthroughRuntime !== undefined)),
+    "Native explanation starts and API request dispatches are exclusive.",
+  ),
   v.check(
     (state) =>
       (state.walkthroughPreparation === undefined ||

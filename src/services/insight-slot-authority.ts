@@ -18,6 +18,8 @@ import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contr
 import { insightBindingCodec } from "#src/domain/insight-run-binding-contract";
 import { guidePreparedInputCodec } from "#src/domain/guide-preparation";
 import { walkthroughPreparedInputCodec } from "#src/domain/walkthrough-preparation";
+import { guideRuntimeCodec } from "#src/domain/guide-result";
+import { walkthroughRuntimeCodec } from "#src/domain/walkthrough-result";
 import type { InsightJournalState } from "#src/domain/insight-run-journal-contract";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { err, ok, type Result } from "#src/domain/result";
@@ -40,6 +42,10 @@ import {
 } from "./insight-slot-admission";
 import { reconcilePublishedExplanation } from "./explanation-publication-recovery";
 import { ExplanationRunTransactions } from "./explanation-run-transactions";
+import {
+  explanationStartCount,
+  nativeTurnStatus,
+} from "./native-explanation-turns";
 import { InsightSlotStatus } from "./insight-slot-status";
 import { InsightSlotWriter } from "./insight-slot-writer";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
@@ -148,7 +154,8 @@ export class InsightSlotAuthority {
       if (state.status === "complete") return err("not_active");
       const cancelEpoch = state.cancelEpoch + 1;
       return ok(
-        state.status === "paused" || state.dispatches.count === 0
+        (state.status === "paused" && state.nativeExecution === undefined) ||
+          explanationStartCount(state) === 0
           ? settleUnowned(state, cancelEpoch)
           : { status: "cancelling", cancelEpoch },
       );
@@ -328,38 +335,100 @@ export class InsightSlotAuthority {
         runId: active.runId,
         journalId: active.journalId,
       };
-      const advanced = await this.advanceJournal(run, ({ state }): Decision => {
-        const { status, dispatches } = state;
-        if (isTerminalStatus(status)) return ok(undefined);
-        if (status === "complete") return err("not_active");
-        if (status === "cancelling") return ok(settleUnowned(state));
-        // A dispatched pause waits for an explicit Resume; only a pause with nothing to resume is released.
-        if (status === "paused")
-          return ok(
-            dispatches.count === 0
-              ? settleUnowned(state, state.cancelEpoch + 1)
-              : undefined,
-          );
-        return ok(
-          dispatches.count === 0
-            ? {
+      const advanced = await this.advanceJournal(
+        run,
+        async ({ state }): Promise<Decision> => {
+          const { status } = state;
+          if (isTerminalStatus(status)) return ok(undefined);
+          if (status === "complete") return err("not_active");
+          if (status === "cancelling") {
+            if (
+              state.nativeExecution !== undefined &&
+              state.nativeExecution.starts.count > 0
+            ) {
+              const native = await nativeTurnStatus(
+                this.artifacts,
+                { run },
+                state,
+              );
+              if (native._tag === "err") return failed();
+              if (!native.value.ceased)
+                return ok({ status: "cancelling", usageUnknown: true });
+            }
+            return ok(settleUnowned(state));
+          }
+          if (
+            state.nativeExecution !== undefined &&
+            state.nativeExecution.starts.count > 0 &&
+            status !== "paused"
+          ) {
+            const native = await nativeTurnStatus(
+              this.artifacts,
+              { run },
+              state,
+            );
+            if (native._tag === "err") return failed();
+            if (native.value.known) {
+              const ref =
+                input.type === "guide"
+                  ? state.guideRuntime
+                  : state.walkthroughRuntime;
+              if (ref === undefined) return failed();
+              const runtime =
+                input.type === "guide"
+                  ? await this.artifacts.readObject(
+                      input.profileId,
+                      input.reviewId,
+                      guideRuntimeCodec,
+                      ref,
+                    )
+                  : await this.artifacts.readObject(
+                      input.profileId,
+                      input.reviewId,
+                      walkthroughRuntimeCodec,
+                      ref,
+                    );
+              if (runtime._tag === "err") return failed();
+              if (runtime.value.frozen !== null) return ok(undefined);
+              return ok({
                 status: "failed",
                 failure: {
-                  code: "producer_unsettled",
-                  phase: phaseOf(state),
+                  code: "unresolved_work",
+                  phase: "generation",
                   recovery: "terminal",
                 },
-              }
-            : {
-                status: "paused",
-                failure: {
-                  code: "paid_dispatch_unknown",
-                  phase: "generation",
-                  recovery: "resume_required",
+              });
+            }
+          }
+          // A dispatched pause waits for an explicit Resume; only a pause with nothing to resume is released.
+          if (status === "paused")
+            return ok(
+              explanationStartCount(state) === 0
+                ? settleUnowned(state, state.cancelEpoch + 1)
+                : undefined,
+            );
+          return ok(
+            explanationStartCount(state) === 0
+              ? {
+                  status: "failed",
+                  failure: {
+                    code: "producer_unsettled",
+                    phase: phaseOf(state),
+                    recovery: "terminal",
+                  },
+                }
+              : {
+                  status: "paused",
+                  usageUnknown: true,
+                  failure: {
+                    code: "paid_dispatch_unknown",
+                    phase: "generation",
+                    recovery: "resume_required",
+                  },
                 },
-              },
-        );
-      });
+          );
+        },
+      );
       if (advanced._tag === "err") return advanced;
       return this.writer.releaseRun(run, slot.value, advanced.value);
     });
@@ -495,7 +564,7 @@ function settleUnowned(
       recovery: "terminal",
     },
   };
-  return state.dispatches.count > 0
+  return explanationStartCount(state) > 0
     ? { ...change, usageUnknown: true }
     : change;
 }
@@ -508,7 +577,7 @@ function settleDecision(
   const { status } = snapshot.state;
   if (isTerminalStatus(status)) return ok(undefined);
   if (status === "complete") return err("not_active");
-  const dispatched = snapshot.state.dispatches.count > 0;
+  const dispatched = explanationStartCount(snapshot.state) > 0;
   const change: InsightJournalChange = {
     status:
       code === "cancelled"

@@ -257,7 +257,10 @@ export class InsightRunCoordinator {
      * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
      */
     guide?: GuideGenerationStarter,
-    walkthrough?: Pick<WalkthroughGenerationService, "start" | "resume">,
+    walkthrough?: Pick<
+      WalkthroughGenerationService,
+      "start" | "resume" | "recover"
+    >,
   ) {
     this.active = owned;
     this.explanation = new ExplanationRunAdmission(
@@ -281,6 +284,12 @@ export class InsightRunCoordinator {
       () => this.now(),
       this.slots,
       this.diagnostics,
+      async (key) =>
+        key.type === "guide"
+          ? guide?.recover(key)
+          : key.type === "walkthrough"
+            ? walkthrough?.recover(key)
+            : undefined,
     );
     this.executor = new InsightRunExecutor(
       this.reviews,
@@ -781,7 +790,7 @@ export class InsightRunCoordinator {
     const slotted = await this.slots.hasSlot(input);
     if (slotted._tag === "err") return err("storage_unavailable");
     if (slotted.value) {
-      const reconciled = await this.slots.recover(input, this.active);
+      const reconciled = await this.recovery.recover(input);
       if (reconciled._tag === "err") return err("storage_unavailable");
       return this.observeCurrent(input);
     }

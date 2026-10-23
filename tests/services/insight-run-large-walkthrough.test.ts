@@ -5,7 +5,7 @@ import * as v from "valibot";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { WalkthroughProgressStore } from "#src/adapters/storage/walkthrough-progress-store";
-import type { WalkthroughProducer } from "#src/services/walkthrough-producer-pass";
+import type { ApiExplanationProducer } from "#src/services/explanation-producer";
 import { WalkthroughResultReader } from "#src/services/walkthrough-result-reader";
 import { WalkthroughProgressService } from "#src/services/walkthrough-result-progress";
 import { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
@@ -44,7 +44,9 @@ describe("large Walkthrough retention", () => {
         })),
       },
     ];
-    let producer: WalkthroughProducer | undefined;
+    let producer:
+      | Pick<ApiExplanationProducer, "invokeWalkthroughSession">
+      | undefined;
     const value = await fixture(
       {
         invoke: async () => {

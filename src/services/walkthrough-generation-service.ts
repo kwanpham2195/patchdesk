@@ -21,7 +21,14 @@ import type {
   GuideResumeRequest,
   GuideResumeFailure,
 } from "./guide-generation-resume";
-import type { PiGuideChildOutcome } from "./pi-insight-child-invoker";
+import type {
+  ExplanationProducers,
+  ExplanationProducerOutcome,
+} from "./explanation-producer";
+import {
+  explanationStartCount,
+  nativeTurnStatus,
+} from "./native-explanation-turns";
 import {
   slotPointerDigest,
   type GuideBaseline,
@@ -31,11 +38,11 @@ import {
   WalkthroughResumePreparation,
   type WalkthroughPass,
 } from "./walkthrough-generation-resume";
-import {
-  WalkthroughProducerPass,
-  type WalkthroughProducer,
-} from "./walkthrough-producer-pass";
+import { WalkthroughProducerPass } from "./walkthrough-producer-pass";
 import { WalkthroughPublisher } from "./walkthrough-result-publication";
+import { hasExplanationProducer } from "./explanation-producer";
+import { recoverNativeExplanationPass } from "./explanation-local-recovery";
+import type { InsightSlotKey } from "./insight-slot-records";
 
 /** Owns the admitted producer through durable tools, validation and guarded publication. */
 export class WalkthroughGenerationService {
@@ -54,7 +61,7 @@ export class WalkthroughGenerationService {
     private readonly preparation: ExplanationPreparationService,
     private readonly authority: InsightSlotAuthority,
     private readonly resources: InsightResourceBundle,
-    invoker: WalkthroughProducer,
+    private readonly producers: ExplanationProducers,
     private readonly now: () => IsoTimestamp,
   ) {
     this.artifacts = new InsightArtifactStore(
@@ -65,7 +72,7 @@ export class WalkthroughGenerationService {
     this.producer = new WalkthroughProducerPass(
       this.artifacts,
       authority,
-      invoker,
+      producers,
       now,
     );
     this.publisher = new WalkthroughPublisher(
@@ -92,9 +99,10 @@ export class WalkthroughGenerationService {
     >
   > {
     if (
-      request.selection.provider !== "pi" ||
       request.selection.reasoning !== request.reasoning ||
-      !["low", "medium", "high"].includes(request.selection.reasoning)
+      !hasExplanationProducer(this.producers, request.selection.provider) ||
+      (request.selection.provider === "pi" &&
+        !["low", "medium", "high"].includes(request.selection.reasoning))
     )
       return err("invalid_source");
     const operation = this.preparation.begin(request, "walkthrough");
@@ -124,7 +132,42 @@ export class WalkthroughGenerationService {
   ): Promise<
     Result<{ readonly completion: Promise<void> }, GuideResumeFailure>
   > {
-    if (this.owned.has(request.runId)) return err("busy");
+    const recovered = await this.recover({
+      profileId: request.profileId,
+      reviewId: request.reviewId,
+      type: "walkthrough",
+    });
+    if (recovered._tag === "err") return err("storage");
+    if (this.owned.has(request.runId)) {
+      const active = await this.authority.status.activeRun({
+        profileId: request.profileId,
+        reviewId: request.reviewId,
+        type: "walkthrough",
+      });
+      if (
+        active._tag === "err" ||
+        active.value === undefined ||
+        active.value.runId !== request.runId
+      )
+        return err("busy");
+      const snapshot = await this.authority.explanation.produce(
+        active.value,
+        async () => ok(undefined),
+      );
+      if (
+        snapshot._tag === "err" ||
+        snapshot.value.state.status !== "paused" ||
+        snapshot.value.state.nativeExecution === undefined
+      )
+        return err("busy");
+      const native = await nativeTurnStatus(
+        this.artifacts,
+        { run: active.value },
+        snapshot.value.state,
+      );
+      if (native._tag === "err" || !native.value.ceased) return err("busy");
+      this.owned.delete(request.runId);
+    }
     const resumed = await this.resumption.resume(request);
     if (resumed._tag === "err") return resumed;
     const pass = resumed.value;
@@ -147,6 +190,57 @@ export class WalkthroughGenerationService {
     return ok({ completion });
   }
 
+  /** Frozen receipts can finish validation and publication after reopen without spawning a CLI. */
+  async recover(
+    key: InsightSlotKey,
+  ): Promise<Result<void, "storage_unavailable">> {
+    if (key.type !== "walkthrough") return ok(undefined);
+    const planned = await recoverNativeExplanationPass(
+      this.artifacts,
+      this.authority,
+      this.preparation,
+      key,
+      this.owned,
+    );
+    if (planned._tag === "err") return planned;
+    if (planned.value === undefined) return ok(undefined);
+    if (planned.value.deadline.kind !== "walkthrough-deadline/1")
+      return err("storage_unavailable");
+    const pass: WalkthroughPass = {
+      ...planned.value.pass,
+      deadlineAt: planned.value.deadline.deadlineAt,
+    };
+    const slot = await this.slots.readCurrent(
+      key.profileId,
+      key.reviewId,
+      "walkthrough",
+    );
+    if (slot._tag === "err" || slot.value === undefined)
+      return err("storage_unavailable");
+    const baseline = {
+      version: slot.value.record.version,
+      digest: slotPointerDigest(slot.value),
+    };
+    const controller = new AbortController();
+    const id = parseInsightRunId(pass.run.runId);
+    if (id._tag === "err") return err("storage_unavailable");
+    this.owned.set(pass.run.runId, {
+      ...pass.run,
+      runId: id.value,
+      controller,
+      preparing: false,
+    });
+    const completion = this.finishDrive(pass.run, () =>
+      this.conclude(pass, { _tag: "finished" }, controller, baseline, false),
+    );
+    this.resources.work.track(() => {
+      this.stopping.add(pass.run.runId);
+      controller.abort();
+    }, completion);
+    await completion;
+    return ok(undefined);
+  }
+
   private async finishDrive(
     run: InsightRunRef,
     drive: () => Promise<void>,
@@ -160,9 +254,17 @@ export class WalkthroughGenerationService {
       const state = await this.authority.explanation.produce(run, async () =>
         ok(undefined),
       );
+      const native =
+        state._tag === "ok" &&
+        state.value.state.nativeExecution !== undefined &&
+        state.value.state.status === "paused"
+          ? await nativeTurnStatus(this.artifacts, { run }, state.value.state)
+          : undefined;
       if (
         shutdown ||
         (state._tag === "ok" &&
+          (native === undefined ||
+            (native._tag === "ok" && native.value.ceased)) &&
           (isTerminalStatus(state.value.state.status) ||
             state.value.state.status === "complete" ||
             state.value.state.status === "paused"))
@@ -302,18 +404,25 @@ export class WalkthroughGenerationService {
       permit.value.release();
     }
     if (this.stopping.has(run.runId)) return;
-    if (generated.expired) {
+    if (generated.expired && pass.request.selection.provider === "pi") {
       await this.settle(run, "resource_exhausted", "generation");
       return;
     }
-    await this.conclude(pass, generated.outcome, controller, baseline);
+    await this.conclude(
+      pass,
+      generated.outcome,
+      controller,
+      baseline,
+      generated.expired,
+    );
   }
 
   private async conclude(
     pass: WalkthroughPass,
-    outcome: PiGuideChildOutcome,
+    outcome: ExplanationProducerOutcome,
     controller: AbortController,
     baseline: GuideBaseline,
+    expired: boolean,
   ): Promise<void> {
     const { run } = pass;
     const read = await this.authority.explanation.produce(run, async () =>
@@ -328,6 +437,38 @@ export class WalkthroughGenerationService {
       state.status === "paused"
     )
       return;
+    let nativeKnown = true;
+    if (
+      state.nativeExecution !== undefined &&
+      state.nativeExecution.starts.count > 0
+    ) {
+      const native = await nativeTurnStatus(this.artifacts, { run }, state);
+      if (
+        native._tag === "err" ||
+        (native.value.generation === state.generation && !native.value.ceased)
+      ) {
+        await this.authority.explanation.produce(
+          run,
+          async ({ state: current }) =>
+            current.status === "running" &&
+            current.generation === pass.generation &&
+            current.cancelEpoch === pass.cancelEpoch
+              ? ok({
+                  status: "paused",
+                  usageUnknown: true,
+                  failure: {
+                    code: "paid_dispatch_unknown",
+                    phase: "generation",
+                    recovery: "resume_required",
+                  },
+                })
+              : ok(undefined),
+        );
+        return;
+      }
+      nativeKnown =
+        native.value.generation !== state.generation || native.value.known;
+    }
     if (state.status === "cancelling" || controller.signal.aborted) {
       await this.settle(run, "cancelled", "generation");
       return;
@@ -349,9 +490,11 @@ export class WalkthroughGenerationService {
     }
     if (runtime.value.frozen === null) {
       if (
-        outcome._tag === "failed" &&
-        !outcome.effectKnown &&
-        state.dispatches.count > 0
+        (!nativeKnown ||
+          (state.nativeExecution === undefined &&
+            outcome._tag === "failed" &&
+            !outcome.effectKnown)) &&
+        explanationStartCount(state) > 0
       ) {
         await this.authority.explanation.produce(
           run,
@@ -370,7 +513,12 @@ export class WalkthroughGenerationService {
                 })
               : ok(undefined),
         );
-      } else await this.settle(run, "unresolved_work", "generation");
+      } else
+        await this.settle(
+          run,
+          expired ? "resource_exhausted" : "unresolved_work",
+          "generation",
+        );
       return;
     }
     let validatedRoot = state.walkthroughRuntime;

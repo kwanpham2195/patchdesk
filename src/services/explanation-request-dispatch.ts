@@ -14,6 +14,10 @@ import {
   walkthroughRuntimeCodec,
 } from "#src/domain/walkthrough-result";
 import { insightRunPolicyCodec } from "#src/domain/insight-run-binding-contract";
+import {
+  insightAuthorizationCodec,
+  insightProvenanceCodec,
+} from "#src/domain/insight-run-binding-contract";
 import { err, ok } from "#src/domain/result";
 import type { GuideRunContext } from "./guide-generation-operations";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
@@ -87,6 +91,24 @@ export class ExplanationRequestDispatch {
       context.run,
       async (snapshot) => {
         const { state } = snapshot;
+        if (state.nativeExecution !== undefined)
+          return err("unsupported" as const);
+        const authorization = await this.artifacts.readObject(
+          profileId,
+          reviewId,
+          insightAuthorizationCodec,
+          state.authorization,
+        );
+        if (authorization._tag === "err") return err("storage" as const);
+        const selection = await this.artifacts.readObject(
+          profileId,
+          reviewId,
+          insightProvenanceCodec,
+          authorization.value.selection,
+        );
+        if (selection._tag === "err") return err("storage" as const);
+        if (selection.value.provider !== "pi")
+          return err("unsupported" as const);
         if (state.status === "cancelling" || state.status === "cancelled")
           return err("cancelled" as const);
         if (

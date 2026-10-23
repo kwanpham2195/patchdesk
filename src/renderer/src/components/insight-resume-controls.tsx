@@ -86,11 +86,7 @@ function InsightResumeControls({
     >
       {run.status === "paused" ? (
         <>
-          <p>
-            Generation {run.generation} stopped with {run.dispatches} recorded
-            provider request{run.dispatches === 1 ? "" : "s"} whose responses
-            are unknown. Nothing was sent again.
-          </p>
+          <p>{resumeSpendDisclosure(run)}</p>
           <label className="flex items-start gap-2 text-xs">
             <input
               type="checkbox"
@@ -108,8 +104,7 @@ function InsightResumeControls({
               size="xs"
               disabled={
                 !acknowledged ||
-                run.lastRequestHash === null ||
-                run.dispatches === 0 ||
+                !hasResumeEvidence(run) ||
                 controls.busy ||
                 disabledReason !== undefined
               }
@@ -160,4 +155,18 @@ function InsightResumeControls({
       ) : null}
     </section>
   );
+}
+
+function hasResumeEvidence(run: NonNullable<GuideRunStatus>): boolean {
+  return run.native === undefined
+    ? run.lastRequestHash !== null && run.dispatches > 0
+    : run.native.lastStartHash !== null &&
+        run.native.starts > 0 &&
+        run.native.cessationConfirmed;
+}
+
+function resumeSpendDisclosure(run: NonNullable<GuideRunStatus>): string {
+  return run.native === undefined
+    ? `Generation ${run.generation} stopped with ${run.dispatches} recorded provider request${run.dispatches === 1 ? "" : "s"} whose responses are unknown. Nothing was sent again.`
+    : "A native turn may have spent your account allowance. Resume starts a new generation and may spend again; it cannot recover the previous response.";
 }

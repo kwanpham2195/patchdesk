@@ -34,6 +34,19 @@ export function useInsightResume(
     [identity, onSettled],
   );
   const resume = useCallback(() => {
+    if (run.native !== undefined) {
+      if (run.native.lastStartHash === null || !run.native.cessationConfirmed)
+        return;
+      send(`/v1/reviews/insights/${type}/resume`, {
+        runId: run.runId,
+        expectedGeneration: run.generation,
+        transport: "native",
+        acknowledgedStarts: run.native.starts,
+        lastStartHash: run.native.lastStartHash,
+        acknowledgeUnknownSpend: true,
+      });
+      return;
+    }
     if (run.lastRequestHash === null) return;
     send(`/v1/reviews/insights/${type}/resume`, {
       runId: run.runId,

@@ -26,9 +26,7 @@ const metadata = guideSummarySchema.options[1].entries;
 /** Summary requires only the owning Review. */
 export const walkthroughSummaryRequestSchema = v.strictObject(scope);
 /** Resume names the paused generation and explicitly acknowledges unknown spend. */
-export const walkthroughResumeRequestSchema = v.strictObject(
-  guideResumeRequestSchema.entries,
-);
+export const walkthroughResumeRequestSchema = guideResumeRequestSchema;
 /** Pages always bind the exact published digest. */
 export const walkthroughPageRequestSchema = v.strictObject({
   ...scope,
@@ -101,7 +99,7 @@ export const walkthroughSummarySchema = v.variant("_tag", [
     digest: Hash,
     generatedAt: v.string(),
     provenance: v.strictObject({
-      provider: v.literal("pi"),
+      provider: v.picklist(["pi", "codex-cli-account", "pi-cli-account"]),
       model: v.string(),
       language: v.picklist(["en", "vi"]),
     }),
