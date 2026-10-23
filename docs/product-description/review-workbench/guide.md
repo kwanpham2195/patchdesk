@@ -14,7 +14,7 @@ Groups, file lists, and long text load in pages. Show more files continues a lis
 
 Mark reviewed records progress for one group. Viewed records progress for a file and is shared with Diff and every Guide appearance. Neither action submits a GitHub review. Notes, comments, replies, and drafts use the [shared inline actions](inline-conversations.md).
 
-The wide minimap rests as a compact rail, with small Previous and Next controls aligned with its resting ticks. Markers expand smoothly around pointer or keyboard focus, revealing the group's explanation and file destinations. Clicking the rail jumps directly to its group; there is no second group button in the preview. File destinations scroll to their appearance without expanding it or changing review content. At narrow widths, selecting a human group name jumps immediately. Files opens that group's destinations. These controls remain available while reading a long expanded file.
+The wide minimap rests as a compact rail, with small Previous and Next controls aligned with its resting ticks. Pointer or keyboard focus opens a text-only preview with the group number, title, explanation, and Reviewed badge when applicable. The preview is 320 by 240 CSS pixels, capped by the available viewport. It contains no file list, file count, or action. Clicking the rail jumps to its group. At narrow widths, selecting a group name jumps immediately; Preview opens its text preview. File links remain in the main Guide reader. Navigation stays reachable while reading a long expanded file.
 
 ## The task, event by event
 
@@ -47,7 +47,7 @@ Generate Guide, Regenerate, or the Guide row in Run Insights opens the run contr
 
 Every entry point, including Try again and agent-request approval, offers API key only. An unsupported saved account preference stays stored but the dialog displays API key without saving that change. With no API-key model available, Run is disabled and the controls explain that Guide requires an API key. A refused unsupported-provider start says to choose API key rather than reporting a generic start failure.
 
-Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview destinations before Enter or Space activates one. Tab enters preview actions. Escape closes the preview and returns focus to a navigation control. The opened narrow group list wraps long names; its closed trigger can truncate them.
+Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview groups before Enter or Space selects one. The preview has no focusable actions. Escape closes it and returns focus to the rail or compact Preview control. The opened narrow group list wraps long names; its closed trigger can truncate them.
 
 A file row expands or collapses only that appearance. Text diffs show code without a Patch metadata disclosure. Nontext evidence displays its retained metadata directly. File names and Viewed controls share an aligned header row. A single View menu applies to all expanded files, including files opened later. Markdown Preview remains available for eligible retained files.
 
@@ -62,6 +62,8 @@ The model submits groups and supporting files in small batches. Patchdesk valida
 A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Cancel run requests cancellation; cancellation is not complete until the run settles. A known active run keeps its cancellation control when result pages cannot be read or GitHub freshness becomes unavailable.
 
 If a recorded provider request has an unknown outcome, the run pauses rather than sending it again automatically. Resume as a new generation requires acknowledging that another generation may spend again and does not recover the missing responses. Cancel run remains a separate action.
+
+A pause without enough evidence to resume keeps Resume disabled and hides the spend acknowledgment. The notice explains that cleanup or recovery is not confirmed. With no recorded provider requests or native turn starts, it reports that absence rather than claiming unknown responses or spend. With recorded activity, it warns of possible account spend. Cancel and stale-Review restrictions still apply.
 
 Reading progress updates immediately while Patchdesk saves it. A failed save keeps the displayed progress and offers Retry reading progress. Navigation that would leave the Review waits for its registered progress saves. If they fail, Patchdesk keeps the current Review open.
 
@@ -122,7 +124,7 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 - A file can support several groups. Its expansions remain independent; its Viewed mark and review content remain shared.
 - Others lists each ungrouped file once and has no Reviewed group state. It may be empty.
 - Renamed, deleted, binary, submodule, omitted, and metadata-only files keep their retained evidence labels or metadata.
-- Long previews scroll internally. Navigation controls remain reachable while the document scrolls. Many group markers scroll within the rail; keyboard preview reveals the chosen marker without moving Guide.
+- Long preview text is clipped within the fixed box, without internal scrolling; the main Guide retains the explanation. Many group markers scroll within the rail; keyboard preview reveals the chosen marker without moving Guide.
 - Group or file navigation changes only reading position. It preserves expansions, Reviewed, Viewed, and unsaved review text.
 - Readable Guides are retained across failed or cancelled replacement runs. Reading state does not transfer to a different successful result.
 - A stale Guide permits inspection and local reading progress, but not authoring against its older revision.
@@ -135,7 +137,10 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 - The new cancellation, terminal-failure, unknown-request Resume, and interrupted-generation recovery paths have source-review evidence, not live lifecycle proof. Earlier native and legacy-fixture checks do not verify these changed owners. Provider transport parity and the remaining Review-source checks are pending.
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
 - Per-Insight provider filtering is revised in the provider-filter slice of #821 and awaits the parent's live check.
+- The parent inspected first, middle, last, and 560-pixel-wide previews on the real PR #140 Guide. The final preview had no file count or actions, and Escape restored trigger focus. These checks cover the preview correction, not the whole page.
 
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
 
 Paged generation, reading, progress, and failure behavior revised from source commit `e90d1ef8b733404004eb2e30796256c5ac06b526` for #821. The successful-run evidence and remaining lifecycle limits are stated above. Provider generation across every Insight and Review source remains unverified.
+
+Preview behavior follows committed source `8d8600d8`; locked-pause presentation follows `7c9833ce`. The scoped parent checks above preceded those commits and do not establish full lifecycle verification.
