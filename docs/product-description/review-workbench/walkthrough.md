@@ -73,6 +73,8 @@ The API-key run shows progress and its start time, not a Codex command trace. It
 
 After an interruption with recorded provider requests whose responses are unknown, the run shows Paused with a static pause indicator. It says "N recorded provider requests whose responses are unknown. Nothing was sent again." Resume as a new generation requires a checkbox acknowledging possible additional spend and a fresh, unchanged, open Review. It does not recover the missing responses or restart the original deadline. Merely reopening, refreshing or reloading never resends a request.
 
+A pause without enough evidence to resume keeps Resume disabled and hides the spend acknowledgment. The notice explains that cleanup or recovery is not confirmed. With no recorded provider requests or native turn starts, it reports that absence rather than claiming unknown responses or spend. Recorded activity keeps a possible-account-spend warning. Cancel and stale-Review restrictions still apply.
+
 ### Settle
 
 After movement, focus moves to the selected section heading and progress reflects the new position. At boundaries, movement stops instead of wrapping.
@@ -152,7 +154,10 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - Outdated Walkthrough wording changed after [UX-12](../ux-friction.md#ux-12-the-inline-discussion-notice-does-not-say-what-failed), but is not live-verified.
 - Confirm layout fade, scroll and focus, section and reviewed state after quit, and highlighting fallback.
 - Per-Insight provider filtering is revised in the provider-filter slice of #821 and awaits the parent's live check.
+- Schema-parsed summary-hook mocks confirmed locked-pause copy and acknowledgment visibility, including a recorded native start whose cleanup was not confirmed. Valid API and native Resume summaries retained their acknowledgment; the stale Review still blocked Resume. No action was submitted. This is renderer evidence, not actual provider or crash proof, and account generation remains unavailable.
 
 Baseline drafted from Patchdesk application source commit `3100615`; earlier reader checked against `737c515c`. Notes, comments and thread replies on cited hunks from #598 remain unverified live on the paged reader.
 
 Paged generation, reading, progress and lifecycle revised through source commit `95ded64cd91ed918a4dfb62f46bd2f337e26ec0e` for #821. Earlier Codex Walkthrough checks used the retired producer and do not establish account-provider parity for this format.
+
+Locked-pause presentation follows committed source `7c9833ce`. The scoped parent mock checks preceded that commit; actual native lifecycle acceptance remains pending.
