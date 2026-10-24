@@ -1,7 +1,5 @@
-import {
-  runCodexExplanation,
-  type CodexExplanationInput,
-} from "./codex-explanation-session";
+import { runCodexExplanation } from "./codex-explanation-session";
+import type { CodexExplanationInput } from "./codex-explanation-protocol";
 import type { ExplanationProducerOutcome } from "#src/services/explanation-producer";
 import {
   RpcChild,

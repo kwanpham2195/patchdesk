@@ -205,6 +205,8 @@ export function insightCoordinatorFactory({
       paths,
       () => discoverPathOnlyExecutable("codex"),
       readHead,
+      undefined,
+      (entry) => logs.write(entry),
     );
     const explanationProducers: ExplanationProducers =
       guideInvoker === undefined
