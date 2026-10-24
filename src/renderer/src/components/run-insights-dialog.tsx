@@ -15,6 +15,10 @@ import {
 import { modelReasoningOptions } from "#src/renderer/src/insight-run-options";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
 import {
+  insightAccountAlternativeHint,
+  insightNativeRunDisclosure,
+} from "#src/renderer/src/insight-run-copy";
+import {
   isAccountInsightProvider,
   type AccountInsightProvider,
 } from "#src/domain/insight-provider";
@@ -141,6 +145,11 @@ function RunInsightsRowFields({
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
   const { provider } = row;
+  const providers = supportedInsightProviders(type);
+  const nativeDisclosure =
+    row.checked && !row.running
+      ? insightNativeRunDisclosure(type, provider)
+      : undefined;
   const id = `run-insights-${type}`;
   const fieldsDisabled = disabled || row.running;
   return (
@@ -164,14 +173,14 @@ function RunInsightsRowFields({
           </span>
         ) : null}
       </div>
-      <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,7rem)_minmax(0,8rem)] gap-2">
+      <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,7rem)_minmax(0,8rem)]">
         <label className={FIELD_LABEL_CLASS} htmlFor={`${id}-provider`}>
           Provider
           <InsightProviderSelect
             id={`${id}-provider`}
             ariaLabel={`${noun} provider`}
             value={row.provider}
-            providers={supportedInsightProviders(type)}
+            providers={providers}
             disabled={fieldsDisabled}
             onValueChange={(provider) =>
               controller.changeProvider(type, provider)
@@ -215,6 +224,9 @@ function RunInsightsRowFields({
           />
         </label>
       </div>
+      {nativeDisclosure === undefined ? null : (
+        <p className="text-xs text-muted-foreground">{nativeDisclosure}</p>
+      )}
       {isAccountInsightProvider(provider) && !row.running ? (
         <AccountModelsControl
           provider={provider}
@@ -232,10 +244,7 @@ function RunInsightsRowFields({
         <Alert>
           <AlertDescription>
             {noun} has no API-key model available. Configure a provider API key,
-            then relaunch Patchdesk.
-            {type === "guide" || type === "walkthrough"
-              ? " CLI accounts are not supported for this Insight."
-              : " Or choose a CLI account."}
+            then relaunch Patchdesk. {insightAccountAlternativeHint(providers)}
           </AlertDescription>
         </Alert>
       ) : null}

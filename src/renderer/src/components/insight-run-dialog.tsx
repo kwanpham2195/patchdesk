@@ -7,6 +7,10 @@ import {
 } from "#src/domain/insight-provider";
 import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
+import {
+  insightAccountAlternativeHint,
+  insightNativeRunDisclosure,
+} from "#src/renderer/src/insight-run-copy";
 
 import {
   AccountModelsControl,
@@ -90,6 +94,8 @@ export function InsightRunDialog({
   readonly onConfirm: () => void;
 }): React.JSX.Element {
   const noun = INSIGHT_NOUNS[type];
+  const providers = supportedInsightProviders(type);
+  const nativeDisclosure = insightNativeRunDisclosure(type, provider);
   const actionLabel =
     action === "regenerate"
       ? `Regenerate ${noun}`
@@ -112,6 +118,7 @@ export function InsightRunDialog({
           <DialogDescription>
             {noun} for this revision.
             {runsOnCombined ? " It runs on the Combined view." : null}
+            {nativeDisclosure === undefined ? null : ` ${nativeDisclosure}`}
           </DialogDescription>
         </DialogHeader>
         {errorMessage === undefined ? null : (
@@ -125,10 +132,8 @@ export function InsightRunDialog({
             <Alert>
               <AlertDescription>
                 {noun} has no API-key model available. Configure a provider API
-                key, then relaunch Patchdesk.
-                {type === "guide" || type === "walkthrough"
-                  ? " CLI accounts are not supported for this Insight."
-                  : " Or choose a CLI account."}
+                key, then relaunch Patchdesk.{" "}
+                {insightAccountAlternativeHint(providers)}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -141,7 +146,7 @@ export function InsightRunDialog({
               id="insight-run-provider"
               ariaLabel="Insight provider"
               value={provider}
-              providers={supportedInsightProviders(type)}
+              providers={providers}
               disabled={pending}
               onValueChange={onProviderChange}
             />
