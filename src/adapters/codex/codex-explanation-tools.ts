@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import type {
+  CodexDiagnostic,
+  CodexDiagnosticFields,
+  CodexDiagnosticObserver,
+} from "./codex-explanation-diagnostics";
 import { toJsonSchema, type JsonSchema } from "@valibot/to-json-schema";
 import * as v from "valibot";
 import {
@@ -125,6 +130,7 @@ export class CodexExplanationTools {
     ) => OutgoingRpcMessage,
     private readonly halt: (effectKnown: boolean) => void,
     private readonly finish: () => Promise<void>,
+    private readonly diagnostic?: CodexDiagnosticObserver,
   ) {}
 
   get halted(): boolean {
@@ -134,7 +140,7 @@ export class CodexExplanationTools {
   bindThread(threadId: string): boolean {
     if (this.closed) return false;
     if (!v.is(identity, threadId)) {
-      this.stop(false);
+      this.stop(false, ["host_refusal", "thread_identity_invalid"]);
       return false;
     }
     this.threadId = threadId;
@@ -142,12 +148,15 @@ export class CodexExplanationTools {
   }
 
   bindTurn(turnId: string): boolean {
-    if (
-      !v.is(identity, turnId) ||
-      !v.is(insightArtifactIdSchema, turnId) ||
-      this.queue.some((call) => call.params.turnId !== turnId)
-    ) {
-      this.stop(false);
+    const refusal = !v.is(identity, turnId)
+      ? "turn_identity_invalid"
+      : !v.is(insightArtifactIdSchema, turnId)
+        ? "turn_artifact_invalid"
+        : this.queue.some((call) => call.params.turnId !== turnId)
+          ? "queued_turn_mismatch"
+          : undefined;
+    if (refusal !== undefined) {
+      this.stop(false, ["host_refusal", refusal]);
       return false;
     }
     this.turnId = turnId;
@@ -158,20 +167,52 @@ export class CodexExplanationTools {
   receive(message: CodexRpcMessage, bytes: number): void {
     if (this.closed) return;
     const { id, method } = message;
+    const namespace = v.safeParse(
+      v.looseObject({ namespace: v.optional(v.unknown()) }),
+      message.params,
+    );
+    const fields: CodexDiagnosticFields = {
+      rpcIdKind:
+        id === undefined
+          ? "missing"
+          : v.is(v.string(), id)
+            ? "string"
+            : Number.isSafeInteger(id) && id >= 0 && !Object.is(id, -0)
+              ? "valid_number"
+              : "invalid_number",
+      namespaceKind:
+        !namespace.success || !Object.hasOwn(namespace.output, "namespace")
+          ? "missing"
+          : namespace.output.namespace === null
+            ? "null"
+            : v.is(v.string(), namespace.output.namespace)
+              ? "string"
+              : "other",
+      bytes,
+    };
     if (
       !v.is(v.pipe(v.number(), v.safeInteger()), id) ||
       id < 0 ||
       Object.is(id, -0) ||
       method === undefined
     ) {
-      this.stop(true);
+      this.stop(
+        true,
+        [
+          "host_refusal",
+          fields.rpcIdKind !== "valid_number"
+            ? "rpc_id_invalid"
+            : "rpc_method_missing",
+        ],
+        fields,
+      );
       return;
     }
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({ method, params: message.params }))
       .digest("hex");
     if (id <= this.greatestId - 256) {
-      this.stop(true);
+      this.stop(true, ["host_refusal", "rpc_id_stale"], fields);
       return;
     }
     if (this.seen.has(id)) {
@@ -182,7 +223,16 @@ export class CodexExplanationTools {
         this.send(reply.message);
         return;
       }
-      this.stop(true);
+      this.stop(
+        true,
+        [
+          "host_refusal",
+          pending !== undefined || reply !== undefined
+            ? "rpc_replay_conflict"
+            : "rpc_replay_evicted",
+        ],
+        fields,
+      );
       return;
     }
     this.greatestId = Math.max(id, this.greatestId);
@@ -194,23 +244,48 @@ export class CodexExplanationTools {
       return;
     }
     const parsed = v.safeParse(callParams, message.params);
-    if (
-      bytes > 32768 ||
-      !parsed.success ||
-      this.threadId === undefined ||
-      parsed.output.threadId !== this.threadId ||
-      (this.turnId !== undefined && parsed.output.turnId !== this.turnId) ||
-      !Object.hasOwn(
-        this.binding.kind === "guide" ? guideSchemas : walkthroughInputSchemas,
-        parsed.output.tool,
-      ) ||
-      Buffer.byteLength(JSON.stringify(parsed.output.arguments)) > 32768
-    ) {
-      this.stop(true);
+    const refusal =
+      bytes > 32768
+        ? "request_limit"
+        : !parsed.success
+          ? "params_invalid"
+          : this.threadId === undefined
+            ? "thread_unbound"
+            : parsed.output.threadId !== this.threadId
+              ? "thread_mismatch"
+              : this.turnId !== undefined &&
+                  parsed.output.turnId !== this.turnId
+                ? "turn_mismatch"
+                : !Object.hasOwn(
+                      this.binding.kind === "guide"
+                        ? guideSchemas
+                        : walkthroughInputSchemas,
+                      parsed.output.tool,
+                    )
+                  ? "tool_not_allowed"
+                  : Buffer.byteLength(JSON.stringify(parsed.output.arguments)) >
+                      32768
+                    ? "arguments_limit"
+                    : undefined;
+    if (refusal !== undefined || !parsed.success) {
+      this.stop(true, ["host_refusal", refusal ?? "params_invalid"], {
+        ...fields,
+        binding:
+          this.threadId === undefined
+            ? "unbound"
+            : !parsed.success
+              ? "unparsed"
+              : parsed.output.threadId !== this.threadId
+                ? "thread_mismatch"
+                : this.turnId !== undefined &&
+                    parsed.output.turnId !== this.turnId
+                  ? "turn_mismatch"
+                  : "matched",
+      });
       return;
     }
     if (this.queue.length >= 16) {
-      this.stop(true);
+      this.stop(true, ["host_refusal", "queue_full"], fields);
       return;
     }
     this.active.set(id, fingerprint);
@@ -226,7 +301,18 @@ export class CodexExplanationTools {
     await this.running;
   }
 
-  private stop(effectKnown: boolean): void {
+  private stop(
+    effectKnown: boolean,
+    event: CodexDiagnostic,
+    fields: CodexDiagnosticFields = {},
+  ): void {
+    this.diagnostic?.(event, {
+      ...fields,
+      queued: this.queue.length,
+      active: Math.min(1, this.active.size - this.queue.length),
+      seen: this.seen.size,
+      cached: this.replies.size,
+    });
     this.close();
     this.halt(effectKnown);
   }
@@ -239,7 +325,9 @@ export class CodexExplanationTools {
     )
       return;
     this.running = this.consume()
-      .catch(() => this.stop(false))
+      .catch(() =>
+        this.stop(false, ["execution_unknown", "tool_callback_threw"]),
+      )
       .finally(() => {
         this.running = undefined;
         if (!this.closed && this.queue.length > 0) this.drain();
@@ -256,31 +344,35 @@ export class CodexExplanationTools {
         correlation: ++this.correlation,
         call: { tool: call.params.tool, input: call.params.arguments },
       };
-      if (
-        Buffer.byteLength(JSON.stringify(frame)) > 32768 ||
-        Buffer.byteLength(JSON.stringify(frame.call)) > 32768
-      ) {
-        this.stop(true);
+      const frameBytes = Buffer.byteLength(JSON.stringify(frame));
+      const refusal =
+        frameBytes > 32768
+          ? "frame_limit"
+          : Buffer.byteLength(JSON.stringify(frame.call)) > 32768
+            ? "call_limit"
+            : undefined;
+      if (refusal !== undefined) {
+        this.stop(true, ["host_refusal", refusal], { bytes: frameBytes });
         return;
       }
       let outcome: GuideAppOutcome | WalkthroughAppOutcome;
       if (this.binding.kind === "guide") {
         const parsed = v.safeParse(guideChildFrameSchema, frame);
         if (!parsed.success || parsed.output.kind !== "tool") {
-          this.stop(true);
+          this.stop(true, ["host_refusal", "guide_frame_invalid"]);
           return;
         }
         outcome = await this.binding.tool(parsed.output.call);
       } else {
         const parsed = v.safeParse(walkthroughChildFrameSchema, frame);
         if (!parsed.success || parsed.output.kind !== "tool") {
-          this.stop(true);
+          this.stop(true, ["host_refusal", "walkthrough_frame_invalid"]);
           return;
         }
         outcome = await this.binding.tool(parsed.output.call);
       }
       if (outcome.status === "unknown") {
-        this.stop(false);
+        this.stop(false, ["execution_unknown", "tool_effect_unknown"]);
         return;
       }
       if (
@@ -288,7 +380,7 @@ export class CodexExplanationTools {
         outcome.status !== "not_found" &&
         outcome.status !== "refused"
       ) {
-        this.stop(false);
+        this.stop(false, ["execution_unknown", "tool_outcome_invalid"]);
         return;
       }
       const text = JSON.stringify(
@@ -306,11 +398,12 @@ export class CodexExplanationTools {
         },
       };
       if (call.params.tool === "finish" && outcome.status === "receipt") {
+        this.diagnostic?.(["finish_accepted", "finish_signal"]);
         this.close();
         await this.finish();
       }
       if (!codexExplanationReplyFits(reply)) {
-        this.stop(true);
+        this.stop(true, ["host_refusal", "reply_limit"]);
         return;
       }
       this.complete(call.id, call.fingerprint, reply);

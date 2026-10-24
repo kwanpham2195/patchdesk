@@ -6,6 +6,11 @@ import { isNotFound } from "#src/adapters/storage/json-file";
 import { allowlistedCodexEnvironment } from "./codex-insight-policy";
 import type { CodexAppServerFailure } from "./codex-app-server-client";
 import type { CodexActivityEmitter } from "./codex-activity";
+import { dynamicToolLine } from "./codex-dynamic-tool-line";
+import type {
+  CodexDiagnostic,
+  CodexDiagnosticFields,
+} from "./codex-explanation-diagnostics";
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -109,6 +114,7 @@ export class RpcChild {
   onFailure: (() => void) | undefined;
   private nextId = 0;
   private stopped = false;
+  private diagnosticStopping = false;
   private broken = false;
   private stopPromise: Promise<void> | undefined;
   private ownsProcessGroup = false;
@@ -116,7 +122,14 @@ export class RpcChild {
   private threadId: string | undefined;
   activity: CodexActivityEmitter | undefined;
 
-  constructor(private readonly processFactory: CodexProcessFactory) {}
+  constructor(
+    private readonly processFactory: CodexProcessFactory,
+    private readonly diagnostic?: (
+      event: CodexDiagnostic,
+      fields: CodexDiagnosticFields,
+      stopping: boolean,
+    ) => void,
+  ) {}
 
   /** Synchronous admission evidence for a bound interrupt write, not an acknowledgment or cessation proof. */
   get canRequest(): boolean {
@@ -164,6 +177,7 @@ export class RpcChild {
         this.child.stdout === null ||
         this.child.stderr === null
       ) {
+        this.detail("pipes_missing");
         await this.stop();
         return err({ reason: "runtime_unavailable", phase: "initialize" });
       }
@@ -171,9 +185,32 @@ export class RpcChild {
         this.read(chunk),
       );
       this.child.stderr.on("data", () => undefined);
-      this.child.stdin.on("error", () => this.failPending());
-      this.child.once("error", () => this.failPending());
-      this.child.once("exit", () => this.failPending());
+      this.child.stdin.on("error", () => this.failPending("stdin_error"));
+      this.child.once("error", () => this.failPending("process_error"));
+      this.child.once("exit", (code, signal) =>
+        this.failPending("process_exit", {
+          exit:
+            code === null
+              ? "none"
+              : code === 0
+                ? "zero"
+                : Number.isInteger(code) && code >= 1 && code <= 255
+                  ? "nonzero"
+                  : "unknown",
+          signal:
+            signal === null
+              ? "none"
+              : signal === "SIGINT"
+                ? "sigint"
+                : signal === "SIGTERM"
+                  ? "sigterm"
+                  : signal === "SIGKILL"
+                    ? "sigkill"
+                    : v.is(v.string(), signal)
+                      ? "other"
+                      : "unknown",
+        }),
+      );
       const clientInfo = {
         name: CLIENT_NAME,
         title: "Patchdesk",
@@ -200,6 +237,7 @@ export class RpcChild {
       this.send({ method: "initialized", params: {} });
       return ok(undefined);
     } catch (cause: unknown) {
+      this.detail("spawn_or_initialize_threw");
       await this.stop();
       return err({ reason: classifyThrownFailure(cause), phase: "initialize" });
     }
@@ -216,15 +254,21 @@ export class RpcChild {
       this.child?.stdin === undefined ||
       this.stopped ||
       this.broken
-    )
+    ) {
+      this.detail("request_unavailable");
       return err("process_unavailable");
-    if (signal?.aborted) return err("cancelled");
+    }
+    if (signal?.aborted) {
+      this.detail("request_aborted");
+      return err("cancelled");
+    }
     const id = String(++this.nextId);
     return new Promise((resolveResult) => {
       const timer = setTimeout(
         () => {
           const pending = this.pending.get(id);
           if (pending === undefined) return;
+          this.detail("request_timeout");
           this.pending.delete(id);
           pending.reject("timeout");
         },
@@ -244,6 +288,7 @@ export class RpcChild {
       const onAbort = (): void => {
         signal?.removeEventListener("abort", onAbort);
         if (this.pending.delete(id)) {
+          this.detail("request_aborted");
           clearTimeout(timer);
           resolveResult(err("cancelled"));
         }
@@ -267,11 +312,13 @@ export class RpcChild {
   }
 
   stop(): Promise<void> {
+    this.diagnosticStopping = true;
     // Repeated shutdown must preserve failed cessation so the private home remains guarded.
     this.stopPromise ??= (async () => {
       this.cancel();
       this.stopped = true;
       for (const pending of this.pending.values()) {
+        this.detail("request_stopped");
         clearTimeout(pending.timer);
         pending.reject("stopped");
       }
@@ -307,7 +354,9 @@ export class RpcChild {
       const end = bytes.indexOf(10, offset);
       const part = bytes.subarray(offset, end < 0 ? bytes.length : end);
       if (this.buffer.length + part.length > MAX_STREAM_BYTES) {
-        this.failPending();
+        this.failPending("stream_limit", {
+          bytes: this.buffer.length + part.length,
+        });
         return;
       }
       this.buffer = Buffer.concat([this.buffer, part]);
@@ -321,7 +370,7 @@ export class RpcChild {
         line.length + 1 > 32768 &&
         dynamicToolLine(line)
       ) {
-        this.failPending();
+        this.failPending("dynamic_request_limit", { bytes: line.length + 1 });
         return;
       }
       try {
@@ -330,9 +379,9 @@ export class RpcChild {
           JSON.parse(line.toString("utf8")),
         );
         if (parsed.success) this.route(parsed.output, line.length + 1);
-        else this.failPending();
+        else this.failPending("envelope_invalid");
       } catch {
-        this.failPending();
+        this.failPending("decode_or_route_threw");
       }
     }
   }
@@ -345,6 +394,7 @@ export class RpcChild {
       this.pending.delete(String(id));
       const errorParsed = v.safeParse(rpcErrorSchema, message.error);
       if (errorParsed.success) {
+        this.detail("remote_rpc_error");
         const { code, message: errorMessage } = errorParsed.output;
         const base = { _tag: "rpc_error" as const };
         const withCode = code === undefined ? base : { ...base, code };
@@ -355,9 +405,10 @@ export class RpcChild {
         pending.reject(rpcError);
       } else {
         const result = message.result;
-        if (result === undefined || !v.is(jsonObjectSchema, result))
+        if (result === undefined || !v.is(jsonObjectSchema, result)) {
+          this.detail("rpc_result_invalid");
           pending.reject("invalid_rpc_result");
-        else pending.resolve(result);
+        } else pending.resolve(result);
       }
       return;
     }
@@ -386,7 +437,21 @@ export class RpcChild {
     return { id, error: { code: -32601, message: "unsupported_request" } };
   }
 
-  private failPending(): void {
+  private detail(
+    code: Extract<CodexDiagnostic, readonly ["rpc_detail", string]>[1],
+  ): void {
+    this.diagnostic?.(["rpc_detail", code], {}, this.diagnosticStopping);
+  }
+
+  private failPending(
+    code: Extract<CodexDiagnostic, readonly ["transport_lost", string]>[1],
+    fields: CodexDiagnosticFields = {},
+  ): void {
+    this.diagnostic?.(
+      ["transport_lost", code],
+      fields,
+      this.diagnosticStopping,
+    );
     this.broken = true;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
@@ -424,65 +489,4 @@ export function classifyRpcFailure(
     if (detail.includes("invalid")) return "invalid_result";
   }
   return "execution_failed";
-}
-
-/** Scan top-level method strings without parsing or copying oversized argument bodies. */
-function dynamicToolLine(bytes: Buffer): boolean {
-  let depth = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    const byte = bytes[i];
-    if (byte === 123 || byte === 91) depth++;
-    else if (byte === 125 || byte === 93) depth--;
-    else if (byte === 34) {
-      const start = i++;
-      while (i < bytes.length && bytes[i] !== 34) {
-        if (bytes[i] === 92) i++;
-        i++;
-      }
-      if (depth !== 1 || i - start > 128) continue;
-      let token: unknown;
-      try {
-        token = JSON.parse(bytes.subarray(start, i + 1).toString("utf8"));
-      } catch {
-        return false;
-      }
-      if (token !== "method") continue;
-      let cursor = i + 1;
-      while (
-        bytes[cursor] === 32 ||
-        bytes[cursor] === 9 ||
-        bytes[cursor] === 13
-      )
-        cursor++;
-      if (bytes[cursor++] !== 58) continue;
-      while (
-        bytes[cursor] === 32 ||
-        bytes[cursor] === 9 ||
-        bytes[cursor] === 13
-      )
-        cursor++;
-      if (bytes[cursor] !== 34) continue;
-      const valueStart = cursor++;
-      while (
-        cursor < bytes.length &&
-        bytes[cursor] !== 34 &&
-        cursor - valueStart <= 128
-      ) {
-        if (bytes[cursor] === 92) cursor++;
-        cursor++;
-      }
-      if (cursor - valueStart > 128) continue;
-      try {
-        if (
-          JSON.parse(
-            bytes.subarray(valueStart, cursor + 1).toString("utf8"),
-          ) === "item/tool/call"
-        )
-          return true;
-      } catch {
-        return false;
-      }
-    }
-  }
-  return false;
 }

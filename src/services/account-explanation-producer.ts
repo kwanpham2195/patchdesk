@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import type { CodexDiagnosticSink } from "#src/adapters/codex/codex-explanation-diagnostics";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
@@ -26,6 +27,7 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       path: string,
     ) => Pick<CodexAppServerClient, "runExplanation"> = (path) =>
       new CodexAppServerClient(path),
+    private readonly diagnostic?: CodexDiagnosticSink,
   ) {}
 
   invokeGuide(input: GuideInput): Promise<ExplanationProducerOutcome> {
@@ -108,6 +110,7 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       deadline: input.deadline,
       signal: input.signal,
       onActivity: input.onActivity,
+      diagnostic: this.diagnostic,
     });
   }
 }

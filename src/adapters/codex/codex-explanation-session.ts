@@ -1,19 +1,20 @@
-import { insightFailureDiagnostic } from "#src/domain/insight-failure-diagnostic";
+import {
+  CodexExplanationDiagnostics,
+  type CodexDiagnostic,
+} from "./codex-explanation-diagnostics";
+import {
+  codexExplanationFailure as failed,
+  createCodexExplanationTurnListener,
+  parseCodexExplanationStartedTurn,
+  observeCodexExplanationRpc,
+  type CodexExplanationInput,
+  type CodexExplanationTurnNotification,
+} from "./codex-explanation-protocol";
 import { CODEX_EXPLANATION_SUPPORTED_VERSIONS } from "#src/domain/codex-explanation-version";
-import {
-  createCodexActivityEmitter,
-  type InsightActivitySink,
-} from "./codex-activity";
+import { createCodexActivityEmitter } from "./codex-activity";
 import { InsightProcessCleanupError } from "#src/adapters/process/insight-process-cleanup";
-import { insightArtifactIdSchema } from "#src/domain/insight-artifact-scalars";
 import { createHash } from "node:crypto";
-import * as v from "valibot";
-import type { CodexRunInput } from "./codex-app-server-client";
-import {
-  RpcChild,
-  type CodexProcessFactory,
-  type CodexRpcMessage,
-} from "./codex-app-server-rpc";
+import { RpcChild, type CodexProcessFactory } from "./codex-app-server-rpc";
 import {
   discoverCodexInsightSession,
   validateCodexInsightSession,
@@ -28,54 +29,9 @@ import { paginateModelList } from "./codex-model-catalog";
 import {
   CodexExplanationTools,
   codexExplanationDeclarations,
-  type CodexExplanationBinding,
 } from "./codex-explanation-tools";
-import type { ExplanationConnectionIdentity } from "#src/domain/explanation-channel";
 import type { NativeTurnEvent } from "#src/domain/native-explanation-turn";
-import type {
-  ExplanationDeadline,
-  ExplanationProducerOutcome,
-  NativeExplanationLifecycle,
-} from "#src/services/explanation-producer";
-
-export type CodexExplanationInput = {
-  readonly run: CodexRunInput;
-  readonly binding: CodexExplanationBinding;
-  readonly identity: ExplanationConnectionIdentity;
-  readonly lifecycle: NativeExplanationLifecycle;
-  readonly deadline: ExplanationDeadline;
-  readonly signal: AbortSignal;
-  readonly onActivity?: InsightActivitySink | undefined;
-};
-const failed = (
-  effectKnown: boolean,
-  detail: string,
-  reason:
-    | "runtime_unavailable"
-    | "cancelled"
-    | "timed_out"
-    | "execution_failed" = "runtime_unavailable",
-): ExplanationProducerOutcome => {
-  if (detail === "unsupported_codex_version")
-    return {
-      _tag: "failed",
-      reason,
-      effectKnown,
-      ...insightFailureDiagnostic(
-        "runtime_unavailable",
-        "native_policy_unsupported",
-        detail,
-      ),
-    };
-  return { _tag: "failed", reason, detail, effectKnown };
-};
-const turnMessageSchema = v.looseObject({
-  threadId: v.string(),
-  turn: v.looseObject({ id: v.string() }),
-});
-const turnStartSchema = v.looseObject({
-  turn: v.looseObject({ id: insightArtifactIdSchema }),
-});
+import type { ExplanationProducerOutcome } from "#src/services/explanation-producer";
 
 /** Owns a fresh private native connection; no thread is resumed or generating command retried. */
 export async function runCodexExplanation(
@@ -84,18 +40,41 @@ export async function runCodexExplanation(
   homeFactory: CodexInsightHomeFactory,
   input: CodexExplanationInput,
 ): Promise<ExplanationProducerOutcome> {
+  const diagnostics = new CodexExplanationDiagnostics(
+    input.binding.kind,
+    input.identity.connection,
+    input.diagnostic,
+  );
+  const recorded = (
+    event: CodexDiagnostic,
+    outcome: ExplanationProducerOutcome,
+  ): ExplanationProducerOutcome => {
+    diagnostics.observe(event);
+    return outcome;
+  };
   const remaining = () =>
     input.deadline.kind === "no-total-deadline/1"
       ? 0
       : Math.max(0, Date.parse(input.deadline.deadlineAt) - Date.now());
-  if (input.signal.aborted) return failed(true, "cancelled", "cancelled");
-  if (Buffer.byteLength(input.run.prompt) > 65536)
-    return failed(true, "prompt_too_large");
+  if (input.signal.aborted || Buffer.byteLength(input.run.prompt) > 65536) {
+    const outcome = input.signal.aborted
+      ? recorded(
+          ["abort_observed", "signal_aborted"],
+          failed(true, "cancelled", "cancelled"),
+        )
+      : recorded(
+          ["preflight_refused", "prompt_limit"],
+          failed(true, "prompt_too_large"),
+        );
+    diagnostics.finish(outcome, false, "not_attempted");
+    return outcome;
+  }
   let home: CodexInsightHome | undefined;
   let child: RpcChild | undefined;
   let admitted = false;
   let toolEffectUnknown = false;
   let cessation = false;
+  let homeCleanup: "not_attempted" | "succeeded" | "failed" = "not_attempted";
   let discoveryCleanupUnknown = false;
   let tools: CodexExplanationTools | undefined;
   let remove: (() => void) | undefined;
@@ -112,6 +91,11 @@ export async function runCodexExplanation(
   });
   const observe = async (event: NativeTurnEvent): Promise<void> => {
     if ((await input.lifecycle.observe(event))._tag === "err") {
+      diagnostics.observe(
+        diagnostics.phase === "cleanup"
+          ? ["cleanup", "observation_failed"]
+          : ["observation_unknown", "lifecycle_observe_failed"],
+      );
       tools?.close();
       resolveEnd(failed(false, "native_observation_unknown"));
       throw new Error("native_observation_unknown");
@@ -131,17 +115,20 @@ export async function runCodexExplanation(
     ) {
       interruptSent = true;
       // request writes synchronously and owns an ID; its acknowledgment never gates the finish reply.
+      diagnostics.observe(["cleanup", "interrupt_attempted"]);
       interruptTask = child.request("turn/interrupt", { threadId, turnId });
       interruptObservation = observe({ kind: "interrupt_requested" });
     }
     return interruptObservation ?? Promise.resolve();
   };
   const onAbort = (): void => {
+    diagnostics.observe(["abort_observed", "signal_aborted"]);
     tools?.close();
     void interrupt().catch(() => undefined);
     resolveEnd(failed(true, "cancelled", "cancelled"));
   };
   const onFinish = (): void => {
+    diagnostics.observe(["finish_accepted", "finish_signal"]);
     tools?.close();
     void interrupt().then(
       () => resolveEnd({ _tag: "finished" }),
@@ -150,7 +137,16 @@ export async function runCodexExplanation(
   };
   const declarations = codexExplanationDeclarations(input.binding.kind);
   const createConnection = () => {
-    const connection = new RpcChild(processFactory);
+    const connection = new RpcChild(processFactory, (event, fields, stopping) =>
+      observeCodexExplanationRpc(
+        diagnostics,
+        event,
+        fields,
+        stopping,
+        connection === child,
+        admitted,
+      ),
+    );
     const connectionTools = new CodexExplanationTools(
       input.binding,
       input.identity,
@@ -166,9 +162,11 @@ export async function runCodexExplanation(
           void connection.stop().catch(() => undefined);
       },
       async () => {
+        diagnostics.observe(["finish_accepted", "finish_signal"]);
         await interrupt();
         resolveEnd({ _tag: "finished" });
       },
+      (event, fields) => diagnostics.observe(event, fields),
     );
     connection.onServerRequest = (message, bytes) =>
       connectionTools.receive(message, bytes);
@@ -182,7 +180,11 @@ export async function runCodexExplanation(
   try {
     result = await (async (): Promise<ExplanationProducerOutcome> => {
       const prepared = await homeFactory(remaining());
-      if (prepared._tag === "err") return failed(true, prepared.error);
+      if (prepared._tag === "err")
+        return recorded(
+          ["preflight_refused", "home_prepare"],
+          failed(true, prepared.error),
+        );
       home = prepared.value;
       const expected = await discoverCodexInsightSession(
         () => createConnection().connection,
@@ -193,7 +195,10 @@ export async function runCodexExplanation(
         CODEX_EXPLANATION_SUPPORTED_VERSIONS,
       );
       if (expected._tag === "err")
-        return failed(true, expected.error.detail ?? expected.error.phase);
+        return recorded(
+          ["preflight_refused", "discovery"],
+          failed(true, expected.error.detail ?? expected.error.phase),
+        );
       const created = createConnection();
       child = created.connection;
       tools = created.connectionTools;
@@ -204,7 +209,11 @@ export async function runCodexExplanation(
         [...codexInsightIsolationArgs(), ...expected.value.args],
         home.directory,
       );
-      if (opened._tag === "err") return failed(true, opened.error.phase);
+      if (opened._tag === "err")
+        return recorded(
+          ["preflight_refused", "connection_start"],
+          failed(true, opened.error.phase),
+        );
       const nativeVersion = child.nativeVersion;
       if (
         nativeVersion === undefined ||
@@ -212,7 +221,10 @@ export async function runCodexExplanation(
           (version) => version === nativeVersion,
         )
       )
-        return failed(true, "unsupported_codex_version");
+        return recorded(
+          ["preflight_refused", "version"],
+          failed(true, "unsupported_codex_version"),
+        );
       const valid = await validateCodexInsightSession(
         child,
         input.run.worktreePath,
@@ -220,7 +232,11 @@ export async function runCodexExplanation(
         expected.value,
         input.signal,
       );
-      if (valid._tag === "err") return failed(true, valid.error.phase);
+      if (valid._tag === "err")
+        return recorded(
+          ["preflight_refused", "policy"],
+          failed(true, valid.error.phase),
+        );
       const models = await paginateModelList(child, input.signal);
       if (
         models._tag === "err" ||
@@ -230,7 +246,10 @@ export async function runCodexExplanation(
             model.reasoning.includes(input.run.reasoning),
         )
       )
-        return failed(true, "model_list");
+        return recorded(
+          ["preflight_refused", "models"],
+          failed(true, "model_list"),
+        );
       const thread = await child.request(
         "thread/start",
         {
@@ -246,20 +265,40 @@ export async function runCodexExplanation(
         },
         input.signal,
       );
-      if (thread._tag === "err") return failed(true, "thread_start");
+      if (thread._tag === "err")
+        return recorded(
+          ["preflight_refused", "thread_start"],
+          failed(true, "thread_start"),
+        );
       threadId = parseCodexInsightThread(thread.value, input.run);
       if (threadId === undefined || !tools.bindThread(threadId))
-        return failed(true, "native_policy_unsupported");
+        return recorded(
+          ["preflight_refused", "thread_binding"],
+          failed(true, "native_policy_unsupported"),
+        );
       if (!(await home.unchanged(remaining())))
-        return failed(true, "native_auth_unsupported");
+        return recorded(
+          ["preflight_refused", "home_changed"],
+          failed(true, "native_auth_unsupported"),
+        );
       if (
         tools.halted ||
         input.signal.aborted ||
         input.lifecycle.finishSignal.aborted
       )
-        return failed(true, "cancelled", "cancelled");
+        return recorded(
+          tools.halted
+            ? ["host_refusal", "admission_halted"]
+            : input.signal.aborted
+              ? ["abort_observed", "signal_aborted"]
+              : ["finish_accepted", "finish_signal"],
+          failed(true, "cancelled", "cancelled"),
+        );
       if (input.deadline.kind === "walkthrough-deadline/1" && remaining() === 0)
-        return failed(true, "deadline", "timed_out");
+        return recorded(
+          ["deadline_observed", "deadline_elapsed"],
+          failed(true, "deadline", "timed_out"),
+        );
       const start = await input.lifecycle.start({
         version: nativeVersion,
         prompt: input.run.prompt,
@@ -268,59 +307,39 @@ export async function runCodexExplanation(
           .digest("hex"),
       });
       if (start._tag === "err")
-        return failed(start.error === "refused", "native_start_" + start.error);
+        return recorded(
+          start.error === "refused"
+            ? ["preflight_refused", "start_commit_refused"]
+            : ["start_unresolved", "start_commit_unknown"],
+          failed(start.error === "refused", "native_start_" + start.error),
+        );
       admitted = true;
+      diagnostics.phase = "running";
       await observe({ kind: "accepted_start" });
       const activity = createCodexActivityEmitter(
         input.onActivity,
         input.run.worktreePath,
       );
       child.activity = activity;
-      const early: Array<{
-        readonly threadId: string;
-        readonly turnId: string;
-        readonly ended: boolean;
-      }> = [];
-      const onMessage = (message: CodexRpcMessage): void => {
-        const activityIdentity = v.safeParse(
-          v.looseObject({ threadId: v.string(), turnId: v.string() }),
-          message.params,
-        );
-        if (
-          turnId !== undefined &&
-          activityIdentity.success &&
-          activityIdentity.output.threadId === threadId &&
-          activityIdentity.output.turnId === turnId
-        )
-          activity.notification(message);
-        if (
-          message.method !== "turn/started" &&
-          message.method !== "turn/completed"
-        )
-          return;
-        const parsed = v.safeParse(turnMessageSchema, message.params);
-        if (!parsed.success || early.length >= 16) {
+      const early: CodexExplanationTurnNotification[] = [];
+      const onMessage = createCodexExplanationTurnListener(
+        {
+          get threadId() {
+            return threadId;
+          },
+          get turnId() {
+            return turnId;
+          },
+        },
+        early,
+        activity,
+        input.lifecycle.finishSignal,
+        diagnostics,
+        (outcome) => {
           tools?.close();
-          resolveEnd(failed(false, "invalid_native_turn"));
-          return;
-        }
-        const candidate = {
-          threadId: parsed.output.threadId,
-          turnId: parsed.output.turn.id,
-          ended: message.method === "turn/completed",
-        };
-        if (turnId === undefined) early.push(candidate);
-        else if (
-          candidate.threadId !== threadId ||
-          candidate.turnId !== turnId
-        ) {
-          tools?.close();
-          resolveEnd(failed(false, "native_turn_mismatch"));
-        } else if (candidate.ended) {
-          tools?.close();
-          resolveEnd(failed(true, "native_turn_ended", "execution_failed"));
-        }
-      };
+          resolveEnd(outcome);
+        },
+      );
       remove = child.listenersAdd(onMessage);
       input.signal.addEventListener("abort", onAbort, { once: true });
       input.lifecycle.finishSignal.addEventListener("abort", onFinish, {
@@ -328,14 +347,26 @@ export async function runCodexExplanation(
       });
       if (input.deadline.kind === "walkthrough-deadline/1")
         timer = setTimeout(() => {
+          diagnostics.observe(["deadline_observed", "deadline_elapsed"]);
           tools?.close();
           void interrupt().catch(() => undefined);
           resolveEnd(failed(true, "deadline", "timed_out"));
         }, remaining());
-      if (tools.halted) return failed(false, "native_connection_stopped");
-      if (input.signal.aborted) return failed(true, "cancelled", "cancelled");
+      if (tools.halted)
+        return recorded(
+          ["host_refusal", "admission_halted"],
+          failed(false, "native_connection_stopped"),
+        );
+      if (input.signal.aborted)
+        return recorded(
+          ["abort_observed", "signal_aborted"],
+          failed(true, "cancelled", "cancelled"),
+        );
       if (input.deadline.kind === "walkthrough-deadline/1" && remaining() === 0)
-        return failed(true, "deadline", "timed_out");
+        return recorded(
+          ["deadline_observed", "deadline_elapsed"],
+          failed(true, "deadline", "timed_out"),
+        );
       // Once intent is durable, reconcile even an abort racing with the start response.
       activity.turnStarted();
       const started = await child.request("turn/start", {
@@ -344,40 +375,54 @@ export async function runCodexExplanation(
         effort: input.run.reasoning,
       });
       if (started._tag === "err")
-        result = failed(false, "native_turn_start_unknown");
+        result = recorded(
+          ["start_unresolved", "start_rpc_failed"],
+          failed(false, "native_turn_start_unknown"),
+        );
       else {
-        const parsed = v.safeParse(turnStartSchema, started.value);
-        if (
-          !parsed.success ||
-          early.some(
-            (candidate) =>
-              candidate.threadId !== threadId ||
-              candidate.turnId !== parsed.output.turn.id,
-          )
-        )
-          result = failed(false, "native_turn_start_mismatch");
+        const parsed = parseCodexExplanationStartedTurn(
+          started.value,
+          threadId,
+          early,
+        );
+        if (parsed._tag === "err")
+          result = recorded(
+            ["start_unresolved", parsed.code],
+            failed(false, "native_turn_start_mismatch"),
+          );
         else {
-          turnId = parsed.output.turn.id;
+          turnId = parsed.turnId;
+          // Binding makes early completion eligible before lifecycle persistence can yield to another callback.
+          if (input.signal.aborted)
+            diagnostics.observe(["abort_observed", "signal_aborted"]);
+          else if (early.some((candidate) => candidate.ended))
+            diagnostics.observe(
+              input.lifecycle.finishSignal.aborted
+                ? ["finish_accepted", "finish_signal"]
+                : ["provider_completed_without_finish", "bound_completion"],
+            );
           await observe({
             kind: "provider_turn",
-            turnId: parsed.output.turn.id,
+            turnId: parsed.turnId,
           });
           if (input.signal.aborted) onAbort();
-          else if (early.some((candidate) => candidate.ended))
+          else if (early.some((candidate) => candidate.ended)) {
             resolveEnd(failed(true, "native_turn_ended", "execution_failed"));
-          else tools.bindTurn(turnId);
+          } else tools.bindTurn(turnId);
           result = await end;
         }
       }
       return result;
     })();
   } catch (cause) {
+    diagnostics.observe(["execution_unknown", "execution_threw"]);
     discoveryCleanupUnknown = cause instanceof InsightProcessCleanupError;
     result = failed(
       !admitted && !discoveryCleanupUnknown,
       "native_execution_unknown",
     );
   } finally {
+    diagnostics.phase = "cleanup";
     if (timer !== undefined) clearTimeout(timer);
     input.signal.removeEventListener("abort", onAbort);
     input.lifecycle.finishSignal.removeEventListener("abort", onFinish);
@@ -388,8 +433,10 @@ export async function runCodexExplanation(
         await interrupt();
         if (!input.lifecycle.finishSignal.aborted) await child?.stop();
         await tools?.join();
-        if (toolEffectUnknown)
+        if (toolEffectUnknown) {
+          diagnostics.observe(["cleanup", "tool_effect_unknown"]);
           result = failed(false, "native_tool_effect_unknown");
+        }
         await observe({
           kind: "ended",
           outcome:
@@ -398,6 +445,7 @@ export async function runCodexExplanation(
               : "unknown",
         });
       } catch {
+        diagnostics.observe(["cleanup", "observation_failed"]);
         result = failed(false, "native_observation_unknown");
       }
     }
@@ -414,6 +462,7 @@ export async function runCodexExplanation(
               : "unknown",
         });
     } catch {
+      diagnostics.observe(["cleanup", "process_stop_failed"]);
       cessation = false;
       result = failed(false, "native_cleanup_unknown");
       if (admitted)
@@ -422,10 +471,14 @@ export async function runCodexExplanation(
     if (cessation && home !== undefined) {
       try {
         await home.cleanup();
+        homeCleanup = "succeeded";
       } catch {
+        homeCleanup = "failed";
+        diagnostics.observe(["cleanup", "home_cleanup_failed"]);
         result = failed(false, "native_home_cleanup_failed");
       }
     }
   }
+  diagnostics.finish(result, cessation, homeCleanup);
   return result;
 }
