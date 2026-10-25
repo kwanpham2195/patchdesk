@@ -252,6 +252,8 @@ type ReviewDiffViewProps = {
   readonly showToolbar?: boolean;
   /** Suppresses only drawing options when the enclosing reader owns them. */
   readonly showViewOptions?: boolean;
+  /** The enclosing file row already owns its filename, status and actions. */
+  readonly showFileHeaders?: boolean;
 };
 
 const EMPTY_ANNOTATIONS: ReadonlyArray<ReviewInlineAnnotation> = [];
@@ -287,6 +289,7 @@ function ReviewDiffSurface({
   changes,
   showToolbar = true,
   showViewOptions = true,
+  showFileHeaders = true,
 }: ReviewDiffViewProps): React.JSX.Element {
   const [expandUnchanged, setExpandUnchanged] = useState(false);
   const { appearance, themePreferences } = useDiffAppearanceTheme();
@@ -462,6 +465,7 @@ function ReviewDiffSurface({
       changes={changes}
       showToolbar={showToolbar}
       showViewOptions={showViewOptions}
+      showFileHeaders={showFileHeaders}
     />
   );
 }
@@ -529,6 +533,7 @@ export type ReviewDiffRenderSiteProps = {
   readonly changes: DiffChangesControl | undefined;
   readonly showToolbar: boolean;
   readonly showViewOptions: boolean;
+  readonly showFileHeaders: boolean;
 };
 
 function ReviewDiffRenderSite({
@@ -578,6 +583,7 @@ function ReviewDiffRenderSite({
   changes,
   showToolbar,
   showViewOptions,
+  showFileHeaders,
 }: ReviewDiffRenderSiteProps): React.JSX.Element {
   const codeViewOptions = useMemo(
     () => ({
@@ -590,6 +596,7 @@ function ReviewDiffRenderSite({
       hunkSeparators: "line-info" as const,
       expandUnchanged: expandUnchanged || expandSelectedRange,
       stickyHeaders: true,
+      disableFileHeader: !showFileHeaders,
       lineDiffType: DEFAULT_LINE_DIFF_TYPE,
       diffIndicators: "bars" as const,
       lineHoverHighlight: "both" as const,
@@ -610,6 +617,7 @@ function ReviewDiffRenderSite({
       preferences.lineNumbers,
       preferences.overflow,
       themePreferences,
+      showFileHeaders,
     ],
   );
   const codeViewKey = preferences.fileMode;
@@ -742,6 +750,7 @@ function ReviewDiffRenderSite({
           bodyContext={bodyContext}
           onOpenFindingInAnalysis={onOpenFindingInAnalysis}
           beginRangeAuthoring={beginRangeAuthoring}
+          showFileHeaders={showFileHeaders}
         />
       ) : (
         <div className="relative min-h-0 flex-1">
