@@ -287,12 +287,12 @@ export function useRunInsightsDialog({
             latestRunState.current.statuses[type] !== "running"
               ? {
                   ...current[type],
-                  ...insightRunOptionsForProvider(
+                  models: insightRunOptionsForProvider(
                     type,
                     provider,
-                    { ...current[type], model: current[type].model ?? "" },
+                    undefined,
                     nextCatalog,
-                  ),
+                  ).models,
                 }
               : current[type];
           return {
