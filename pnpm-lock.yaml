@@ -32,8 +32,8 @@ devDependencies:
     specifier: 5.3.0
     version: 5.3.0
   '@modelcontextprotocol/client':
-    specifier: 2.1.0
-    version: 2.1.0
+    specifier: 2.3.0
+    version: 2.3.0
   '@modelcontextprotocol/server':
     specifier: 2.3.0
     version: 2.3.0
@@ -1641,24 +1641,17 @@ packages:
       '@chevrotain/types': 11.1.2
     dev: true
 
-  /@modelcontextprotocol/client@2.1.0:
-    resolution: {integrity: sha512-mDVhoy5WjDb0U+4dQPzLcciC2erSex/GRVQqnoZdiuMoE3YiTZdiS7ezNcFwX4XEOWOaj7jZr0kLYnILnL8orA==}
+  /@modelcontextprotocol/client@2.3.0:
+    resolution: {integrity: sha512-pbHtGj6EeFCHngFE8gtNPaKrsj8Mb1IMw45BLcaPML/m2WTxI7pyYmeNQvaux88Lw8BSO5r7nyRbUyIkICmGrg==}
     engines: {node: '>=20'}
     dependencies:
-      '@modelcontextprotocol/core': 2.1.0
+      '@modelcontextprotocol/core': 2.3.0
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.1
-      jose: 6.2.12
+      jose: 6.2.13
       pkce-challenge: 5.0.1
-      zod: 4.4.3
-    dev: true
-
-  /@modelcontextprotocol/core@2.1.0:
-    resolution: {integrity: sha512-YdFj5gMRHr0gYNAhTbQDgjLHiEJdIAUYxomhKseUNye7ZGlISQmUoLh2sveFFCiQ7j2YMffT1kgSND0FSfIFjQ==}
-    engines: {node: '>=20'}
-    dependencies:
-      zod: 4.4.3
+      zod: 4.6.7
     dev: true
 
   /@modelcontextprotocol/core@2.3.0:
@@ -6452,8 +6445,8 @@ packages:
     hasBin: true
     dev: true
 
-  /jose@6.2.12:
-    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
+  /jose@6.2.13:
+    resolution: {integrity: sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==}
     dev: true
 
   /js-tokens@10.0.0:
