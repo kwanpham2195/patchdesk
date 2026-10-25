@@ -1,7 +1,35 @@
 # Gate Label Writes On The Current Session
 
-Assigning and removing GitHub labels gates on `ReviewWriteGate.requireCurrentSession` rather than `requireFresh`: `requireFresh`'s extra demand, that the loaded patch still match GitHub's, is right for diff-anchored writes, where a comment anchored to a stale patch is simply wrong, but wrong for a label, which a new commit does not invalidate — gating on patch freshness would block labeling merely because someone pushed while the maintainer had the PR open. `LabelService.execute` and its read counterpart `LabelService.list` share that reasoning, reusing an existing check rather than weakening the shared gate.
+GitHub label changes use `ReviewWriteGate.requireCurrentSession`, not
+`requireFresh`. Freshness is required for diff-anchored writes because a
+comment on a stale patch can target the wrong lines. A new commit does not
+invalidate a label, so requiring a Fresh patch would block label changes after
+someone pushes. `LabelService.execute` and `LabelService.list` use the same
+current-session check.
 
-Label permission is three-state (`RepositoryLabelPermission`: `permitted` | `denied` | `unknown`) and fails closed. GitHub's `triage` role can apply and dismiss labels without pull-request write access, so `canManageLabels` is derived independently of `pullRequestsWrite` rather than reused from it. The evidence comes from an optional adapter read (`getRepositoryPermission`), so its absence, or a resolved account that does not match the configured profile account, yields `unknown` — never `permitted`, never `denied` — and `execute` refuses any write short of an explicit `permitted`. The picker renders all three states distinctly instead of collapsing to a binary: enabled, disabled with a no-manage message, or enabled but caveated. Neither extreme absorbs `unknown`: treating it as permitted would offer an action GitHub will refuse, and treating it as denied would silently remove a capability from someone who actually has it. The permission read this depends on was also fixed to parse the collaborator-permission endpoint's `role_name` field instead of its legacy `permission` field, which can only ever report `admin`/`write`/`read`/`none` and has no way to express `triage`; that gap had been silently denying `pullRequestsWrite`, `canDismiss`, `canEdit`, and `canDelete` to every non-admin account, and is recorded here because labeling is what surfaced it.
+Label permission has three states in `RepositoryLabelPermission`:
+`permitted`, `denied`, and `unknown`. The check fails closed. GitHub's `triage`
+role can apply and dismiss labels without pull-request write access, so
+`canManageLabels` is derived separately from `pullRequestsWrite`.
 
-A confirmed label change is journaled as an own-write. Without a `LabelChange` entry in the `RecentReviewWrite` journal, `ReviewObservationService`'s `containsRecentWrites` check can let a poll land a projection that transiently still lacks the label the maintainer just added, the same race the journal already guards against for other writes. This is independent of the "Updates available" banner, which is keyed purely on head-SHA identity and is neither triggered nor suppressed by a label change.
+The optional `getRepositoryPermission` adapter read supplies this evidence. If
+the read is missing or resolves an account other than the one configured for
+the profile, permission is `unknown`. `execute` allows a write only when
+permission is explicitly `permitted`. The picker shows each state: enabled,
+disabled with a no-manage message, or enabled with a caveat. Treating `unknown`
+as `permitted` would offer an action GitHub may refuse. Treating it as `denied`
+would hide a capability the account may have.
+
+The permission read was also fixed to parse the collaborator-permission
+endpoint's `role_name` field instead of its legacy `permission` field. The
+legacy field reports only `admin`, `write`, `read`, or `none`; it cannot
+represent `triage`. That mismatch had denied `pullRequestsWrite`, `canDismiss`,
+`canEdit`, and `canDelete` to every non-admin account. Labeling exposed the
+problem.
+
+A confirmed label change is recorded as an own-write in the
+`RecentReviewWrite` journal. Without a `LabelChange` entry,
+`ReviewObservationService.containsRecentWrites` could let a poll replace the
+projection before it includes the new label. The journal already prevents this
+race for other writes. Label changes do not affect the "Updates available"
+banner, which depends on head-SHA identity.

@@ -4,9 +4,9 @@
 
 Child briefs must include applicable rules below or readable absolute paths to them. Paste these five lines into every implementation brief.
 
-- Commit each accepted slice with explicit paths, and end the report with the SHA.
+- Commit each accepted slice after final verification with explicit paths, and end the report with the SHA.
 - A renderer change is finished only after you looked at a screenshot of the affected screen over CDP.
-- Run affected-package checks during work and the full `pnpm check` once through pre-commit before handoff.
+- Defer unit tests and test-running checks until final verification; then run affected-package checks and the full `pnpm check` once through pre-commit.
 - No compatibility shims or fallbacks unless asked for.
 - Ask before removing code that looks intentional.
 
@@ -35,6 +35,18 @@ See `CONTRIBUTING.md` (codebase map) and `docs/architecture.md` (layers) for the
 
 ## Development and Verification
 
+- Define each substantial slice by an observable user outcome and its verification. Include the producer and its real consumer where practical. Label infrastructure prerequisites explicitly; passing their checks does not complete the product milestone.
+- Once a minimal runtime path works, verify it in the actual app and provider before expanding abstractions or coverage. Obtain required paid-run approval before reaching that gate.
+- After a live failure, investigate and repair the failing stage before expanding tests, refactoring unrelated code or adding infrastructure. If attribution is missing, add the smallest approved diagnostic that distinguishes the possible causes.
+- Progress reports state what newly works, the remaining blocker and the next observation needed. Passing tests, completed helpers and launch counts do not establish product completion.
+
+Verification order for agents:
+
+- Implement first, reproduce the requested behavior live, and fix defects in the approved flow before final verification. During implementation and live debugging, do not add, expand, repair, or run unit tests unless Matthew explicitly requests an exception. A general approval to continue is not test authorization.
+- Use source inspection, diagnostic logs, live checks, formatting, lint and typechecking during implementation. Defer test-running package checks and commit hooks until final verification; defer commits rather than bypassing hooks. This timing governs the test commands listed in `CONTRIBUTING.md`.
+- At final verification, run the required checks. New test scenarios still require separate approval, and approved coverage must be minimal and contract-focused rather than exhaustive combinations.
+- No interim formal code-review rounds or review subagents unless Matthew explicitly asks. Inspect source and diffs as needed to debug. Perform the final review only after live verification passes; apply required blocker fixes and rerun affected verification before handoff or landing.
+
 For runtime work, keep the dev console and raw log tail live in this workspace's tmux session:
 
 - `logs` pane: raw `patchdesk.jsonl` (tail of `~/.local/share/patchdesk-dev/logs/patchdesk.jsonl` for `pnpm dev`).
@@ -43,7 +55,7 @@ For runtime work, keep the dev console and raw log tail live in this workspace's
 - Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; old tmux scrollback is not readiness evidence. Report restarts.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- `CONTRIBUTING.md` and the package scripts define verification commands. Use `pnpm check:package root`, `pnpm check:package insight`, or both for affected packages during work. Shared configuration requires every affected package. Every commit, including Markdown-only commits, runs the full `pnpm check` once through pre-commit. Do not repeat a manual full check immediately before that hook run. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
+- At final verification, use `pnpm check:package root`, `pnpm check:package insight`, or both for affected packages. `CONTRIBUTING.md` and package scripts define the commands; shared configuration requires every affected package. Every commit, including Markdown-only commits, runs the full `pnpm check` once through pre-commit. Do not repeat a manual full check immediately before that hook run. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
@@ -76,11 +88,12 @@ For runtime work, keep the dev console and raw log tail live in this workspace's
 - Keep UI and MCP as thin adapters over the same service. Put shared decisions, validation, and result shaping in domain or service code; see `docs/architecture.md`.
 - When a later ADR changes current guidance, add a supersession note to the earlier ADR. Keep its historical decision intact.
 - Check node_modules for external API types; don't guess.
+- Add bounded, privacy-safe diagnostic logs at important transitions and failure boundaries so later debugging can identify the failing stage without reconstructing the incident. Use fixed reason codes and existing correlation. Preserve the first observed failure before cleanup, distinguish failures at separately awaited cleanup stages, and keep cleanup errors from replacing the original failure. Distinguish observation from root cause. Never log credentials, prompts, source bodies, raw tool arguments or provider prose; logging failures must not change business outcomes. Use existing log owners and retention rather than inventing another telemetry system.
 
 ## Testing
 
 - Test observable behaviour at the lowest layer that can prove the contract.
-- Implement first and verify the changed behavior. Necessary repairs to existing tests are included in an approved fix. New scenarios or expanded coverage require separate user approval. This policy applies only to Patchdesk.
+- Follow the verification order above: no unit-test work before final verification without an explicit exception. Necessary repairs to existing tests belong in final verification. New scenarios or expanded coverage require separate user approval even then. This policy applies only to Patchdesk.
 - No `renderer` tests until asked.
 
 - Write one scenario per test, with as many assertions as needed to prove its relevant outcomes.
@@ -128,7 +141,7 @@ Process:
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
 - A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
 - Once an action is approved, do not re-ask for its sub-steps. Follow Standing authorization for approved programs and new actions.
-- Before merging, get one independent blocker-focused review for changes to storage, GitHub writes, locking, or the main process, and for PRs over 300 changed lines. Smaller renderer or copy PRs need a self-review. Make one fix pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
+- After live verification passes and before merging, get one final independent blocker-focused review for changes to storage, GitHub writes, locking, or the main process, and for PRs over 300 changed lines. Smaller renderer or copy PRs need a final self-review. Do not insert interim review rounds. Make one fix pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
 
 ## Standing authorization
 
@@ -145,7 +158,7 @@ Committing:
 - Only commit files YOU changed in THIS session.
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
-- For accepted authorized changes, commit each phase or milestone after its verification gate and report the SHA. For read-only, blocked, partial, or checkpoint reports, state dirty-file ownership, checks actually run, and pending gates truthfully.
+- For accepted authorized changes, commit each phase or milestone after final verification and report the SHA. Before that point, preserve scoped work and report checkpoints without running test-bearing hooks early. For read-only, blocked, partial, or checkpoint reports, state dirty-file ownership, checks actually run, and pending gates truthfully.
 - Message format: informative and concise.
 
 Stopping:
@@ -166,7 +179,7 @@ If rebase conflicts occur:
 
 Use the named skill when its trigger matches the task. Read the skill file before acting; it is the canonical workflow.
 
-- `code-review`: before any handoff that changed `src/`. Run it yourself; do not wait to be asked.
+- `code-review`: at final verification after live checks pass, before handoff or landing of changes to `src/`. Do not run interim formal reviews or launch interim review subagents.
 - `delegated-execution`: substantial exploration, work that spans several files, or several subagents.
 - `react-doctor`: finishing React work or checking React diagnostics before handoff.
 - `diffs`: working with `@pierre/diffs`, code views, patches, or review surfaces.

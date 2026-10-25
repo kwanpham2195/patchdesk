@@ -17,10 +17,10 @@ for the domain language used across the codebase.
 
 ## Codebase map
 
-- `src/domain/` — types and invariants.
-- `src/services/` — orchestration.
-- `src/adapters/` — I/O (GitHub, storage, providers).
-- `src/main/` — Electron main process; `src/renderer/src/` — React.
+- `src/domain/`: types and invariants.
+- `src/services/`: orchestration.
+- `src/adapters/`: I/O (GitHub, storage, providers).
+- `src/main/`: Electron main process. `src/renderer/src/`: React renderer.
 - `src/adapters/codex/` and `src/adapters/pi-cli/`: native CLI integrations.
   Guide and Walkthrough use host-validated operations through those clients.
 - `tests/` mirrors those boundaries; browser coverage in `tests/browser/`.
@@ -128,8 +128,8 @@ Commits run `pnpm precommit`:
    the tree it would scan (below).
 
 Meet that gate when a slice is done, not when you go to commit.
-`pnpm gate:preflight <paths>` runs the same three checks — the Oxfmt check,
-Oxlint with denied warnings, and the size ratchet — over the paths you name,
+`pnpm gate:preflight <paths>` runs the same three checks, Oxfmt, Oxlint with
+denied warnings, and the size ratchet, over the paths you name,
 reading them from the working tree instead of from the index, so nothing has
 to be staged first. Ten slices each fixing their own two files is ten small
 corrections; one commit of seventy files is a single large one. It also keeps
@@ -142,7 +142,7 @@ another session staging that file leaves it different between the index and the
 working tree. React Doctor aborts on that, which says nothing about your
 change, so `pnpm precommit` decides instead of letting the abort through. When
 `package.json` differs and no `src/renderer/` file is staged, the scan is
-skipped and says so — nothing was scanned, and that is not a pass. When
+skipped and says so. Nothing was scanned, so this is not a pass. When
 `package.json` differs and renderer files are staged, the commit fails: the one
 scan that mattered is the one that could not run, so restore or stage
 `package.json` and retry. Otherwise React Doctor runs as before.
@@ -156,10 +156,9 @@ The repo-wide Oxlint count ratchet runs once inside the hook's full check,
 through `pnpm lint:changed` (see "The count ratchet" and "Verifying before pushing").
 
 Pushes run `pnpm prepush`: `pnpm typecheck`, `pnpm typecheck:scripts`,
-`pnpm check:error-ui`, then `pnpm knip:ratchet`. This is where the
-whole-project ratchets live locally, because a push is where the whole branch
-becomes the unit rather than one commit. Pull request CI is paused; the local
-merge gate covers the branch.
+`pnpm check:error-ui`, then `pnpm knip:ratchet`. These checks validate the
+whole branch, not only the latest commit. Pull request CI is paused, so the
+local merge gate covers the branch.
 
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
@@ -181,13 +180,13 @@ finding count with the baseline recorded in `lint-baseline.json`, which is now
 - The count rose. The check fails and names both numbers. Fix the new
   finding, or raise `findings` deliberately when the increase is reviewed.
 - The count fell. The check fails too, and asks you to set `findings` to the
-  new number and stage `lint-baseline.json` in the same commit. A drop nobody
-  records is a drop that can drift back up unnoticed.
+  new number and stage `lint-baseline.json` in the same commit. Updating the
+  baseline records the lower count so a later increase fails the check.
 - `.oxlintrc.json` (or an Oxlint plugin under `tools/oxlint/`) changed while
   `lint-baseline.json` is not part of the change at all. The check fails
   before Oxlint even runs. "Part of the change" is read off the change's own
-  path list — `git diff --cached --name-only` on a commit, the base/head diff
-  in CI — so **staging `lint-baseline.json` unchanged does not satisfy this
+  path list from `git diff --cached --name-only` on a commit or the base/head
+  diff in CI. **Staging `lint-baseline.json` unchanged does not satisfy this
   rule**: it leaves no diff entry, and nothing then tells that change apart
   from one that never touched the file. A config edit that moves no count
   must still write something into the baseline; say so in its `note`
@@ -219,7 +218,7 @@ rules switched off and `.oxlintrc.json` staged alone is **rejected** by
 `pnpm lint:changed`, and the same edit staged together with an updated
 `lint-baseline.json` is **accepted**. An earlier form of the gate asked
 `git ls-files --stage` / `git ls-tree` whether the baseline was present, which
-reports a tracked file unconditionally — so it answered "yes" for every change
+reports a tracked file unconditionally, so it answered "yes" for every change
 and the gate never fired. `tests/scripts/` now covers both directions.
 
 Oxlint reads the whole working tree, uncommitted edits included. If unstaged
@@ -272,7 +271,7 @@ JavaScript and TypeScript file. Two rules:
 - **A new file may not exceed 500 lines.** A rename is not a new file: the
   ratchet reads the old path's count at the base revision first.
 
-`*.generated.ts` is exempt — a generator decides that size, not a reviewer.
+`*.generated.ts` is exempt because its generator controls the file size.
 
 The ceiling replaced an earlier rule that only blocked a file _already over_
 1,000 lines. That left a blind band: anything between 501 and 999 lines could
@@ -289,9 +288,9 @@ Growth that is **only added import specifiers** is exempt (see
 the ratchet refuses the change that makes a file smaller: naming an imported
 type instead of repeating it inline costs one line inside an import
 declaration, and a file already at the ceiling could not spend it. The
-exemption needs two things at once — nothing outside the import declarations
-may gain a line, and at least one specifier must have been added — so a
-comment, a blank line between specifiers, or a body statement cannot ride
+exemption requires both conditions: nothing outside import declarations may
+gain a line, and at least one specifier must be added. This prevents a
+comment, a blank line between specifiers, or a body statement from riding
 along. Which lines are import lines is decided by parsing the declaration
 whole, and the two revisions are compared by the text of the lines that
 differ rather than by a count of each kind, so moving where the import region
@@ -335,11 +334,10 @@ twenty commits ago is caught before CI finds it.
 
 `pnpm lint:changed` takes its head two ways. With a base and a head it is that
 commit pair, which is what CI passes. **With a base alone it reads the index
-as head**, from `git merge-base <base> HEAD`, so `pnpm check` reports on the
-work in hand rather than only on what is already committed — otherwise the
-last command before a handoff would answer about the tree before the fix.
-`origin/main` is the pull request's base branch, so a stale remote-tracking
-ref checks a stale range: `git fetch` first.
+as head**, from `git merge-base <base> HEAD`. This lets `pnpm check` report on
+the staged change instead of the tree before the fix.
+`origin/main` is the pull request's base branch. Run `git fetch` first so a
+stale remote-tracking ref does not make the check use an outdated range.
 
 Beyond `pnpm check`:
 
@@ -532,33 +530,30 @@ Changing the supported external Pi CLI integration follows `docs/upgrading-pi.md
 The release build signs with an Apple Developer ID and notarizes when these
 repository secrets are set, and builds unsigned when they are not:
 
-- `CSC_LINK` — the Developer ID Application certificate as a base64 `.p12`;
-- `CSC_KEY_PASSWORD` — that certificate's password;
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — the Apple
+- `CSC_LINK`: the Developer ID Application certificate as a base64 `.p12`;
+- `CSC_KEY_PASSWORD`: that certificate's password;
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`: the Apple
   account notarization submits under.
 
 `CSC_LINK` alone decides whether the app is signed. With it and the three
 `APPLE_` secrets, the download opens on any Mac with a double-click. With
 `CSC_LINK` but no `APPLE_` secrets, the app is signed but not notarized. With
-none of them the build still succeeds and produces the unsigned app this
-project has always shipped, which needs one terminal command before first
-launch (see `README.md`, "Install") — say so when you hand it to someone.
+none of them the build still succeeds and produces an unsigned app. It needs
+the terminal command in `README.md`, "Install", before first launch. Mention
+this when handing the app to someone.
 
-The unsigned build is still signed, just anonymously: the `afterPack` hook in
-`scripts/sign-mac-adhoc.mjs` runs `codesign --force --deep --sign -` over the
-finished bundle before the `.dmg` and `.zip` are built. Without it the app
-keeps the signature Electron's binary was linker-signed with, which covers the
-executable alone and seals no resources, so `codesign --verify --deep --strict`
-fails and macOS rejects a downloaded copy as "Patchdesk.app is damaged and
-can't be opened" — a dialog with no way past it. An ad-hoc seal proves
-nothing about who built the app and does not get past Gatekeeper, which
-still reports the download as damaged; what it does is keep the seal intact
-so the app runs once the person clears the quarantine flag with `xattr -cr`,
-which `README.md` documents as the install step. The hook stands down
-whenever `CSC_LINK` is set: electron-builder
-signs and notarizes that build itself, and an anonymous signature has nothing
-to add to a real one. `pnpm test:package-smoke` checks the seal and prints
-which kind it is.
+The build without a Developer ID certificate receives an ad-hoc signature.
+The `afterPack` hook in `scripts/sign-mac-adhoc.mjs` runs
+`codesign --force --deep --sign -` over the finished bundle before building
+the `.dmg` and `.zip`. Without this signature, Electron's linker signature
+covers only the executable, not the resources. Then
+`codesign --verify --deep --strict` fails and macOS rejects the download with
+"Patchdesk.app is damaged and can't be opened." An ad-hoc signature does not
+identify who built the app or satisfy Gatekeeper. It keeps the bundle's seal
+intact so the app can run after the user clears its quarantine flag with
+`xattr -cr`, as described in `README.md`. When `CSC_LINK` is set, this hook
+does not run. Electron-builder signs and notarizes the app. The package smoke
+test checks the seal and reports its type.
 
 Before it signs, the same hook sets Electron fuses on the app binary: it turns
 off `NODE_OPTIONS` and the `--inspect` arguments, and makes the app load only
@@ -574,17 +569,16 @@ A secret that was never configured reaches the build as an empty string, not
 as an absent variable, and electron-builder reads an empty `CSC_LINK` as "sign
 with this". `scripts/package-mac-lib.mjs` drops empty values first, which is
 why an unconfigured secret means unsigned rather than a failed build. It is
-also where the unsigned build turns signing off, with
-`CSC_IDENTITY_AUTO_DISCOVERY=false` rather than the `"identity": null` that
-used to sit in `package.json` — that setting disabled signing for every build,
-including one that had a certificate.
+also where the unsigned build turns signing off with
+`CSC_IDENTITY_AUTO_DISCOVERY=false`. The previous `"identity": null` setting in
+`package.json` disabled signing for every build, including builds with a
+certificate.
 
 ### Building a package by hand
 
 Package only when asked, when the change is packaging-specific, or when
-distribution proof is required. It takes minutes, and a packaged app is
-evidence only for the commit it was built from — a build from yesterday says
-nothing about the tree in front of you.
+distribution proof is required. A packaged app is evidence only for the commit
+it was built from. A build from yesterday says nothing about the current tree.
 
 Build a macOS package, then smoke-test it:
 

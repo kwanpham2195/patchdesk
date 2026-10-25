@@ -85,7 +85,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 | Workspace profile and GitHub account                   | The active profile names the loaded destination and scopes its workbench position.                | Switching workspace clears the old workbench and returns to Pull requests; late focus or load results cannot target the old profile. |
 | Pull request and Review state                          | Pull requests and one keyed Review workbench are the destinations; Review position is per Review. | Revision or terminal changes alter workbench controls, not the destination key; a pending write still blocks leaving.                |
 | GitHub permissions and merge readiness                 | Navigation and Settings do not need GitHub write permission.                                      | A pending GitHub write blocks navigation and close regardless of merge readiness.                                                    |
-| Network, local tool, and Insight provider availability | Stored destinations and view positions can restore offline; content loading may fail separately.  | A load failure shows its owner’s Retry while focus remains within the current surface.                                               |
+| Network, local tool, and Insight provider availability | Stored destinations and view positions can restore offline; content loading may fail separately.  | A load failure shows its owner's Retry while focus remains within the current view.                                                  |
 | Input path: mouse, keyboard, or desktop menu           | Visible buttons, keyboard commands, titlebar actions, and native menus share owners and guards.   | No input path bypasses the write-pending, draft, focus-return, or window-close rules.                                                |
 
 ## Cancel and interrupt
@@ -139,7 +139,7 @@ After an explicit Discard, the draft guard clears and the requested destination 
 
 ## Open questions and verification
 
-- Skip to content moved focus into the main region; Settings returned focus to its opener. The column’s single Tab stop and toggle tooltip still need a live check.
+- Skip to content moved focus into the main region; Settings returned focus to its opener. The column's single Tab stop and toggle tooltip still need a live check.
 - Heading focus after a destination change was not confirmed live: the check ran in a hidden CDP window where animation frames do not run. [Navigation and overlays](../foundations/navigation-and-overlays.md#open-questions-and-verification) records the result and the latent defect [B-14](../bug-triage.md#b-14-a-re-render-can-cancel-heading-focus-after-a-destination-change).
 - Confirmed live and by an independent review: the Visited pull requests row for the Review on screen is announced as the current page and does nothing on Enter. That is intended and test-covered. The Tab cost recorded as [UX-01](../ux-friction.md#ux-01-tab-walks-every-visited-row-before-the-screen) is fixed; that row is now the column's single Tab stop.
 - Confirm in the running app that the collapsed column preference carries across a workspace switch; the live pass did not switch workspace.
