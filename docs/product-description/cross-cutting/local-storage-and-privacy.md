@@ -2,7 +2,7 @@
 
 ## Summary
 
-Patchdesk keeps four local boundaries separate: Config for profiles and app preferences, Local data for durable Review and Insight state, Cache for rebuildable state, and Logs for local debug evidence. Credential-shaped values are rejected or masked at storage boundaries. Review Diagnostics are redacted more strictly than the app log so support evidence cannot expose prompts, tokens, provider output, diff bodies, or sensitive paths.
+Patchdesk keeps four local boundaries separate: Config for profiles and app preferences, Local data for durable Review and Insight state, Cache for rebuildable state, and Logs for local debug evidence. Credential-shaped values are rejected or masked at storage boundaries. Review Diagnostics are redacted more strictly than the app log so support evidence cannot expose prompts, tokens, provider output, diff bodies, or sensitive paths. Private native session histories are a separate class of retained Insight evidence and can contain conversation, source, and tool data.
 
 ## The simple case
 
@@ -24,7 +24,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review records, Review sessions with the files marked Viewed in their Diff, retained Insights with their Walkthrough progress and Analysis Verification ticks, write intents and receipts, journals, prepared artifacts, the pull requests each profile watches, and Diagnostics. A Review record also holds what the maintainer last looked at: the head it showed and the newest Conversation entry timestamp it showed, which is GitHub's timestamp and never this machine's clock. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
+Config lives under `~/.config/patchdesk` and contains profiles, the active-profile choice, Appearance, and Diff theme. Local data lives under `~/.local/share/patchdesk` and contains Review records, Review sessions with the files marked Viewed in their Diff, retained Insights with their Walkthrough progress and Analysis Verification ticks, write intents and receipts, journals, prepared artifacts, native attempt metadata and histories, the pull requests each profile watches, and Diagnostics. A Review record also holds what the maintainer last looked at: the head it showed and the newest Conversation entry timestamp it showed, which is GitHub's timestamp and never this machine's clock. Cache lives under `~/.cache/patchdesk` and contains re-creatable inbox data, avatars, and represented-review worktrees. The app log is `~/.local/share/patchdesk/logs/patchdesk.jsonl`.
 
 The [persistence foundation](../foundations/persistence-and-recovery.md) owns these classes and their recovery behavior. A stored profile contains account settings but no credential; GitHub CLI authentication is resolved when Patchdesk needs it.
 
@@ -46,13 +46,17 @@ Review preparation journals paths before creating worktrees or artifacts. GitHub
 
 Insight generation retains a captured evidence bundle in Local data for its run. It contains represented source text and citation coordinates, so it has the same privacy needs as the prepared patch. Integrity checks use the complete expected file set and digests held by Patchdesk, rather than trusting a mutable manifest.
 
-Walkthrough keeps its captured hunks, generated chapters and sections, operation receipts, provider-request bodies and publication records in durable Local data. Its current section and reviewed marks belong to one saved result and live separately from generated content. A new result starts with no marks. Earlier-format results and progress stay stored but are not imported or rewritten; malformed current progress reports an error instead of becoming empty. Reading does not contact a provider. See [Walkthrough](../review-workbench/walkthrough.md#while-the-action-runs) for cancellation and explicit Resume after interruption.
+Walkthrough keeps its captured hunks, generated chapters and sections, operation receipts, provider-request bodies and publication records in durable Local data. Its current section and reviewed marks belong to one saved result and live separately from generated content. A new result starts with no marks. Earlier-format results and progress stay stored but are not imported or rewritten; malformed current progress reports an error instead of becoming empty. Reading does not contact a provider. See [Walkthrough](../review-workbench/walkthrough.md#while-the-action-runs) for cancellation and Start new generation after interruption.
 
-New Walkthrough generation is API-key only. The native account-provider behavior below applies to supported Insight types, not new Walkthrough runs.
+Brief, Analysis, Guide and Walkthrough use Codex CLI account or pi CLI account. Historical API results keep their original provenance; removing API execution does not rewrite them or authorize a native replacement run.
 
 Codex account generation uses a private temporary home and native automatic approval review with a workspace-write sandbox. The home holds minimal same-account material in a private file, including an access token but no refresh token. Unsupported authentication stores, insufficient token lifetime, loaded instructions, or effective-policy mismatches prevent generation. Patchdesk checks the source login and configuration for changes and does not refresh or rewrite them. Pi account generation enables Bash alongside its inspection tools; Bash is not an enforced read-only shell. Edit and write tools are excluded, and inherited extensions, MCP, skills, templates, themes, and context files are disabled. Neither provider is a general filesystem confidentiality boundary.
 
-Private-home cleanup follows confirmed process cessation. If cessation cannot be confirmed, Patchdesk preserves the home and reports cleanup failure. An early directory identity failure can leave an empty directory. Cleanup does not promise secure erasure.
+Codex archives only allowlisted history from its temporary home after confirmed process cessation. Credential cleanup is attempted independently of archive success once cessation is confirmed. If cessation cannot be confirmed, Patchdesk preserves the home and reports cleanup failure. An early directory identity failure can leave an empty directory. Cleanup does not promise secure erasure.
+
+Generating runs use fresh native sessions. Pi keeps history in a private attempt directory; model discovery does not persist a session. Each attempt has bounded metadata tied to its Review, Insight, run and unique attempt. Safe failure Details can show that metadata without reading native conversation bodies or exposing private storage paths.
+
+Retained history means captured readable bytes, with completeness unknown. Even a readable file from an exited process can omit buffered events. History does not establish successful publication, safe cleanup, spend, or permission to replay. Host records preserve the first observed failure and separate cleanup outcomes when history is missing. History after an app crash is best effort. Pi abort and owned-process observations do not prove that detached Bash descendants stopped.
 
 Insight failures retain only an allowlisted provider phase, code, and safe detail. Arbitrary provider prose, source excerpts, credentials, and sensitive paths do not become diagnostic content. Safe detail survives a diagnostic reload.
 
@@ -66,7 +70,7 @@ App Logs mask credential shapes and drop sensitive metadata keys, but they may r
 
 A successful save makes one validated complete value authoritative. A failed save leaves the prior value where possible. A recovered journal either completes or cleans its owned artifacts before normal use.
 
-Clear cache removes rebuildable children while durable Review history remains. Clear local review data removes eligible non-running sessions and leaves active work and Diagnostics protected. Automatic retention removes a terminal Review's record together with its session 14 days after the session last changed, removes orphaned sessions after 14 days, and removes quarantine entries after 30 days. A terminal Review that still has an unreconciled GitHub write operation keeps its record and session. Once retention removes a record, its pull request leaves the Visited pull requests column.
+Clear cache removes rebuildable children while durable Review history remains. Clear local review data removes eligible non-running sessions and leaves active work and Diagnostics protected. Automatic retention removes an eligible terminal Review's record together with its session 14 days after the session last changed, removes orphaned sessions after 14 days, and removes quarantine entries after 30 days. A terminal Review that still has an unreconciled GitHub write operation keeps its record and session. Retained Insights, current Insight slots, or journals can protect a Review and its native history indefinitely. Active and uncertain attempts remain protected. This change adds no fixed history expiry or weaker cleanup protection. Once retention removes a record, its pull request leaves the Visited pull requests column.
 
 ## Variants
 
@@ -138,4 +142,8 @@ Baseline drafted from Patchdesk application source commit `3100615`.
 
 Insight evidence and native account behavior revised through source commit `d0d37c1` for #821. An earlier-format Codex PR Walkthrough completed with observed owned process and private-home absence. An earlier cleanup failure remains unexplained, with its unidentified home untouched. Managed-refusal runtime behavior and the complete provider matrix remain unverified.
 
-Walkthrough storage and API-key-only generation revised through source commit `95ded64c` for #821. The parent's 2026-10-23 live pass confirmed saved marks and current section after reload and explicit Resume after interruption, not destructive cleanup or account-provider parity.
+Historical Walkthrough storage and API-key-only generation revised through source commit `95ded64c` for #821. The parent's 2026-10-23 live pass confirmed saved marks and current section after reload and explicit Resume after interruption, not destructive cleanup or account-provider parity.
+
+Native-only execution and history retention follow [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Destructive retention and crash recovery remain separate from the observed successful native generation checks.
+
+History and safe Details behavior are revised from the uncommitted source following `a18b0753` on 2026-10-25. Recorded lifecycle checks covered both native providers and all four Insights before API removal, plus a fresh Pi Guide and reopened reader after removal. The older incomplete-matrix statements above retain their historical scope. Final Details presentation, destructive retention, and crash recovery remain unverified by these successful runs.

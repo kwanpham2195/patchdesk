@@ -410,7 +410,7 @@ function projectFinding(
  * rather than only judging the submitted one, so the Pi submit tool can tell a
  * model which verdict to resubmit instead of failing the run after the fact.
  */
-export function requiredVerdictForFindings(
+function requiredVerdictForFindings(
   findings: ReadonlyArray<{ readonly severity: FindingSeverity }>,
 ): ReviewVerdict {
   const hasBlocking = findings.some(

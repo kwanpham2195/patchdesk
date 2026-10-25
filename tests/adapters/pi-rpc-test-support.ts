@@ -81,6 +81,7 @@ type RpcScript = (
 
 export function fakePi(options: {
   readonly version?: string;
+  readonly help?: string;
   /** Holds `pi --version` open until it settles, so a test can act while the version check runs. */
   readonly versionReleased?: Promise<void>;
   readonly rpc: RpcScript;
@@ -98,7 +99,8 @@ export function fakePi(options: {
       void (options.versionReleased ?? Promise.resolve()).then(() => {
         versionChild.stdout.write(
           args[0] === "--help"
-            ? "--no-mcp --no-skills --no-prompt-templates --no-themes --no-context-files --offline\n"
+            ? (options.help ??
+                "--mode --no-session --session-dir --no-extensions --no-approve --no-tools --no-mcp --no-skills --no-prompt-templates --no-themes --no-context-files --offline --tools --model --thinking\n")
             : `${options.version ?? "0.99.2"}\n`,
         );
         setImmediate(() => versionChild.emit("close", 0, null));
@@ -106,7 +108,26 @@ export function fakePi(options: {
       return asChildProcess(versionChild);
     }
     const child: FakePiProcess = new FakePiProcess((command, write) =>
-      options.rpc(command, write, child),
+      options.rpc(
+        command,
+        (record) => {
+          const sessionDirectory = args[args.indexOf("--session-dir") + 1];
+          write(
+            command.type === "get_state"
+              ? {
+                  ...record,
+                  data: {
+                    ...(record.data as JsonRecord),
+                    sessionId: "11111111-1111-4111-8111-111111111111",
+                    sessionFile: `${sessionDirectory}/11111111-1111-4111-8111-111111111111.jsonl`,
+                    isStreaming: false,
+                  },
+                }
+              : record,
+          );
+        },
+        child,
+      ),
     );
     children.push(child);
     return asChildProcess(child);

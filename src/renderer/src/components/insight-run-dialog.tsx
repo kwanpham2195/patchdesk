@@ -7,10 +7,7 @@ import {
 } from "#src/domain/insight-provider";
 import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
-import {
-  insightAccountAlternativeHint,
-  insightNativeRunDisclosure,
-} from "#src/renderer/src/insight-run-copy";
+import { insightNativeRunDisclosure } from "#src/renderer/src/insight-run-copy";
 
 import {
   AccountModelsControl,
@@ -131,9 +128,7 @@ export function InsightRunDialog({
           {models.length === 0 && provider === "pi" ? (
             <Alert>
               <AlertDescription>
-                {noun} has no API-key model available. Configure a provider API
-                key, then relaunch Patchdesk.{" "}
-                {insightAccountAlternativeHint(providers)}
+                API integration removed; choose Codex or Pi CLI
               </AlertDescription>
             </Alert>
           ) : null}
@@ -218,7 +213,8 @@ export function InsightRunDialog({
             data-testid="insight-run-confirm"
             disabled={
               pending ||
-              model === null ||
+              !isAccountInsightProvider(provider) ||
+              !models.some((candidate) => candidate.id === model) ||
               (isAccountInsightProvider(provider) && models.length === 0)
             }
             onClick={onConfirm}

@@ -1,8 +1,22 @@
 import type { ChildProcess } from "node:child_process";
 import * as v from "valibot";
 
+export type InsightProcessCleanupFailureCause =
+  | "stdin_end_threw"
+  | "child_signal_threw"
+  | "group_sigterm_threw"
+  | "group_sigkill_threw"
+  | "group_probe_threw"
+  | "group_still_present"
+  | "unknown";
+
+export type InsightProcessCleanupErrorCode = "permission_denied" | "other";
+
 export class InsightProcessCleanupError extends Error {
-  constructor() {
+  constructor(
+    readonly cleanupCause: InsightProcessCleanupFailureCause = "unknown",
+    readonly cleanupErrorCode?: InsightProcessCleanupErrorCode,
+  ) {
     super("insight_process_cleanup_failed");
   }
 }
@@ -11,10 +25,21 @@ export class InsightProcessCleanupError extends Error {
 export async function stopInsightProcess(
   child: ChildProcess,
   ownsGroup: boolean,
+  onFailure?: (cause: InsightProcessCleanupFailureCause) => void,
 ): Promise<void> {
-  child.stdin?.end();
+  try {
+    child.stdin?.end();
+  } catch (cause) {
+    onFailure?.("stdin_end_threw");
+    throw cause;
+  }
   if (!ownsGroup || child.pid === undefined) {
-    child.kill();
+    try {
+      child.kill();
+    } catch (cause) {
+      onFailure?.("child_signal_threw");
+      throw cause;
+    }
     return;
   }
   const pid = child.pid;
@@ -25,7 +50,16 @@ export async function stopInsightProcess(
     } catch (cause) {
       if (v.is(v.looseObject({ code: v.literal("ESRCH") }), cause))
         return false;
-      throw new InsightProcessCleanupError();
+      throw new InsightProcessCleanupError(
+        signal === 0
+          ? "group_probe_threw"
+          : signal === "SIGTERM"
+            ? "group_sigterm_threw"
+            : "group_sigkill_threw",
+        v.is(v.looseObject({ code: v.picklist(["EPERM", "EACCES"]) }), cause)
+          ? "permission_denied"
+          : "other",
+      );
     }
   };
   // A leader's exit does not prove its native command descendants have stopped.
@@ -37,5 +71,6 @@ export async function stopInsightProcess(
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
     }
   }
-  if (signalGroup(0)) throw new InsightProcessCleanupError();
+  if (signalGroup(0))
+    throw new InsightProcessCleanupError("group_still_present");
 }

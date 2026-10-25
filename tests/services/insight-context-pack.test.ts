@@ -39,6 +39,7 @@ describe("Insight run context pack", () => {
     type: "analysis" | "brief" = "analysis",
   ) {
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type,
@@ -284,6 +285,7 @@ describe("Insight run context pack", () => {
 
     const [first, second] = await Promise.all([
       value.coordinator.start({
+        provider: "codex-cli-account" as const,
         profileId,
         reviewId: value.review.id,
         type: "analysis",
@@ -292,6 +294,7 @@ describe("Insight run context pack", () => {
         language: "en",
       }),
       value.coordinator.start({
+        provider: "codex-cli-account" as const,
         profileId,
         reviewId: value.review.id,
         type: "brief",
@@ -382,6 +385,7 @@ describe("Insight run context pack", () => {
 
     const started = must(
       await value.coordinator.start({
+        provider: "codex-cli-account" as const,
         profileId,
         reviewId: value.review.id,
         type: "analysis",

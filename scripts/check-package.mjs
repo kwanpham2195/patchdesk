@@ -5,7 +5,7 @@ import { runCheckCommand } from "./run-full-check.mjs";
 
 /**
  * Check an explicitly selected package; unknown or absent selections fail closed.
- * Root owns application tests and lint-plugin validation, not the separate runtime suite.
+ * Root owns application tests and lint-plugin validation.
  * @param {ReadonlyArray<string>} packages
  * @param {string} cwd
  * @param {AbortSignal} signal
@@ -18,41 +18,21 @@ export async function checkPackages(
   signal,
   run = runCheckCommand,
 ) {
-  if (
-    packages.length === 0 ||
-    packages.some((name) => name !== "root" && name !== "insight")
-  ) {
-    process.stderr.write(
-      "Usage: pnpm check:package root|insight [root|insight]\n",
-    );
+  if (packages.length === 0 || packages.some((name) => name !== "root")) {
+    process.stderr.write("Usage: pnpm check:package root\n");
     return 2;
   }
-  for (const name of new Set(packages)) {
-    const commands =
-      name === "root"
-        ? [
-            ["typecheck"],
-            ["typecheck:scripts"],
-            ["check:error-ui"],
-            ["check:imports"],
-            ["test:root"],
-            [
-              "exec",
-              "oxlint",
-              "--deny-warnings",
-              "--ignore-pattern",
-              "runtime/insight/**",
-            ],
-          ]
-        : [
-            ["--dir", "runtime/insight", "typecheck"],
-            ["exec", "oxlint", "--deny-warnings", "runtime/insight"],
-            ["test:insight"],
-          ];
-    for (const args of commands) {
-      const status = await run("pnpm", args, cwd, signal);
-      if (status !== 0) return status;
-    }
+  const commands = [
+    ["typecheck"],
+    ["typecheck:scripts"],
+    ["check:error-ui"],
+    ["check:imports"],
+    ["test:root"],
+    ["exec", "oxlint", "--deny-warnings"],
+  ];
+  for (const args of commands) {
+    const status = await run("pnpm", args, cwd, signal);
+    if (status !== 0) return status;
   }
   return 0;
 }

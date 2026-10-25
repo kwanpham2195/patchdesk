@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { nativeSessionAttemptPageSchema } from "./native-session-attempt";
 
 import type { InsightArtifactCodec } from "./insight-artifact-index";
 import {
@@ -20,11 +21,17 @@ import {
 } from "./walkthrough-selectors.js";
 
 const cursor = v.nullable(v.pipe(v.string(), v.minLength(1), v.maxLength(512)));
-const scope = guideSummaryRequestSchema.entries;
+const scope = {
+  profileId: guideSummaryRequestSchema.entries.profileId,
+  reviewId: guideSummaryRequestSchema.entries.reviewId,
+};
 const metadata = guideSummarySchema.options[1].entries;
 
 /** Summary requires only the owning Review. */
-export const walkthroughSummaryRequestSchema = v.strictObject(scope);
+export const walkthroughSummaryRequestSchema = v.strictObject({
+  ...scope,
+  nativeAttemptCursor: v.exactOptional(v.pipe(v.string(), v.uuid())),
+});
 /** Resume names the paused generation and explicitly acknowledges unknown spend. */
 export const walkthroughResumeRequestSchema = guideResumeRequestSchema;
 /** Pages always bind the exact published digest. */
@@ -86,11 +93,13 @@ export const walkthroughProgressPointerSchema = v.strictObject({
 export const walkthroughSummarySchema = v.variant("_tag", [
   v.strictObject({
     _tag: v.literal("none"),
+    nativeAttempts: v.exactOptional(nativeSessionAttemptPageSchema),
     run: metadata.run,
     failure: metadata.failure,
   }),
   v.strictObject({
     _tag: v.literal("ready"),
+    nativeAttempts: v.exactOptional(nativeSessionAttemptPageSchema),
     run: metadata.run,
     failure: metadata.failure,
     runId: v.string(),

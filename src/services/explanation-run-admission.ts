@@ -51,21 +51,19 @@ export class ExplanationRunAdmission {
       | undefined,
   ) {}
 
-  /** Admits only API-key explanation runs and releases the Review lock before generation. */
+  /** Admits only native explanation runs and releases the Review lock before generation. */
   async start(
     input: InsightCoordinatorInput,
     hooks: InsightStartHooks | undefined,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
-    if (!supportsInsightProvider(input.type, input.provider ?? "pi"))
+    if (
+      input.provider === undefined ||
+      !supportsInsightProvider(input.type, input.provider)
+    )
       return err("unsupported_provider");
     const generator =
       input.type === "walkthrough" ? this.walkthrough : this.guide;
     if (generator === undefined) return err("not_available");
-    if (
-      (input.provider ?? "pi") === "pi" &&
-      (input.reasoning === "minimal" || input.reasoning === "xhigh")
-    )
-      return err("not_available");
     const admitted = await this.operations.withReviewLock(
       input.profileId,
       input.reviewId,

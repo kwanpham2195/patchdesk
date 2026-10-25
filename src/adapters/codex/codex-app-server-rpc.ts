@@ -1,7 +1,12 @@
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import * as v from "valibot";
+import { codexRpcResultSchema } from "./codex-rpc-result-schema";
 import { err, ok, type Result } from "#src/domain/result";
-import { stopInsightProcess } from "#src/adapters/process/insight-process-cleanup";
+import {
+  InsightProcessCleanupError,
+  stopInsightProcess,
+  type InsightProcessCleanupErrorCode,
+} from "#src/adapters/process/insight-process-cleanup";
 import { isNotFound } from "#src/adapters/storage/json-file";
 import { allowlistedCodexEnvironment } from "./codex-insight-policy";
 import type { CodexAppServerFailure } from "./codex-app-server-client";
@@ -10,6 +15,7 @@ import { dynamicToolLine } from "./codex-dynamic-tool-line";
 import type {
   CodexDiagnostic,
   CodexDiagnosticFields,
+  CodexStopFailureCause,
 } from "./codex-explanation-diagnostics";
 const CLIENT_NAME = "patchdesk";
 const CLIENT_VERSION = "0.1.0";
@@ -74,35 +80,10 @@ const rpcErrorSchema = v.looseObject({
   message: v.optional(v.string()),
 });
 
-/** Bare "is a plain object" gate for a field the wire protocol leaves as `unknown`. */
-
-/**
- * A generic JSON value. Every RPC response's `result` is one of these before it is parsed into
- * its own method-specific shape (thread/start, turn/start, model/list, ...); each caller runs
- * its own schema over it rather than reading it as `unknown`.
- */
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ReadonlyArray<JsonValue>
-  | { readonly [key: string]: JsonValue };
-const jsonValueSchema: v.GenericSchema<JsonValue> = v.lazy(() =>
-  v.union([
-    v.string(),
-    v.number(),
-    v.boolean(),
-    v.null_(),
-    v.array(jsonValueSchema),
-    v.record(v.string(), jsonValueSchema),
-  ]),
-);
-/** An RPC response's `result`, confirmed to be a plain object. */
-const jsonObjectSchema = v.record(v.string(), jsonValueSchema);
-export type JsonObject = v.InferOutput<typeof jsonObjectSchema>;
+export type JsonObject = v.InferOutput<typeof codexRpcResultSchema>;
 
 export class RpcChild {
+  /** Reported release identity for durable evidence, never a compatibility allowlist. */
   nativeVersion: string | undefined;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(message: CodexRpcMessage) => void>();
@@ -117,6 +98,8 @@ export class RpcChild {
   private diagnosticStopping = false;
   private broken = false;
   private stopPromise: Promise<void> | undefined;
+  stopFailureCause: CodexStopFailureCause | undefined;
+  stopFailureErrorCode: InsightProcessCleanupErrorCode | undefined;
   private ownsProcessGroup = false;
   private turnId: string | undefined;
   private threadId: string | undefined;
@@ -231,7 +214,7 @@ export class RpcChild {
       const userAgent = v.safeParse(v.string(), initialized.value.userAgent);
       this.nativeVersion = userAgent.success
         ? new RegExp(
-            `^${CLIENT_NAME}/([0-9]+\\.[0-9]+\\.[0-9]+)(?:\\s|$)`,
+            `^${CLIENT_NAME}/([A-Za-z0-9][A-Za-z0-9._-]{0,127})(?:\\s|$)`,
           ).exec(userAgent.output)?.[1]
         : undefined;
       this.send({ method: "initialized", params: {} });
@@ -315,18 +298,37 @@ export class RpcChild {
     this.diagnosticStopping = true;
     // Repeated shutdown must preserve failed cessation so the private home remains guarded.
     this.stopPromise ??= (async () => {
-      this.cancel();
-      this.stopped = true;
-      for (const pending of this.pending.values()) {
-        this.detail("request_stopped");
-        clearTimeout(pending.timer);
-        pending.reject("stopped");
+      let failureCause: CodexStopFailureCause = "cancel_threw";
+      try {
+        this.cancel();
+        this.stopped = true;
+        failureCause = "pending_requests_threw";
+        for (const pending of this.pending.values()) {
+          this.detail("request_stopped");
+          clearTimeout(pending.timer);
+          pending.reject("stopped");
+        }
+        this.pending.clear();
+        this.listeners.clear();
+        failureCause = "unknown";
+        if (this.child !== undefined)
+          await stopInsightProcess(
+            this.child,
+            this.ownsProcessGroup,
+            (cause) => {
+              this.stopFailureCause = cause;
+            },
+          );
+        this.child = undefined;
+      } catch (cause) {
+        if (cause instanceof InsightProcessCleanupError)
+          this.stopFailureErrorCode = cause.cleanupErrorCode;
+        this.stopFailureCause ??=
+          cause instanceof InsightProcessCleanupError
+            ? cause.cleanupCause
+            : failureCause;
+        throw cause;
       }
-      this.pending.clear();
-      this.listeners.clear();
-      if (this.child !== undefined)
-        await stopInsightProcess(this.child, this.ownsProcessGroup);
-      this.child = undefined;
     })();
     return this.stopPromise;
   }
@@ -405,7 +407,7 @@ export class RpcChild {
         pending.reject(rpcError);
       } else {
         const result = message.result;
-        if (result === undefined || !v.is(jsonObjectSchema, result)) {
+        if (result === undefined || !v.is(codexRpcResultSchema, result)) {
           this.detail("rpc_result_invalid");
           pending.reject("invalid_rpc_result");
         } else pending.resolve(result);

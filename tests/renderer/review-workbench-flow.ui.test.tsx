@@ -419,17 +419,12 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     },
   );
 
-  it("opens the Analysis run dialog with the default set in Settings", async () => {
-    // Settings and the run dialog now share one storage key
-    // (`insight-run-preferences`, type "analysis"); this seeds it exactly as
-    // `ReviewPreferences` in settings-flow.tsx would, to prove the run
-    // dialog actually opens with that saved default instead of the
-    // hardcoded pi/medium fallback.
+  it("opens the Analysis run dialog with the saved native choice", async () => {
     localStorage.setItem(
       "patchdesk.insight-run.v1.analysis.profile",
       JSON.stringify({
-        provider: "pi",
-        model: "settings-model",
+        provider: "codex-cli-account",
+        model: "saved-model",
         reasoning: "high",
       }),
     );
@@ -442,9 +437,9 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
           models: [
             ...providerCatalog.models,
             {
-              provider: "pi",
-              id: "settings-model",
-              label: "Settings model",
+              provider: "codex-cli-account",
+              id: "saved-model",
+              label: "Saved model",
               reasoning: ["medium", "high"],
               defaultReasoning: "medium",
             },
@@ -465,7 +460,7 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     });
     // SAFETY: `ModelCombobox` renders its trigger as a plain text input; the
     // accessible-name query above only matches that element.
-    expect((model as HTMLInputElement).value).toBe("Settings model");
+    expect((model as HTMLInputElement).value).toBe("Saved model");
     const reasoning = screen.getByRole("combobox", {
       name: "Insight reasoning",
     });
@@ -482,9 +477,6 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
   });
 
   it("selects the saved preference's Codex model after activation, not the first one", async () => {
-    // Regression for a bug where `activateAccount` always picked
-    // `codexModels[0]` and ignored a saved preference, unlike
-    // `changeProvider`'s precedence for the Pi provider above.
     localStorage.setItem(
       "patchdesk.insight-run.v1.analysis.profile",
       JSON.stringify({
@@ -496,7 +488,8 @@ describe("ReviewWorkbenchFlow current Review protocol", () => {
     bridge(async (input) => {
       if (input.path === "/v1/reviews/detect-updates")
         return { updatesAvailable: false };
-      if (input.path === "/v1/insight-providers") return providerCatalog;
+      if (input.path === "/v1/insight-providers")
+        return { ...providerCatalog, models: [] };
       if (input.path === "/v1/insight-providers/codex/models")
         return {
           providers: [

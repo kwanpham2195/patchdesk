@@ -99,7 +99,7 @@ describe("prepareBriefPrompt", () => {
 
   it("returns patch_too_large for a patch past the bounded input size", async () => {
     await expect(
-      briefPromptResult(Buffer.alloc(2 * 1024 * 1024 + 1, 0x78)),
+      briefPromptResult(Buffer.alloc(64 * 1024 * 1024 + 1, 0x78)),
     ).resolves.toEqual({ _tag: "err", error: { reason: "patch_too_large" } });
   });
 });

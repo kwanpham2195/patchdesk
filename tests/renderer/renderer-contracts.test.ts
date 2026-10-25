@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  parseInsightProviderCatalog,
-  parseModelCatalog,
-} from "#src/renderer/src/insight-catalog-contracts";
+import { parseInsightProviderCatalog } from "#src/renderer/src/insight-catalog-contracts";
 import { parseCommitDiffResponse } from "#src/renderer/src/review-diff-contracts";
 import {
   parseInboxResponse,
@@ -297,23 +294,6 @@ describe("parseRepositoryLabelListResponse", () => {
 });
 
 describe("commit diff response", () => {
-  it("parses a provider catalog model with and without a list price", () => {
-    const model = {
-      provider: "pi",
-      id: "openai/gpt",
-      label: "openai/gpt",
-      reasoning: ["low"],
-    };
-    const parsed = parseInsightProviderCatalog({
-      providers: [],
-      models: [model, { ...model, cost: { input: 0.035, output: 0.14 } }],
-    });
-    expect(parsed?.models.map((entry) => entry.cost)).toEqual([
-      undefined,
-      { input: 0.035, output: 0.14 },
-    ]);
-  });
-
   it("parses provider catalogs and rejects paths or raw diagnostics", () => {
     expect(
       parseInsightProviderCatalog({
@@ -725,64 +705,6 @@ describe("parseMergeReceipt", () => {
       parseMergeReceipt({ ...receipt, mergeCommitSha: "short" }),
     ).toBeUndefined();
     expect(parseMergeReceipt({ ...receipt, response: "raw" })).toBeUndefined();
-  });
-});
-
-describe("parseModelCatalog", () => {
-  it("accepts a renderer-safe Pi catalog with a default model and reasoning", () => {
-    const catalog = parseModelCatalog({
-      models: [{ id: "model-a", label: "Model A" }],
-      defaultModel: "model-a",
-      defaultReasoning: "medium",
-      reasoning: ["low", "medium", "high"],
-    });
-    expect(catalog?.models).toEqual([{ id: "model-a", label: "Model A" }]);
-    expect(catalog?.defaultReasoning).toBe("medium");
-  });
-
-  it("accepts an intentional empty catalog for provider guidance", () => {
-    expect(parseModelCatalog({ models: [] })).toEqual({ models: [] });
-  });
-
-  it("accepts the complete universal catalog without a small count cap", () => {
-    const models = Array.from({ length: 269 }, (_, index) => ({
-      id: `openai/universal-model-${index}`,
-      label: `Universal model ${index}`,
-    }));
-    const catalog = parseModelCatalog({ models });
-    expect(catalog?.models).toHaveLength(269);
-    expect(catalog?.models.at(-1)).toEqual(models.at(-1));
-  });
-
-  it("keeps model entries strict and rejects credential fields", () => {
-    expect(
-      parseModelCatalog({
-        models: [{ id: "model-a", label: "Model A", apiKey: "secret" }],
-      }),
-    ).toBeUndefined();
-    expect(
-      parseModelCatalog({ models: [{ id: "i".repeat(201), label: "Model" }] }),
-    ).toBeUndefined();
-    expect(
-      parseModelCatalog({
-        models: [{ id: "model-a", label: "l".repeat(201) }],
-      }),
-    ).toBeUndefined();
-  });
-
-  it("rejects a catalog that includes non-string model ids", () => {
-    expect(
-      parseModelCatalog({ models: [{ id: 42, label: "Model" }] }),
-    ).toBeUndefined();
-  });
-
-  it("rejects a catalog that includes an out-of-range reasoning value", () => {
-    expect(
-      parseModelCatalog({
-        models: [{ id: "model-a", label: "Model A" }],
-        defaultReasoning: "extreme",
-      }),
-    ).toBeUndefined();
   });
 });
 

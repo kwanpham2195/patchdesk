@@ -98,13 +98,53 @@ function mcpShimBundle(): Plugin {
   };
 }
 
+/** The Bash helper is staged alone, so its bundle must contain every non-builtin import. */
+function piExplanationHelperBundle(): Plugin {
+  return {
+    name: "patchdesk-pi-explanation-helper-bundle",
+    apply: "build",
+    async buildStart() {
+      const output = await build({
+        configFile: false,
+        logLevel: "warn",
+        build: {
+          ssr: "src/adapters/pi-cli/pi-explanation-helper.ts",
+          target: "node22",
+          write: false,
+          minify: false,
+          rollupOptions: {
+            output: { format: "es", inlineDynamicImports: true },
+          },
+        },
+        ssr: { noExternal: true, target: "node" },
+      });
+      for (const entry of Array.isArray(output) ? output : [output]) {
+        if (!("output" in entry)) continue;
+        for (const chunk of entry.output) {
+          if (chunk.type !== "chunk") continue;
+          for (const id of chunk.moduleIds) this.addWatchFile(id);
+          this.emitFile({
+            type: "asset",
+            fileName: "pi-explanation-helper.mjs",
+            source: chunk.code,
+          });
+        }
+      }
+    },
+  };
+}
+
 /** Builds Electron's privileged processes separately from the isolated React renderer. */
 export default defineConfig(({ command }) => ({
   main: {
     define: {
       __PATCHDESK_CAPTURE_DIAGNOSTICS__: JSON.stringify(command === "serve"),
     },
-    plugins: [externalizeDepsPlugin(), mcpShimBundle()],
+    plugins: [
+      externalizeDepsPlugin(),
+      mcpShimBundle(),
+      piExplanationHelperBundle(),
+    ],
     resolve: {
       alias: {
         "#src": fileURLToPath(new URL("./src", import.meta.url)),

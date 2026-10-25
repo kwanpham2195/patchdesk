@@ -47,6 +47,7 @@ export type PiRpcRequestFailure =
   | { readonly _tag: "command_failed"; readonly message: string };
 
 type PendingRequest = {
+  readonly command: string;
   readonly resolve: (result: Result<PiRpcRecord, PiRpcRequestFailure>) => void;
   readonly timer: ReturnType<typeof setTimeout>;
 };
@@ -122,7 +123,7 @@ export class PiRpcChannel {
         () => settle(err({ _tag: "timeout" })),
         Math.max(1, Math.min(REQUEST_TIMEOUT_MS, timeoutMs)),
       );
-      this.pending.set(id, { resolve: settle, timer });
+      this.pending.set(id, { command: command.type, resolve: settle, timer });
       signal?.addEventListener("abort", onAbort, { once: true });
       this.send({ ...command, id });
     });
@@ -191,7 +192,7 @@ export class PiRpcChannel {
       const pending = this.pending.get(record.id);
       if (pending === undefined) return;
       pending.resolve(
-        record.success === true
+        record.success === true && record.command === pending.command
           ? ok(record)
           : err({ _tag: "command_failed", message: record.error ?? "" }),
       );

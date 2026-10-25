@@ -35,7 +35,7 @@ export type PreparedModelReview = {
 };
 
 /** Signals a composed Analysis prompt that exceeds the bounded model input. */
-export class AnalysisPromptTooLargeError extends Error {
+class AnalysisPromptTooLargeError extends Error {
   constructor() {
     super("Analysis prompt exceeds the bounded input size");
     this.name = "AnalysisPromptTooLargeError";

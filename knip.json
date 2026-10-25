@@ -2,7 +2,12 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs", "tests/**/*.{ts,tsx}", "src/mcp/main.ts"],
+      "entry": [
+        "scripts/*.mjs",
+        "tests/**/*.{ts,tsx}",
+        "src/mcp/main.ts",
+        "src/adapters/pi-cli/pi-explanation-helper.ts"
+      ],
       "project": [
         "src/**/*.{ts,tsx}",
         "src/**/*.css",
@@ -11,10 +16,6 @@
       ],
       "ignore": ["src/renderer/src/components/ui/**"],
       "ignoreBinaries": ["ditto", "mkfifo"]
-    },
-    "runtime/insight": {
-      "entry": ["scripts/*.mjs", "tests/**/*.ts"],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "tests/**/*.ts"]
     }
   }
 }

@@ -12,6 +12,7 @@ import {
   safeParse,
   strictObject,
   string,
+  uuid,
 } from "valibot";
 
 import {
@@ -279,7 +280,11 @@ export function registerInsightRoutes(
       return context.json({ error: "invalid_input" }, 400);
     return guideReadResponse(
       context,
-      await container.guidePages.summary(profileId.value, reviewId.value),
+      await container.guidePages.summary(
+        profileId.value,
+        reviewId.value,
+        parsed.success ? parsed.output.nativeAttemptCursor : undefined,
+      ),
     );
   });
   app.post("/v1/reviews/insights/walkthrough/summary", async (context) => {
@@ -294,7 +299,11 @@ export function registerInsightRoutes(
       return context.json({ error: "invalid_input" }, 400);
     return guideReadResponse(
       context,
-      await container.walkthroughPages.summary(profile.value, review.value),
+      await container.walkthroughPages.summary(
+        profile.value,
+        review.value,
+        parsed.output.nativeAttemptCursor,
+      ),
     );
   });
   app.post("/v1/reviews/insights/walkthrough/page", async (context) => {
@@ -416,11 +425,16 @@ export function registerInsightRoutes(
     const reviewId = parseReviewId(context.req.query("reviewId"));
     const runId = parseInsightRunId(context.req.param("runId"));
     const type = parseInsightType(context.req.query("type"));
+    const cursor = safeParse(
+      optional(pipe(string(), uuid())),
+      context.req.query("nativeAttemptCursor"),
+    );
     if (
       profileId._tag === "err" ||
       reviewId._tag === "err" ||
       runId._tag === "err" ||
-      type === undefined
+      type === undefined ||
+      !cursor.success
     )
       return context.json({ error: "invalid_input" }, 400);
     return insightResultResponse(
@@ -430,6 +444,7 @@ export function registerInsightRoutes(
         reviewId: reviewId.value,
         type,
         runId: runId.value,
+        nativeAttemptCursor: cursor.output,
       }),
     );
   });

@@ -1,5 +1,7 @@
 # Drive Pi directly without Flue
 
+> Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
+
 > Superseded in part by [ADR 0055](0055-read-captured-insight-evidence-on-demand.md). The historical input, inspection, and permission descriptions below remain as the record of the earlier decision.
 
 > ADR 0055's Walkthrough contract also replaces whole-result submission and transient retries with ordered durable operations, explicit Resume, and a retained generation deadline. The Pi runtime choice remains.

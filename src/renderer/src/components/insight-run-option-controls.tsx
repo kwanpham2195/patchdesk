@@ -67,16 +67,17 @@ export function InsightProviderSelect({
 }: {
   readonly id: string;
   readonly ariaLabel: string;
-  readonly value: InsightProvider;
+  readonly value: InsightProvider | null;
   readonly providers: ReadonlyArray<InsightProvider>;
   readonly disabled: boolean;
   readonly onValueChange: (provider: InsightProvider) => void;
 }): React.JSX.Element {
+  const choices = value === "pi" ? ["pi" as const, ...providers] : providers;
   return (
     <Select
       value={value}
       disabled={disabled}
-      items={providers.map((option) => ({
+      items={choices.map((option) => ({
         label: INSIGHT_PROVIDER_LABELS[option],
         value: option,
       }))}
@@ -86,12 +87,12 @@ export function InsightProviderSelect({
       }}
     >
       <SelectTrigger id={id} aria-label={ariaLabel}>
-        <SelectValue />
+        <SelectValue placeholder="Mixed" />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          {providers.map((option) => (
-            <SelectItem key={option} value={option}>
+          {choices.map((option) => (
+            <SelectItem key={option} value={option} disabled={option === "pi"}>
               {INSIGHT_PROVIDER_LABELS[option]}
             </SelectItem>
           ))}
@@ -168,7 +169,7 @@ export function InsightReasoningSelect({
   readonly id: string;
   readonly ariaLabel: string;
   readonly options: ReadonlyArray<InsightReasoning>;
-  readonly value: InsightReasoning;
+  readonly value: InsightReasoning | null;
   readonly disabled: boolean;
   readonly onValueChange: (reasoning: InsightReasoning) => void;
 }): React.JSX.Element {
@@ -183,7 +184,7 @@ export function InsightReasoningSelect({
       }}
     >
       <SelectTrigger id={id} aria-label={ariaLabel}>
-        <SelectValue />
+        <SelectValue placeholder="Mixed" />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -207,7 +208,7 @@ export function InsightLanguageSelect({
 }: {
   readonly id: string;
   readonly ariaLabel: string;
-  readonly value: InsightLanguage;
+  readonly value: InsightLanguage | null;
   readonly disabled: boolean;
   readonly onValueChange: (language: InsightLanguage) => void;
 }): React.JSX.Element {
@@ -225,7 +226,7 @@ export function InsightLanguageSelect({
       }}
     >
       <SelectTrigger id={id} aria-label={ariaLabel}>
-        <SelectValue />
+        <SelectValue placeholder="Mixed" />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

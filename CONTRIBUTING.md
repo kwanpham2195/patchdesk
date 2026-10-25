@@ -12,8 +12,8 @@ for the domain language used across the codebase.
   embeds a compatible Node release.
 - `pnpm install` installs the pre-commit hook automatically (husky).
 - Development runs on macOS; `pnpm package:mac` builds the release package.
-- The isolated insight runtime (`runtime/insight/`) has an exact lock and is
-  validated during package smoke.
+- Insight generation uses an installed Codex or Pi CLI and its local account.
+  See `docs/adr/0056-run-insights-through-native-cli-accounts.md`.
 
 ## Codebase map
 
@@ -21,8 +21,8 @@ for the domain language used across the codebase.
 - `src/services/` — orchestration.
 - `src/adapters/` — I/O (GitHub, storage, providers).
 - `src/main/` — Electron main process; `src/renderer/src/` — React.
-- `runtime/insight/` — the isolated insight runtime. It builds one Pi agent per
-  Insight run (ADR 0041).
+- `src/adapters/codex/` and `src/adapters/pi-cli/`: native CLI integrations.
+  Guide and Walkthrough use host-validated operations through those clients.
 - `tests/` mirrors those boundaries; browser coverage in `tests/browser/`.
 - Architecture: `docs/architecture.md`; decisions: `docs/adr/`.
 - UI conventions: `docs/ui-guide.md`.
@@ -37,18 +37,11 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm install` runs the root `prepare` script, which installs and builds
-`runtime/insight`'s dependencies — the isolated runtime the Insight feature
-needs. `pnpm dev` builds that runtime again before starting electron-vite, so
-Insight works with no extra step even if the runtime is stale.
-
-If you ran `pnpm install --ignore-scripts`, `prepare` did not run and the
-runtime is missing; recover with:
-
-```bash
-pnpm --dir runtime/insight install
-pnpm --dir runtime/insight build
-```
+`pnpm install` runs the root `prepare` script to install Husky. `pnpm dev`
+starts electron-vite. New Insight runs require Codex or Pi CLI on the app's
+launch PATH and an external login to that CLI. Patchdesk lists account models
+only after an explicit Load models action. It bundles no API-key Insight
+runtime. See [Upgrading Pi](docs/upgrading-pi.md) for the Pi integration.
 
 **Dev profile.** `pnpm dev` keeps its config, data and cache apart from the
 installed app: `~/.config/patchdesk-dev`, `~/.local/share/patchdesk-dev` and
@@ -79,13 +72,15 @@ pnpm typecheck
 pnpm test -- --run
 ```
 
-Use `pnpm test -- --run <file>` for focused root-suite development. Run `pnpm check:package root` or `pnpm check:package insight` for affected-package tests, lint, and typechecks. Select both with `pnpm check:package root insight` when shared configuration affects both. Selection is explicit and unknown names fail. Root owns most app code, tests, and lint-plugin validation; its check still runs the whole root suite. Insight checks its compiler, scoped lint through the root tool, and its separate suite.
-
-The inner loop is that focused test file, not the whole project. `pnpm typecheck`
-builds a program over `src` and `tests` every time it runs, so run it when a
-slice is done rather than after each edit; a syntax error in the file you are
-editing is quicker to find by reading the file than by compiling the
-repository. Every commit runs the full `pnpm check` once through pre-commit, including Markdown-only commits. Do not run a redundant manual full suite immediately before committing.
+During implementation, use source inspection, formatting, lint, typechecking,
+and live verification. Defer unit tests and test-running checks until final
+verification unless the maintainer explicitly approves an exception.
+At final verification, `pnpm test -- --run <file>` targets an affected test file,
+and `pnpm check:package root` runs the root package's typechecks, import and
+error-UI checks, lint, and whole test suite. Root is the only package selection;
+missing or unknown names fail. Every commit runs the full `pnpm check` once
+through pre-commit, including Markdown-only commits. Do not run a redundant
+manual full suite immediately before committing.
 
 ## Where a test belongs
 
@@ -313,14 +308,14 @@ invariant the surrounding code checked, not restate what the code does.
 
 `pnpm check` runs manually or once at the start of every pre-commit path. It runs `pnpm typecheck`,
 `pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm check:imports`,
-`pnpm --dir runtime/insight typecheck`, runtime-scoped Oxlint, `pnpm test:all`,
+`pnpm test:all`,
 `pnpm lint:staged` (checks what you will commit),
 `pnpm lint:changed -- origin/main` (checks the whole branch as the local
 merge gate does), then `pnpm knip:ratchet`, in that order, and stops at the
 first failure. `pnpm check:error-ui` scans the renderer for a literal
 `role="alert"` outside the three primitives that own one (`alert.tsx`,
 `field.tsx`, `inline-error.tsx`), so error surfaces stay in those components.
-`pnpm check:imports` rejects parent-climbing module specifiers, not filesystem paths or fixture strings. Root-owned code imports across directories through package `#src/*`, `#tests/*`, `#scripts/*`, and `#tools/*`; `#package` and `#resources/*` cover root assets. The Insight runtime uses `#runtime/*` locally and build-only `#app/*` for root source. Portable anti-slop plugins use package-local `#anti-slop/*`. Keep `./` imports for files in the same directory. `pnpm lint:staged` reports "no staged source files" when nothing is staged.
+`pnpm check:imports` rejects parent-climbing module specifiers, not filesystem paths or fixture strings. Root-owned code imports across directories through package `#src/*`, `#tests/*`, `#scripts/*`, and `#tools/*`; `#package` and `#resources/*` cover root assets. Portable anti-slop plugins use package-local `#anti-slop/*`. Keep `./` imports for files in the same directory. `pnpm lint:staged` reports "no staged source files" when nothing is staged.
 The repo-wide count ratchet runs once inside `pnpm lint:changed`.
 
 Manual and hook full checks serialize through `patchdesk-full-check.lock` in
@@ -374,7 +369,7 @@ a merge, in this order:
 - `pnpm check:error-ui`;
 - `pnpm lint` over the whole repository;
 - `pnpm typecheck`;
-- `pnpm test:all`, including the root suite and separate `runtime/insight` suite;
+- `pnpm test:all`, which runs the root suite;
 - `pnpm build`, once, for both checks below it;
 - `pnpm check:bundle` against that build; and
 - `pnpm exec playwright test` against that same build.
@@ -530,7 +525,7 @@ workflow stays paused (see above); only `Release` runs in CI, since
    A `.dmg` install gets the same command with
    `ln -s /Applications/Patchdesk.app/Contents/Resources/bin/patchdesk /usr/local/bin/patchdesk`.
 
-Bumping the bundled Pi client follows `docs/upgrading-pi.md`.
+Changing the supported external Pi CLI integration follows `docs/upgrading-pi.md`.
 
 ### Signing and notarization
 
@@ -568,7 +563,7 @@ which kind it is.
 Before it signs, the same hook sets Electron fuses on the app binary: it turns
 off `NODE_OPTIONS` and the `--inspect` arguments, and makes the app load only
 from an `app.asar` whose hash matches `Info.plist`. `RunAsNode` stays on,
-because the `patchdesk` CLI and the Pi Insight child run the binary as Node.
+because the `patchdesk` CLI and the Pi explanation helper run the binary as Node.
 To check a build:
 
 ```bash
@@ -598,21 +593,18 @@ pnpm package:mac
 pnpm test:package-smoke
 ```
 
-`pnpm package:mac` runs `pnpm stage:insight-runtime` as part of the build,
-which builds and stages the exact isolated insight runtime into the package.
-Package smoke runs fixed faux Analysis and Walkthrough fixtures before UI
-checks, validates size ceilings for the packaged app and downloads, and reads
-the expected version out of `package.json`.
+`pnpm package:mac` builds the app and packages the Pi explanation helper and
+MCP shim. It does not stage an API-key Insight runtime. Package smoke validates
+the packaged launchers, startup, UI, and size ceilings, and reads the expected
+version out of `package.json`. It does not prove live native generation.
 
-`pnpm package:mac` produces `release/mac-arm64/Patchdesk.app` (the unpacked
-app `pnpm test:package-smoke` reads, 278.26 MiB allocated). Its
-`Contents/Resources/app.asar` is 25.54 MiB and its
-`Contents/Resources/insight-runtime` is 22.74 MiB allocated. The downloads are
-`release/Patchdesk-0.0.1-arm64.dmg` (110.66 MiB) and
-`release/Patchdesk-0.0.1-arm64-mac.zip` (113.38 MiB) — both sit directly in
-`release/`, not in `release/mac-arm64/`. The `.dmg` is the one to hand to
-another person; a `.blockmap` sidecar is written next to the zip and is not
-part of the handoff.
+`pnpm package:mac` produces `release/mac-arm64/Patchdesk.app`, the unpacked
+app `pnpm test:package-smoke` reads. The downloads are
+`release/Patchdesk-<version>-arm64.dmg` and
+`release/Patchdesk-<version>-arm64-mac.zip`. Both downloads sit
+directly in `release/`, not in `release/mac-arm64/`. Hand off the `.dmg` to
+another person. The `.blockmap` sidecar beside the zip is not part of the
+handoff.
 
 A local build is never signed: it takes the same path the release build takes
 with no secrets set.

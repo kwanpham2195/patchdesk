@@ -13,13 +13,6 @@ import {
 let desktop: DesktopDouble | undefined;
 const providers = [
   {
-    id: "pi",
-    label: "API key",
-    available: true,
-    supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
-    guidance: "Configured.",
-  },
-  {
     id: "codex-cli-account",
     label: "Codex CLI account",
     available: true,
@@ -179,37 +172,5 @@ describe("useInsightConfiguration", () => {
         accountModelsFailure: null,
       }),
     );
-  });
-
-  it("passes each Pi model's list price through to the run dialog options", async () => {
-    desktop = installDesktopDouble({
-      "/v1/insight-providers": () =>
-        success({
-          providers,
-          models: [
-            {
-              provider: "pi",
-              id: "amazon-bedrock/amazon.nova-micro-v1:0",
-              label: "amazon-bedrock/amazon.nova-micro-v1:0",
-              reasoning: ["low", "medium", "high"],
-              cost: { input: 0.035, output: 0.14 },
-            },
-          ],
-        }),
-    });
-    const { result } = renderHook(() =>
-      useInsightConfiguration({
-        profileId: "profile",
-        initialInsight: "brief",
-        selectedInsight: "brief",
-      }),
-    );
-    await waitFor(() =>
-      expect(result.current.configuration.models).toHaveLength(1),
-    );
-    expect(result.current.configuration.models[0]?.cost).toEqual({
-      input: 0.035,
-      output: 0.14,
-    });
   });
 });

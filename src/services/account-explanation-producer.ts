@@ -10,6 +10,7 @@ import type {
 } from "./explanation-producer";
 import { loadInsightEvidenceReference } from "./insight-evidence-reference";
 import { composeNativeExplanationPrompt } from "./native-explanation-prompt";
+import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
 
 type GuideInput = Parameters<NativeExplanationProducer["invokeGuide"]>[0];
 type WalkthroughInput = Parameters<
@@ -91,10 +92,21 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
     if (prompt._tag === "err") return failure(prompt.error);
     const executable = await this.executable();
     if (executable === undefined) return failure("resolve");
+    const attempt = await NativeSessionAttemptStore.create(
+      this.paths,
+      input.evidence,
+      input.identity,
+      input.model,
+      input.reasoning,
+      "codex-cli-account",
+    );
+    if (attempt._tag === "err")
+      return failure("native_attempt_storage_refused");
     // SAFETY: the path is resolved from the app-owned session and its immutable captured head was checked above.
     const worktreePath = worktree as RepresentedReviewWorktree;
     return this.clientFactory(executable).runExplanation({
       run: {
+        attempt: attempt.value,
         worktreePath,
         expectedHeadSha: identity.headSha,
         model: input.model,

@@ -6,7 +6,7 @@ Guide is an optional Insight in the Review workbench. It groups changed files by
 
 ## The simple case
 
-Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose a model, reasoning, and language, then start the run. API key is the only provider offered. Codex CLI account and pi CLI account are not supported for Guide.
+Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose Codex CLI account or pi CLI account, then a model, reasoning level, and language. Confirm the run to start generation.
 
 The result shows a distinct file count, a group count, and Reviewed progress. Numbered groups have an explanation and expandable file rows. Others holds changed files outside the groups. Expanding a row shows that file's complete retained diff, including changes the group explanation does not discuss. Repeated appearances expand independently.
 
@@ -45,7 +45,7 @@ Reading a retained Guide starts no provider work or GitHub write. Scrolling save
 
 Generate Guide, Regenerate, or the Guide row in Run Insights opens the run controls. Only confirming the run starts generation. The run uses the represented revision and its complete changed-file inventory.
 
-Every entry point, including Try again and agent-request approval, offers API key only. An unsupported saved account preference stays stored but the dialog displays API key without saving that change. With no API-key model available, Run is disabled and the controls explain that Guide requires an API key. A refused unsupported-provider start says to choose API key rather than reporting a generic start failure.
+Every entry point, including Try again and agent-request approval, offers the two native CLI accounts. A saved API-key choice stays visibly retired until the maintainer selects a native provider and model. The dialog does not reuse its old API model or change saved preferences when opened or cancelled. Only an accepted start saves the replacement choice. Unavailable models keep Run disabled.
 
 Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview groups before Enter or Space selects one. The preview has no focusable actions. Escape closes it and returns focus to the rail or compact Preview control. The opened narrow group list wraps long names; its closed trigger can truncate them.
 
@@ -61,9 +61,11 @@ The model submits groups and supporting files in small batches. Patchdesk valida
 
 A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Cancel run requests cancellation; cancellation is not complete until the run settles. A known active run keeps its cancellation control when result pages cannot be read or GitHub freshness becomes unavailable.
 
-If a recorded provider request has an unknown outcome, the run pauses rather than sending it again automatically. Resume as a new generation requires acknowledging that another generation may spend again and does not recover the missing responses. Cancel run remains a separate action.
+One compact phase and action block shows Preparing, Running, or Cancelling, with elapsed time when available. Activity starts closed and appears only when a bounded trace is available. The shared Run Insights controls show common or Mixed values from selected editable rows, with optional row overrides. See [Brief](brief.md#begin-an-action) for those controls.
 
-A pause without enough evidence to resume keeps Resume disabled and hides the spend acknowledgment. The notice explains that cleanup or recovery is not confirmed. With no recorded provider requests or native turn starts, it reports that absence rather than claiming unknown responses or spend. With recorded activity, it warns of possible account spend. Cancel and stale-Review restrictions still apply.
+If a recorded provider request has an unknown outcome, the run pauses rather than sending it again automatically. Start new generation opens an acknowledgment that another generation may spend again and does not recover the missing responses. No request is sent until that acknowledgment is confirmed. Cancel run remains a separate action.
+
+A pause without enough recovery or cessation evidence keeps Start new generation disabled and hides the spend acknowledgment. The notice explains that cleanup or recovery is not confirmed. With no recorded provider requests or native turn starts, it reports that absence rather than claiming unknown responses or spend. With recorded activity, it warns of possible account spend. Cancel and stale-Review restrictions still apply.
 
 Reading progress updates immediately while Patchdesk saves it. A failed save keeps the displayed progress and offers Retry reading progress. Navigation that would leave the Review waits for its registered progress saves. If they fail, Patchdesk keeps the current Review open.
 
@@ -74,6 +76,8 @@ A validated, saved result replaces the prior Guide. It starts at the beginning w
 A failed, cancelled, or superseded replacement does not erase the prior retained result or its progress. An invalid result never replaces readable evidence. A later successful retry replaces the result normally.
 
 Failed, cancelled, and superseded runs keep distinct messages after reopening. Try again appears only when the recorded failure permits a retry and the current Review can run one. Cancelling or superseding a run does not itself offer a retry button.
+
+The failure explanation, recovery action, and previous-result notice stay visible. Details shows safe run and native attempt metadata, keeping the first host failure separate from history capture and cleanup outcomes. Readable history has unknown completeness. Missing history does not remove recovery, and Details does not expose private paths or native bodies. A retired API generation cannot resume through a native provider.
 
 ## Variants
 
@@ -133,14 +137,16 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 ## Open questions and verification
 
 - [Guide checklist](../verification/insights-and-cross-cutting.md#review-workbenchguidemd) records generation, retained evidence, navigation, restoration, and recovery checks.
-- The paged API-key path generated a real Guide with DeepSeek on the 516-file PR #140. CDP checks confirmed its 12 groups and 258 Others, file expansion, Open in Diff selecting the same file, saved Reviewed and expansion marks, tab-return position restoration, and reopening after a full dev-app restart without another provider dispatch. The source context completeness notice was inspected after it loaded.
-- The new cancellation, terminal-failure, unknown-request Resume, and interrupted-generation recovery paths have source-review evidence, not live lifecycle proof. Earlier native and legacy-fixture checks do not verify these changed owners. Provider transport parity and the remaining Review-source checks are pending.
+- Before API retirement, the paged API-key path generated a real Guide with DeepSeek on the 516-file PR #140. CDP checks confirmed its 12 groups and 258 Others, file expansion, Open in Diff selecting the same file, saved Reviewed and expansion marks, tab-return position restoration, and reopening after a full dev-app restart without another provider dispatch. The source context completeness notice was inspected after it loaded.
+- Native Guide generation and reopened readers were checked through both CLI accounts. A fresh Pi Guide also completed after removal of the API runtime. These checks establish the observed generation and reading paths; they do not establish every cancellation, interrupted recovery, or Review-source variant.
 - Publishing replies, edits, deletions, and review submissions from Guide was not exercised against a real pull request. Owning tests cover those actions; a disposable live write pass remains pending.
-- Per-Insight provider filtering is revised in the provider-filter slice of #821 and awaits the parent's live check.
+- Native-only provider selection and safe history details follow [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Final shared-control and failure-layout acceptance is tracked separately from the earlier preview checks.
 - The parent inspected first, middle, last, and 560-pixel-wide previews on the real PR #140 Guide. The final preview had no file count or actions, and Escape restored trigger focus. These checks cover the preview correction, not the whole page.
 
 Drafted against Patchdesk application source commit `b960ff0c292053dd514e6bd33950c542bf92cd10`. Layout checked through CDP; native and fixture evidence limits are stated above.
 
-Paged generation, reading, progress, and failure behavior revised from source commit `e90d1ef8b733404004eb2e30796256c5ac06b526` for #821. The successful-run evidence and remaining lifecycle limits are stated above. Provider generation across every Insight and Review source remains unverified.
+Paged generation, reading, progress, and failure behavior revised from source commit `e90d1ef8b733404004eb2e30796256c5ac06b526` for #821. The successful-run evidence and remaining lifecycle limits are stated above. Generation across every Review-source variant remains unverified.
 
 Preview behavior follows committed source `8d8600d8`; locked-pause presentation follows `7c9833ce`. The scoped parent checks above preceded those commits and do not establish full lifecycle verification.
+
+Native-only controls, collapsed Activity, safe Details, and acknowledgment behavior are revised from the uncommitted source following `a18b0753` on 2026-10-25, under [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Final desktop and narrow acceptance for those controls remains pending. Successful native lifecycle checks do not establish useful explanation coverage; that follow-up is tracked in [#830](https://github.com/kwanpham2195/patchdesk/issues/830).

@@ -1,6 +1,15 @@
 import type { LogEntryInput, LogMetaInput } from "#src/domain/log-entry";
 import type { ExplanationProducerOutcome } from "#src/services/explanation-producer";
 import { definedProps } from "#src/domain/defined-props";
+import type {
+  InsightProcessCleanupErrorCode,
+  InsightProcessCleanupFailureCause,
+} from "#src/adapters/process/insight-process-cleanup";
+
+export type CodexStopFailureCause =
+  | InsightProcessCleanupFailureCause
+  | "cancel_threw"
+  | "pending_requests_threw";
 
 type Codes = {
   finish_accepted: "finish_signal";
@@ -92,6 +101,36 @@ export type CodexDiagnostic = {
 }[keyof Codes];
 /** Only already-classified enums and measured counters may accompany observations. */
 export type CodexDiagnosticFields = {
+  readonly argumentKind?:
+    | "missing"
+    | "null"
+    | "object"
+    | "array"
+    | "string"
+    | "number"
+    | "boolean"
+    | "other";
+  readonly validationField?:
+    | "host_identity"
+    | "argument_root"
+    | "tool"
+    | "unexpected_field"
+    | "op_id"
+    | "title"
+    | "focus"
+    | "prose"
+    | "chapter_id"
+    | "section_id"
+    | "hunk_ids"
+    | "other";
+  readonly validationRule?:
+    | "missing"
+    | "type"
+    | "empty"
+    | "too_long"
+    | "pattern"
+    | "extra_key"
+    | "other";
   readonly rpcIdKind?:
     | "valid_number"
     | "string"
@@ -127,12 +166,20 @@ export type CodexDiagnosticObserver = (
   fields?: CodexDiagnosticFields,
 ) => void;
 type Phase = "preflight" | "running" | "cleanup";
+/** Fixed attribution for the awaited step that prevented cleanup confirmation. */
+export type CodexCleanupFailureStep =
+  | "process_stop"
+  | "interrupt_settlement"
+  | "cessation_observation";
 type FinalFields = {
   readonly triggerOrder: number | undefined;
   readonly result: "finished" | "failed";
   readonly effect: "known" | "unknown";
   readonly cessation: "confirmed" | "unknown";
   readonly homeCleanup: "not_attempted" | "succeeded" | "failed";
+  readonly cleanupFailureStep: CodexCleanupFailureStep | undefined;
+  readonly cleanupFailureCause: CodexStopFailureCause | undefined;
+  readonly cleanupErrorCode: InsightProcessCleanupErrorCode | undefined;
 };
 const bounded = (value: number | undefined, max: number) =>
   value === undefined
@@ -200,6 +247,9 @@ export class CodexExplanationDiagnostics {
     result: ExplanationProducerOutcome,
     cessation: boolean,
     homeCleanup: "not_attempted" | "succeeded" | "failed",
+    cleanupFailureStep?: CodexCleanupFailureStep,
+    cleanupFailureCause?: CodexStopFailureCause,
+    cleanupErrorCode?: InsightProcessCleanupErrorCode,
   ): void {
     if (this.final) return;
     if (this.order === 65535) this.saturated = true;
@@ -219,6 +269,9 @@ export class CodexExplanationDiagnostics {
             : "unknown",
         cessation: cessation ? "confirmed" : "unknown",
         homeCleanup,
+        cleanupFailureStep,
+        cleanupFailureCause,
+        cleanupErrorCode,
       },
     );
   }
@@ -238,6 +291,11 @@ export class CodexExplanationDiagnostics {
       category: pair[0],
       code: pair[1],
     };
+    const frameRefusal =
+      pair[0] === "host_refusal" &&
+      (pair[1] === "guide_frame_invalid" ||
+        pair[1] === "walkthrough_frame_invalid") &&
+      event !== "final";
     let meta: LogMetaInput = {
       ...required,
       orderSaturated: this.saturated || undefined,
@@ -252,11 +310,17 @@ export class CodexExplanationDiagnostics {
       cached: bounded(fields.cached, 16),
       exit: fields.exit,
       signal: fields.signal,
+      argumentKind: frameRefusal ? fields.argumentKind : undefined,
+      validationField: frameRefusal ? fields.validationField : undefined,
+      validationRule: frameRefusal ? fields.validationRule : undefined,
       triggerOrder: finalFields?.triggerOrder,
       result: finalFields?.result,
       effect: finalFields?.effect,
       cessation: finalFields?.cessation,
       homeCleanup: finalFields?.homeCleanup,
+      cleanupFailureStep: finalFields?.cleanupFailureStep,
+      cleanupFailureCause: finalFields?.cleanupFailureCause,
+      cleanupErrorCode: finalFields?.cleanupErrorCode,
     };
     let correlationId = /^[A-Za-z0-9_-]{8,64}$/.test(this.connection)
       ? this.connection

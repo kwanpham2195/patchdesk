@@ -3,12 +3,6 @@ import * as v from "valibot";
 import {
   explanationFrameIdentity,
   explanationOperationIdentity,
-  explanationRequestOpenSchema,
-  explanationRequestChunkSchema,
-  explanationRequestCommitSchema,
-  explanationHandleSchema,
-  explanationStoredSchema,
-  explanationPermissionSchema,
 } from "./explanation-channel";
 import {
   insightArtifactIdSchema,
@@ -72,16 +66,13 @@ const toolCallSchema = v.variant("tool", [
     input: walkthroughInputSchemas.lookup_receipt,
   }),
 ]);
-/** Shared FD3 envelopes with a closed Walkthrough tool vocabulary. */
+/** Native envelopes with a closed Walkthrough tool vocabulary. */
 export const walkthroughChildFrameSchema = v.variant("kind", [
   v.strictObject({
     kind: v.literal("tool"),
     ...explanationFrameIdentity,
     call: toolCallSchema,
   }),
-  explanationRequestOpenSchema,
-  explanationRequestChunkSchema,
-  explanationRequestCommitSchema,
 ]);
 /** Canonical payloads include the operation kind and host-owned identity. */
 export const walkthroughPayloadSchema = v.variant("kind", [
@@ -146,8 +137,8 @@ export const WALKTHROUGH_REFUSAL_REASONS = [
   "cancelled",
   "unsupported",
 ] as const;
-/** App replies retain Guide's request-staging wire variants unchanged. */
-export const walkthroughAppReplySchema = v.strictObject({
+/** App replies carry logical-operation results. */
+const walkthroughAppReplySchema = v.strictObject({
   kind: v.literal("reply"),
   ...explanationFrameIdentity,
   outcome: v.variant("status", [
@@ -157,9 +148,6 @@ export const walkthroughAppReplySchema = v.strictObject({
       result: walkthroughReceiptResultSchema,
     }),
     v.strictObject({ status: v.literal("not_found") }),
-    explanationHandleSchema,
-    explanationStoredSchema,
-    explanationPermissionSchema,
     v.strictObject({
       status: v.literal("refused"),
       reason: v.picklist(WALKTHROUGH_REFUSAL_REASONS),
@@ -179,7 +167,7 @@ export type WalkthroughPayload = v.InferOutput<typeof walkthroughPayloadSchema>;
 export type WalkthroughReceiptResult = v.InferOutput<
   typeof walkthroughReceiptResultSchema
 >;
-/** Receipt, refusal, staging permission or uncertain outcome. */
+/** Receipt, refusal or uncertain outcome. */
 export type WalkthroughAppOutcome = v.InferOutput<
   typeof walkthroughAppReplySchema
 >["outcome"];

@@ -13,6 +13,7 @@ import type { InsightProviderCatalog } from "#src/renderer/src/insight-catalog-c
 import {
   insightRunOptionsForModel,
   insightRunOptionsForProvider,
+  modelReasoningOptions,
   seedInsightRunOptions,
   type InsightRunOptions,
 } from "#src/renderer/src/insight-run-options";
@@ -21,6 +22,7 @@ import type { InsightStatus } from "#src/renderer/src/insight-status";
 import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { InsightRunController, InsightRunType } from "./use-insight-run";
+import { useLatestCommitted } from "./use-latest-committed";
 
 /** The dialog's rows in reading order, as the Insight tab strip lists them. */
 export const RUN_INSIGHTS_ORDER = [
@@ -38,6 +40,7 @@ export type RunInsightsRow = RunInsightsRowOptions & {
 };
 
 export type RunInsightsDialogController = {
+  readonly changeShared: (patch: Partial<InsightRunPreference>) => void;
   /** Undefined while the dialog is closed. */
   readonly rows: Readonly<Record<InsightRunType, RunInsightsRow>> | undefined;
   readonly open: () => void;
@@ -98,6 +101,7 @@ export function useRunInsightsDialog({
 }): RunInsightsDialogController {
   const [options, setOptions] =
     useState<Readonly<Record<InsightRunType, RunInsightsRowOptions>>>();
+  const latestRunState = useLatestCommitted({ runs, statuses });
   const isRunning = (type: InsightRunType): boolean =>
     runs[type].busy || statuses[type] === "running";
   const updateRow = (
@@ -105,7 +109,7 @@ export function useRunInsightsDialog({
     patch: Partial<RunInsightsRowOptions>,
   ): void =>
     setOptions((current) =>
-      current === undefined
+      current === undefined || isRunning(type) || runs[type].starting
         ? current
         : { ...current, [type]: { ...current[type], ...patch } },
     );
@@ -151,7 +155,14 @@ export function useRunInsightsDialog({
     if (rows === undefined || checkedTypes.length === 0) return;
     const planned = checkedTypes.flatMap((type) => {
       const { provider, model, reasoning, language } = rows[type];
-      return model === null || !supportsInsightProvider(type, provider)
+      const modelIds = new Set(
+        rows[type].models.map((candidate) => candidate.id),
+      );
+      const reasons = new Set(modelReasoningOptions(rows[type].models, model));
+      return model === null ||
+        !modelIds.has(model) ||
+        !reasons.has(reasoning) ||
+        !supportsInsightProvider(type, provider)
         ? []
         : [{ type, preference: { provider, model, reasoning, language } }];
     });
@@ -189,6 +200,52 @@ export function useRunInsightsDialog({
     rows,
     open,
     close,
+    changeShared: (patch) =>
+      setOptions((current) => {
+        if (current === undefined) return current;
+        const next = { ...current };
+        for (const type of RUN_INSIGHTS_ORDER) {
+          const row = current[type];
+          if (!row.checked || isRunning(type) || runs[type].starting) continue;
+          let updated = row;
+          if (
+            patch.provider !== undefined &&
+            supportsInsightProvider(type, patch.provider)
+          )
+            updated = {
+              ...updated,
+              ...insightRunOptionsForProvider(
+                type,
+                patch.provider,
+                preferencesRef.current[type],
+                catalog,
+              ),
+            };
+          if (
+            patch.model !== undefined &&
+            updated.models.some((model) => model.id === patch.model)
+          )
+            updated = {
+              ...updated,
+              ...insightRunOptionsForModel(
+                updated.models,
+                patch.model,
+                updated.reasoning,
+              ),
+            };
+          if (
+            patch.reasoning !== undefined &&
+            modelReasoningOptions(updated.models, updated.model).includes(
+              patch.reasoning,
+            )
+          )
+            updated = { ...updated, reasoning: patch.reasoning };
+          if (patch.language !== undefined)
+            updated = { ...updated, language: patch.language };
+          next[type] = updated;
+        }
+        return next;
+      }),
     setChecked: (type, checked) => updateRow(type, { checked }),
     changeProvider: (type, provider) => {
       if (!supportsInsightProvider(type, provider)) return;
@@ -210,20 +267,30 @@ export function useRunInsightsDialog({
         insightRunOptionsForModel(row.models, model, row.reasoning),
       );
     },
-    changeReasoning: (type, reasoning) => updateRow(type, { reasoning }),
+    changeReasoning: (type, reasoning) => {
+      const row = options?.[type];
+      if (
+        row === undefined ||
+        !modelReasoningOptions(row.models, row.model).includes(reasoning)
+      )
+        return;
+      updateRow(type, { reasoning });
+    },
     changeLanguage: (type, language) => updateRow(type, { language }),
     loadAccountModels: (provider) =>
       loadAccountModels(provider, (nextCatalog) =>
         setOptions((current) => {
           if (current === undefined) return current;
           const reseed = (type: InsightRunType): RunInsightsRowOptions =>
-            current[type].provider === provider
+            current[type].provider === provider &&
+            !latestRunState.current.runs[type].busy &&
+            latestRunState.current.statuses[type] !== "running"
               ? {
                   ...current[type],
                   ...insightRunOptionsForProvider(
                     type,
                     provider,
-                    preferencesRef.current[type],
+                    { ...current[type], model: current[type].model ?? "" },
                     nextCatalog,
                   ),
                 }

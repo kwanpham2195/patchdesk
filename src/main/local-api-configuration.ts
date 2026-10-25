@@ -34,7 +34,6 @@ import type { AvatarFetcher } from "#src/services/avatar-sync-service";
 import type { DesktopNotifier } from "#src/services/desktop-notifier";
 import type { InsightRunCoordinator } from "#src/services/insight-run-coordinator";
 import type { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
-import type { PiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
 import type { GitReadExecutor } from "#src/services/review-worktree-service";
 
 /** What the Insight routes are allowed to call on the run coordinator. */
@@ -118,8 +117,6 @@ export type LocalApiConfiguration = {
   readonly paths: PatchdeskPaths;
   /** Desktop-owned reader and job workers shared by all current-artifact consumers. */
   readonly insightResources: InsightResourceBundle;
-  /** Main-process-only source of currently enabled Pi models. */
-  readonly modelCatalog?: PiRuntimeModelCatalog;
   /** Main-process-only provider catalog; account-provider activation is explicit and authenticated. */
   readonly insightProviders?: Pick<
     InsightProviderCatalog,

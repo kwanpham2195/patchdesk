@@ -1,4 +1,6 @@
 import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
+import { readNativeSessionAttempts } from "#src/adapters/storage/native-session-attempt-store";
+import type { NativeSessionAttemptPage } from "#src/domain/native-session-attempt";
 import type { InsightRunRef } from "./insight-slot-records";
 import { changeIntentProvenance } from "#src/domain/change-intent";
 import {
@@ -57,6 +59,7 @@ import {
   INSIGHT_LANGUAGES,
   INSIGHT_PROVIDERS,
   insightProviderReportsActivity,
+  isAccountInsightProvider,
   type InsightProvider,
   type InsightLanguage,
   type InsightReasoning,
@@ -65,10 +68,6 @@ import { parseReviewResult } from "#src/domain/review-result";
 import type { Review } from "#src/domain/review";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
-import {
-  canonicalModelId,
-  type PiRuntimeModelCatalog,
-} from "#src/adapters/pi/pi-runtime-model-catalog";
 import type { InsightSettledNotifier } from "./insight-run-executor";
 import type { BriefReachComputer } from "./brief-reach-service";
 import type { InsightProviderCatalog } from "./insight-provider-catalog";
@@ -95,6 +94,7 @@ import {
 } from "./insight-activity-buffer";
 
 export type InsightRunResponse = {
+  readonly nativeAttempts?: NativeSessionAttemptPage;
   readonly runId: InsightRunId;
   readonly type: InsightType;
   readonly status:
@@ -233,7 +233,6 @@ export class InsightRunCoordinator {
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly insights: InsightStore,
     private readonly paths: PatchdeskPaths,
-    private readonly catalog: PiRuntimeModelCatalog,
     private readonly invokers: Readonly<Record<InsightType, InsightInvoker>>,
     private readonly operations: ReviewOperationCoordinator,
     private readonly contextPack: ReviewContextPackService,
@@ -255,8 +254,7 @@ export class InsightRunCoordinator {
     /** The scope's shared run ownership: Guide preparation registers here so recovery and cancel see its runs as live. */
     owned: Map<string, Active> = new Map(),
     /**
-     * Tool-driven Guide generation. When present, every Guide start runs through it: only the API-key `pi` route is
-     * available, and any other provider is explicitly unavailable instead of falling back to the retained-result path.
+     * Tool-driven native Guide generation.
      */
     guide?: GuideGenerationStarter,
     walkthrough?: Pick<
@@ -321,6 +319,11 @@ export class InsightRunCoordinator {
     input: InsightCoordinatorInput,
     hooks?: InsightStartHooks,
   ): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    if (
+      input.provider === undefined ||
+      !isAccountInsightProvider(input.provider)
+    )
+      return err("unsupported_provider");
     const began = performance.now();
     const result =
       input.type === "guide" || input.type === "walkthrough"
@@ -359,32 +362,17 @@ export class InsightRunCoordinator {
     if (review.value.status._tag === "Terminal") return err("terminal_review");
     const refused = hooks?.admit(review.value);
     if (refused !== undefined) return err(refused);
-    const provider = input.provider ?? "pi";
-    let model = input.model;
-    if (provider === "pi") {
-      if (input.reasoning === "minimal" || input.reasoning === "xhigh")
-        return err("model_unavailable");
-      const models = await this.catalog.get();
-      if (models._tag === "err") return err("catalog_unavailable");
-      const canonical =
-        models.value.providers === undefined
-          ? input.model
-          : canonicalModelId(input.model);
-      if (
-        canonical === undefined ||
-        !models.value.models.some((candidate) => candidate.id === canonical)
-      )
-        return err("model_unavailable");
-      model = canonical;
-    } else {
-      if (this.providerCatalog === undefined) return err("catalog_unavailable");
-      const validated = await this.providerCatalog.validate({
-        provider,
-        model: input.model,
-        reasoning: input.reasoning,
-      });
-      if (validated._tag === "err") return err(validated.error);
-    }
+    const provider = input.provider;
+    if (provider === undefined || !isAccountInsightProvider(provider))
+      return err("unsupported_provider");
+    const model = input.model;
+    if (this.providerCatalog === undefined) return err("catalog_unavailable");
+    const validated = await this.providerCatalog.validate({
+      provider,
+      model,
+      reasoning: input.reasoning,
+    });
+    if (validated._tag === "err") return err(validated.error);
     const session = await this.sessions.load(
       input.profileId,
       review.value.currentSessionId,
@@ -782,6 +770,33 @@ export class InsightRunCoordinator {
   }
 
   async observe(input: {
+    readonly profileId: WorkspaceProfileId;
+    readonly reviewId: ReviewId;
+    readonly type: InsightType;
+    readonly runId: InsightRunId;
+    readonly nativeAttemptCursor?: string | undefined;
+  }): Promise<Result<InsightRunResponse, InsightCoordinatorFailure>> {
+    const result = await this.observeRun(input);
+    if (result._tag === "err") return result;
+    const nativeAttempts = await readNativeSessionAttempts(
+      this.paths,
+      input,
+      input.nativeAttemptCursor,
+    );
+    const response = { ...result.value, ...definedProps({ nativeAttempts }) };
+    if (
+      Buffer.byteLength(
+        JSON.stringify({
+          content: [{ type: "text", text: JSON.stringify(response) }],
+          structuredContent: response,
+        }),
+      ) > 32768
+    )
+      delete response.nativeAttempts;
+    return ok(response);
+  }
+
+  private async observeRun(input: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly type: InsightType;

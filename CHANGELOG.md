@@ -2,11 +2,17 @@
 
 ## Unreleased
 
-- Added paged API-key Walkthrough generation and reading with a 64 MiB captured-patch ceiling, original hunk line numbers, and no fixed chapter or section totals. Codex and pi CLI accounts are unavailable for new Walkthrough runs; earlier-format results and progress are not imported. #821
+- Changed all four Insights to run through Codex CLI account or pi CLI account and removed the bundled API-key runtime and model catalog. Saved API choices require an explicit native provider and model; historical results keep their API key provenance. #821
 
-- Saved Walkthrough reviewed marks and current section per result. Cancel keeps the previous result and Regenerate available; interrupted requests pause for explicit Resume with a spend acknowledgment and the original generation deadline. #821
+- Retained private native attempt history with unknown completeness, safe attempt Details, and separate host failure, history capture, and cleanup outcomes. Review protection can retain history indefinitely. #821
 
-- Added paged API-key Guide generation without a twelve-group cap, with a 64 MiB captured-patch ceiling, saved reading progress, visible context completeness, and explicit Resume for uncertain provider requests. Earlier-format Guides and progress are not imported. #821
+- Simplified Insight progress and failures with one status/action block, collapsed Activity, readable previous results, and shared Run Insights settings with optional row overrides. Mixed values stay visible; only accepted starts save preferences. #821
+
+- Added paged Walkthrough generation and reading with a 64 MiB captured-patch ceiling, original hunk line numbers, and no fixed chapter or section totals. Earlier-format results and progress are not imported. #821
+
+- Saved Walkthrough reviewed marks and current section per result. Cancel keeps the previous result and Regenerate available; interrupted requests pause for Start new generation, which opens a spend acknowledgment before dispatch and preserves the original generation deadline. Recovery and native cessation must be confirmed. #821
+
+- Added paged Guide generation without a twelve-group cap, with a 64 MiB captured-patch ceiling, saved reading progress, visible context completeness, and Start new generation for eligible uncertain native requests. Earlier-format Guides and progress are not imported. #821
 
 - Removed Guide's 2 MiB patch limit for captured evidence, while keeping model requests and evidence pages bounded and validating the complete retained patch. #821
 
@@ -18,7 +24,7 @@
 
 - Changed Brief, Walkthrough, Analysis, and Guide to read captured revision evidence on demand instead of sending the complete patch in the first model request. Missing or changed evidence and incomplete Analysis preserve the previous result and explain the failure. Pi CLI retains completed Analysis results without requiring unused failure fields. #821
 
-- Added explicit root and Insight package checks, runtime typechecking, and one full check per commit, serialized across worktrees.
+- Added an explicit root-package check and one full check per commit, serialized across worktrees.
 
 - Added Update now for apps installed with the shell installer or from the disk image: Patchdesk quits, installs the new release, and reopens. `install-release.sh --update` updates such an install by hand. Version 0.0.19 and earlier still show the Homebrew command for these installs, so update them once with `curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update` after quitting Patchdesk. #808
 

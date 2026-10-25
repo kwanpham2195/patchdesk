@@ -5,19 +5,18 @@ const MIB = 1024 * 1024;
 
 export const PACKAGE_SIZE_LIMITS_MIB = Object.freeze({
   asar: 30,
-  insightRuntime: 30,
   app: 360,
   dmg: 135,
   zip: 145,
 });
 
 /**
- * Measures the five shipped macOS artifacts and rejects missing, empty, or
+ * Measures the four shipped macOS artifacts and rejects missing, empty, or
  * oversized output. Directory sizes are the sum of regular file bytes;
  * symlinks are not followed, so the result is deterministic across filesystems.
  *
  * @param {{ bundle: string; dmg: string; zip: string }} paths
- * @param {{ asar: number; insightRuntime: number; app: number; dmg: number; zip: number }} [limitsMiB]
+ * @param {{ asar: number; app: number; dmg: number; zip: number }} [limitsMiB]
  */
 export async function validatePackageSizes(
   paths,
@@ -29,12 +28,6 @@ export async function validatePackageSizes(
       path: join(paths.bundle, "Contents", "Resources", "app.asar"),
       kind: "file",
       limitMiB: limitsMiB.asar,
-    },
-    {
-      name: "insight-runtime",
-      path: join(paths.bundle, "Contents", "Resources", "insight-runtime"),
-      kind: "directory",
-      limitMiB: limitsMiB.insightRuntime,
     },
     {
       name: "Patchdesk.app",

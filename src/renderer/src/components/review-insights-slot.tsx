@@ -1,6 +1,5 @@
 import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
 import { useGuideReadingTransition } from "#src/renderer/src/hooks/use-guide-reading-flush";
-import { XIcon } from "lucide-react";
 import { useContext, useMemo, type RefObject } from "react";
 import { definedProps } from "#src/domain/defined-props";
 import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
@@ -19,7 +18,6 @@ import {
 } from "./insight-run-dialog";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
-import { Spinner } from "./ui/spinner";
 import {
   InsightArtifactMismatch,
   InsightEmpty,
@@ -74,7 +72,7 @@ function insightRequestFailureMessage(
 ): string | undefined {
   if (requestFailure === undefined) return undefined;
   if (requestFailure === "unsupported_provider")
-    return `${insightName} does not support this provider. Choose API key in the run options.`;
+    return `${insightName} does not support this provider. Choose Codex or Pi CLI in the run options.`;
   if (requestFailure === "guide_input_too_large")
     return `${insightName} input exceeds the complete-input size limit. The existing ${insightName} is retained.`;
   if (requestFailure === "guide_patch_empty")
@@ -191,11 +189,7 @@ function insightAvailabilityMessage(
   if (configuration.catalogError)
     return "Could not load the model list. Reopen the Review to try again.";
   if (!hasAvailableInsightProvider(configuration, type))
-    return type === "guide" || type === "walkthrough"
-      ? `${INSIGHT_NOUNS[type]} requires an API-key model. Configure a provider API key, then relaunch Patchdesk. CLI accounts are not supported for this Insight.`
-      : "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk.";
-  if (configuration.provider === "pi" && configuration.models.length === 0)
-    return "No API-key model configured. Open a run and pick Codex CLI account or pi CLI account.";
+    return "No native integration available. Install Codex or Pi CLI on the app launch PATH and log in externally.";
   return undefined;
 }
 
@@ -376,6 +370,7 @@ export function InsightsSlot({
   const patchFiles = useParsedPatchFiles(workbench.fullPatch);
   const walkthroughDiffAuthoring = useContext(WalkthroughDiffAuthoringContext);
   const retainedReader = buildInsightReaders({
+    runControllers: runs,
     workbench,
     patchFiles,
     selectedInsight,
@@ -486,7 +481,6 @@ export function InsightsSlot({
                       walkthroughRun !== null
                     )
                   }
-                  insightName={selectedInsightName}
                   hideRegenerate={
                     analysisFirstRunActive ||
                     !reviewOpen ||
@@ -531,6 +525,7 @@ export function InsightsSlot({
           runEnabled={runEnabled}
           retainedReader={retainedReader}
           insightResultRef={insightResultRef}
+          detailsIdentity={{ profileId, reviewId }}
         />
       </div>
       <InsightRunControls
@@ -566,6 +561,7 @@ function InsightDocument({
   runEnabled,
   retainedReader,
   insightResultRef,
+  detailsIdentity,
 }: {
   readonly selectedInsight: InsightRunDialogType;
   readonly walkthroughTitle: string | undefined;
@@ -584,6 +580,10 @@ function InsightDocument({
   readonly runEnabled: boolean;
   readonly retainedReader: React.ReactNode;
   readonly insightResultRef: RefObject<HTMLDivElement | null>;
+  readonly detailsIdentity: {
+    readonly profileId: string;
+    readonly reviewId: string;
+  };
 }): React.JSX.Element {
   return (
     <article
@@ -615,7 +615,15 @@ function InsightDocument({
             projection={selectedProjection}
             activity={selectedRunning?.activity}
             status={
-              selectedRunning?.starting ? "queued" : selectedRunning?.status
+              selectedRunning?.starting
+                ? "queued"
+                : selectedRunning?.cancelling
+                  ? "cancelling"
+                  : selectedRunning?.status
+            }
+            onCancel={reviewOpen ? selectedRunning?.cancel : undefined}
+            cancelDisabled={
+              selectedRunning === undefined || selectedRunning.starting
             }
           />
         ) : selectedInsight !== "walkthrough" &&
@@ -624,7 +632,22 @@ function InsightDocument({
             projection={selectedProjection}
             activity={selectedRunning?.activity}
             onReprepare={onReprepare}
-            {...definedProps({ retainedDescription, onRetry: retryRun })}
+            detailsSource={
+              selectedProjection.replacementFailure?.runId === undefined
+                ? undefined
+                : {
+                    ...detailsIdentity,
+                    type: selectedInsight,
+                    runId: selectedProjection.replacementFailure.runId,
+                  }
+            }
+            {...definedProps({
+              retainedDescription,
+              onRetry:
+                selectedProjection.replacementFailure?.retryable === false
+                  ? undefined
+                  : retryRun,
+            })}
           />
         ) : selectedIsOutdated ? (
           <InsightOutdated
@@ -643,6 +666,11 @@ function InsightDocument({
               onRun: reviewOpen ? onRun : undefined,
             })}
           />
+        ) : null}
+        {selectedBusy && retainedReader === null ? (
+          <p className="text-sm text-muted-foreground">
+            No published {INSIGHT_NOUNS[selectedInsight]} yet.
+          </p>
         ) : null}
         {retainedReader === null ? null : (
           <div
@@ -831,7 +859,6 @@ function BriefWalkthroughAction({
 function InsightHeaderAction({
   running,
   projectionRunning,
-  insightName,
   hideRegenerate,
   runEnabled,
   onRegenerate,
@@ -840,33 +867,11 @@ function InsightHeaderAction({
     | ReturnType<typeof useInsightRunControls>["analysisRun"]
     | undefined;
   readonly projectionRunning: boolean;
-  readonly insightName: string;
   readonly hideRegenerate: boolean;
   readonly runEnabled: boolean;
   readonly onRegenerate: () => void;
 }): React.JSX.Element | null {
-  if (running?.busy || projectionRunning)
-    return (
-      <Button
-        size="icon-sm"
-        variant="outline"
-        onClick={running?.cancel}
-        disabled={
-          running === undefined || running.starting || running.cancelling
-        }
-        aria-label={
-          running?.cancelling
-            ? `Cancelling ${insightName}…`
-            : `Cancel ${insightName}`
-        }
-      >
-        {running?.cancelling ? (
-          <Spinner aria-hidden="true" />
-        ) : (
-          <XIcon aria-hidden="true" />
-        )}
-      </Button>
-    );
+  if (running?.busy || projectionRunning) return null;
   if (hideRegenerate) return null;
   return (
     <Button

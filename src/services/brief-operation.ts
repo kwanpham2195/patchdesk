@@ -11,17 +11,7 @@ import {
   type InsightEvidenceReference,
 } from "./insight-evidence-reference";
 
-const MAX_BRIEF_PATCH_BYTES = 2 * 1024 * 1024;
-
-/** Strict app-owned input for one finite Brief operation. */
-export type BriefInput = {
-  readonly profileId: string;
-  readonly sessionId: string;
-  readonly patchPath: string;
-  readonly model: string;
-  readonly reasoning: "low" | "medium" | "high";
-  readonly language: InsightLanguage;
-};
+const MAX_BRIEF_PATCH_BYTES = 64 * 1024 * 1024;
 
 /** Why a Brief prompt could not be composed from its patch artifact. */
 export type BriefPromptFailure =

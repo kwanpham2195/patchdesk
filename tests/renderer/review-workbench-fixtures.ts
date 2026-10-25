@@ -234,8 +234,8 @@ export function briefInsight(
 export const providerCatalog = {
   providers: [
     {
-      id: "pi",
-      label: "API key",
+      id: "codex-cli-account",
+      label: "Codex CLI account",
       available: true,
       supportedTypes: ["brief", "analysis", "guide", "walkthrough"],
       guidance: "Available for local review.",
@@ -243,7 +243,7 @@ export const providerCatalog = {
   ],
   models: [
     {
-      provider: "pi",
+      provider: "codex-cli-account",
       id: "fixture-model",
       label: "Fixture model",
       reasoning: ["medium"],

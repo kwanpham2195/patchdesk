@@ -1,4 +1,4 @@
-import { InsightEmpty } from "./insight-panels";
+import { InsightEmpty, InsightRunning } from "./insight-panels";
 import { PagedGuideReader } from "./paged-guide-reader";
 import { InsightActiveRunControls } from "./insight-resume-controls";
 import { PagedInsightFailurePanel } from "./paged-insight-failure-panel";
@@ -24,8 +24,12 @@ import type { LocalDraftControls } from "#src/renderer/src/flows/use-local-draft
 import type { InsightRunDialogType } from "./insight-run-dialog";
 import type { AnalysisVerificationControls } from "#src/renderer/src/hooks/use-analysis-verification";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
+import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
 
 type InsightReaderBuilderInput = {
+  readonly runControllers?: Readonly<
+    Record<"guide" | "walkthrough", InsightRunController>
+  >;
   readonly workbench: WorkbenchResponse;
   /** `workbench.fullPatch` already parsed, so a render does not reparse megabytes of diff text. */
   readonly patchFiles: ReadonlyArray<ParsedPatchFile>;
@@ -159,17 +163,38 @@ export function buildInsightReaders({
   refreshGuide,
   guideActiveRun,
   guideOnReprepare,
+  runControllers,
 }: InsightReaderBuilderInput): React.ReactNode {
   // Production Guide display has one source: the published GuideResultRoot1 through the bounded page routes.
   if (selectedInsight === "guide") {
     return (
       <div className="flex h-full min-h-0 flex-col">
+        {guideActiveRun === null && runControllers?.guide.busy ? (
+          <InsightRunning
+            type="guide"
+            status={
+              runControllers.guide.starting
+                ? "queued"
+                : runControllers.guide.cancelling
+                  ? "cancelling"
+                  : runControllers.guide.status
+            }
+            activity={runControllers.guide.activity}
+            onCancel={
+              workbench.review.status === "open"
+                ? runControllers.guide.cancel
+                : undefined
+            }
+            cancelDisabled={runControllers.guide.starting}
+          />
+        ) : null}
         <InsightActiveRunControls
           type="guide"
           workbench={workbench}
           state={guideSummaryState}
           run={guideActiveRun}
           refresh={refreshGuide}
+          activity={runControllers?.guide.activity}
         />
         <PagedInsightFailurePanel
           type="guide"
@@ -177,6 +202,10 @@ export function buildInsightReaders({
           runEnabled={runEnabled}
           onRetry={onRunGuide}
           onReprepare={guideOnReprepare}
+          identity={{
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+          }}
         />
         <div className="min-h-0 flex-1">
           <PagedGuideReader
@@ -321,6 +350,7 @@ export function buildInsightReaders({
               : null
           }
           refresh={refreshWalkthrough}
+          activity={runControllers?.walkthrough.activity}
         />
         <PagedInsightFailurePanel
           type="walkthrough"
@@ -328,6 +358,10 @@ export function buildInsightReaders({
           runEnabled={runEnabled}
           onRetry={onRunWalkthrough}
           onReprepare={onReprepare}
+          identity={{
+            profileId: workbench.session.key.profileId,
+            reviewId: workbench.review.id,
+          }}
         />
         <div className="min-h-0 flex-1">
           <PagedWalkthroughReader

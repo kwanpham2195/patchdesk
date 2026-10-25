@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { classifyCodexExplanationFrame } from "./codex-explanation-frame-diagnostic";
 import type {
   CodexDiagnostic,
   CodexDiagnosticFields,
@@ -338,11 +339,12 @@ export class CodexExplanationTools {
     while (!this.closed) {
       const call = this.queue.shift();
       if (call === undefined) return;
+      const { params } = call;
       const frame = {
         kind: "tool",
         ...this.hostIdentity,
         correlation: ++this.correlation,
-        call: { tool: call.params.tool, input: call.params.arguments },
+        call: { tool: params.tool, input: params.arguments },
       };
       const frameBytes = Buffer.byteLength(JSON.stringify(frame));
       const refusal =
@@ -359,14 +361,22 @@ export class CodexExplanationTools {
       if (this.binding.kind === "guide") {
         const parsed = v.safeParse(guideChildFrameSchema, frame);
         if (!parsed.success || parsed.output.kind !== "tool") {
-          this.stop(true, ["host_refusal", "guide_frame_invalid"]);
+          this.stop(
+            true,
+            ["host_refusal", "guide_frame_invalid"],
+            classifyCodexExplanationFrame(params.arguments, parsed.issues?.[0]),
+          );
           return;
         }
         outcome = await this.binding.tool(parsed.output.call);
       } else {
         const parsed = v.safeParse(walkthroughChildFrameSchema, frame);
         if (!parsed.success || parsed.output.kind !== "tool") {
-          this.stop(true, ["host_refusal", "walkthrough_frame_invalid"]);
+          this.stop(
+            true,
+            ["host_refusal", "walkthrough_frame_invalid"],
+            classifyCodexExplanationFrame(params.arguments, parsed.issues?.[0]),
+          );
           return;
         }
         outcome = await this.binding.tool(parsed.output.call);
@@ -397,7 +407,7 @@ export class CodexExplanationTools {
           success: outcome.status !== "refused",
         },
       };
-      if (call.params.tool === "finish" && outcome.status === "receipt") {
+      if (params.tool === "finish" && outcome.status === "receipt") {
         this.diagnostic?.(["finish_accepted", "finish_signal"]);
         this.close();
         await this.finish();

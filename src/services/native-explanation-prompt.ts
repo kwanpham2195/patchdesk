@@ -40,3 +40,35 @@ export async function composeNativeExplanationPrompt(
     ? ok(prompt)
     : err("prompt_too_large");
 }
+
+/** Pi's Bash helper submits only the selected existing logical-operation declarations. */
+export function composePiExplanationPrompt(
+  base: string,
+  launcher: string,
+  helper: string,
+  declarations: ReadonlyArray<{
+    readonly name: string;
+    readonly inputSchema: object;
+  }>,
+): Result<string, "prompt_too_large"> {
+  const shellQuote = (value: string): string =>
+    "'" + value.replaceAll("'", "'\\''") + "'";
+  const prompt =
+    base +
+    "\n\n" +
+    `Submit Patchdesk operations through the Bash helper below. Send one JSON object on stdin with exactly tool and input. The operation schemas below define the allowed tool names and input fields. Do not add run, generation, connection, paths or authentication fields.
+
+ELECTRON_RUN_AS_NODE=1 ${shellQuote(launcher)} ${shellQuote(helper)} <<'PATCHDESK_CALL'
+{"tool":"<operation>","input":{<fields matching that operation schema>}}
+PATCHDESK_CALL
+
+Use small batches. If the helper refuses an oversized call, split its batch without changing accepted operations. Wait for each receipt before submitting the next operation. Use the group, chapter and section IDs returned by Patchdesk. Give every mutation a unique opId and reuse it only with identical arguments. If a submitted operation has no confirmed receipt, use lookup_receipt for that same opId before deciding what happened. Do not resend a mutation under a new opId to resolve uncertainty. Stop if the helper reports unknown execution or closes the connection.
+
+Call finish through this helper after all intended operations are accepted. A helper exit code or final assistant message cannot publish a result. Do not print environment variables or attempt other result-submission paths.
+
+Operation schemas:
+${JSON.stringify(declarations)}`;
+  return Buffer.byteLength(prompt) <= 65536
+    ? ok(prompt)
+    : err("prompt_too_large");
+}

@@ -20,6 +20,7 @@ import {
   type InsightInvoker,
 } from "#src/services/insight-run-coordinator";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
+import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
 import { LocalChangeIntentService } from "#src/services/local-change-intent-service";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
 import { ReviewContextService } from "#src/services/review-context-service";
@@ -72,7 +73,6 @@ async function intentReview(
     new ReviewSessionStore(harness.paths),
     harness.insights,
     harness.paths,
-    { get: async () => ok({ models: [{ id: "model", label: "Model" }] }) },
     { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     harness.coordinator,
     new ReviewContextPackService({
@@ -90,6 +90,17 @@ async function intentReview(
       () => now,
     ),
     () => now,
+    undefined,
+    new InsightProviderCatalog(
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      () => {
+        throw new Error("Pi must not start for a Codex fixture");
+      },
+      async () => "/fixture/bin/codex",
+    ),
   );
   const intents = new LocalChangeIntentService({
     reviews: harness.reviews,
@@ -99,6 +110,7 @@ async function intentReview(
   const reviewId = workbench.review.id;
   const start = (type: InsightType = "analysis") =>
     insights.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId,
       type,

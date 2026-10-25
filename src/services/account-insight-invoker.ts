@@ -6,7 +6,9 @@ import {
 import { NATIVE_INSIGHT_PROMPT_BYTES } from "#src/adapters/codex/codex-insight-policy";
 import { accountInsightEvidenceInstructions } from "./account-insight-evidence";
 import { realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { insightEvidenceReference } from "./insight-evidence-reference";
+import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
 
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
@@ -141,7 +143,8 @@ export class AccountInsightInvoker implements InsightInvoker {
           "evidence",
         ),
       });
-    const runNative = (
+    const evidence = insightEvidenceReference(input.evidence);
+    const runNative = async (
       run: CodexRunInput,
     ): Promise<Result<unknown, AccountRunFailure>> => {
       const prompt = `${run.prompt}\n\n${nativeInstructions.value}`;
@@ -152,12 +155,43 @@ export class AccountInsightInvoker implements InsightInvoker {
             phase: "turn_start" as const,
           }),
         );
-      return this.clientFactory(this.executablePath).run(
-        { ...run, prompt, maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES },
-        options,
+      const attempt = await NativeSessionAttemptStore.create(
+        this.paths,
+        evidence,
+        undefined,
+        input.model,
+        input.reasoning,
+        this.provider,
       );
+      if (attempt._tag === "err")
+        return err({ reason: "runtime_unavailable", phase: "initialize" });
+      try {
+        const result = await this.clientFactory(this.executablePath).run(
+          {
+            ...run,
+            prompt,
+            attempt: attempt.value,
+            maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES,
+          },
+          options,
+        );
+        if (result._tag === "err")
+          attempt.value.fail(
+            attempt.value.record.observed.nativeSessionId === undefined
+              ? "preflight"
+              : "execution",
+            attempt.value.record.observed.nativeSessionId === undefined
+              ? "native_preflight"
+              : "native_execution",
+          );
+        return result;
+      } catch (cause) {
+        attempt.value.fail("execution", "native_execution");
+        throw cause;
+      } finally {
+        await attempt.value.save();
+      }
     };
-    const evidence = insightEvidenceReference(input.evidence);
     const policy =
       "Read only the represented review revision. Patchdesk validates the result and owns all publication decisions.";
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.
@@ -247,6 +281,17 @@ export class AccountInsightInvoker implements InsightInvoker {
       outputSchema: analysisCodexOutputSchema,
       maxPromptBytes: MAX_ANALYSIS_CODEX_PROMPT_BYTES,
       runTimeoutMs: ANALYSIS_RUN_TIMEOUT_MS,
+      analysisCommandDiagnostic:
+        this.provider === "codex-cli-account" &&
+        options.onAnalysisCommandFailure !== undefined
+          ? {
+              entryPath: join(
+                input.evidence.directory,
+                `${input.evidence.entryPageId}.ndjson`,
+              ),
+              onFirstFailure: options.onAnalysisCommandFailure,
+            }
+          : undefined,
     });
     if (result._tag === "err")
       return err({

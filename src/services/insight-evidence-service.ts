@@ -66,7 +66,10 @@ export class InsightEvidenceService {
       const patchRead =
         identity.type === "analysis" || identity.type === "guide"
           ? ok(await readFile(input.patchPath, "utf8"))
-          : await readBoundedArtifact(input.patchPath, 2 * 1024 * 1024);
+          : await readBoundedArtifact(
+              input.patchPath,
+              (identity.type === "brief" ? 64 : 2) * 1024 * 1024,
+            );
       if (patchRead._tag === "err")
         return err({
           _tag: "InsightEvidenceFailure",

@@ -1,3 +1,4 @@
+import { definedProps } from "#src/domain/defined-props";
 import type {
   GuidePage,
   GuidePageRequest,
@@ -49,19 +50,31 @@ export class GuidePageService {
   async summary(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    nativeAttemptCursor?: string,
   ): Promise<Result<GuideSummary, GuideReadFailure>> {
-    const current = await this.reader.summarySource(profileId, reviewId);
+    const current = await this.reader.summarySource(
+      profileId,
+      reviewId,
+      nativeAttemptCursor,
+    );
     if (current._tag === "err") return err(current.error);
-    const { view, run, failure } = current.value;
-    if (view === undefined) return ok({ _tag: "none", run, failure });
+    const { view, run, failure, nativeAttempts } = current.value;
+    const details = definedProps({ nativeAttempts });
+    if (view === undefined) {
+      const summary: GuideSummary = { _tag: "none", run, failure, ...details };
+      if (encodedBytes(summary) > MAX_REPLY_BYTES)
+        delete summary.nativeAttempts;
+      return ok(summary);
+    }
     const [session, progress] = await Promise.all([
       this.reader.identityOf(view),
       this.progress.describe(view),
     ]);
     if (session._tag === "err") return err(session.error);
     if (progress._tag === "err") return progress;
-    return ok({
+    const summary: GuideSummary = {
       _tag: "ready",
+      ...details,
       run,
       failure,
       runId: view.runId,
@@ -73,7 +86,9 @@ export class GuidePageService {
       completeness: view.root.contextCompleteness,
       progressVersion: progress.value.version,
       anchor: progress.value.anchor,
-    });
+    };
+    if (encodedBytes(summary) > MAX_REPLY_BYTES) delete summary.nativeAttempts;
+    return ok(summary);
   }
 
   async page(

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 
-import {
-  PI_CLI_MINIMUM_VERSION,
-  PiRpcClient,
-} from "#src/adapters/pi-cli/pi-rpc-client";
+import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
 import type { RepresentedReviewWorktree } from "#src/domain/represented-review-worktree";
 import {
   assistantAnswer,
@@ -14,7 +16,45 @@ import {
 } from "./pi-rpc-test-support";
 
 const worktree = "/tmp/patchdesk-worktree" as RepresentedReviewWorktree;
+let attempt: NativeSessionAttemptStore;
+let attemptRoot: string;
+beforeEach(async () => {
+  attemptRoot = await realpath(
+    await mkdtemp(join(tmpdir(), "patchdesk-pi-attempt-")),
+  );
+  const created = await NativeSessionAttemptStore.create(
+    PatchdeskPaths.fromEnvironment({
+      PATCHDESK_CONFIG_DIRECTORY: join(attemptRoot, "config"),
+      PATCHDESK_DATA_DIRECTORY: join(attemptRoot, "data"),
+      PATCHDESK_CACHE_DIRECTORY: join(attemptRoot, "cache"),
+    }),
+    {
+      identity: {
+        profileId: "profile",
+        reviewId: "review-fixture",
+        sessionId:
+          "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
+        runId: "insight-brief-1-aaaaaaaaaaaa-fixture",
+        type: "brief",
+      },
+      bundleId: "a".repeat(64),
+    } as never,
+    undefined,
+    "anthropic/claude-sonnet-5",
+    "high",
+    "pi-cli-account",
+  );
+  if (created._tag === "err")
+    throw new Error("Could not create native attempt fixture");
+  attempt = created.value;
+});
+afterEach(async () => {
+  await rm(attemptRoot, { recursive: true, force: true });
+});
 const runInput = {
+  get attempt() {
+    return attempt;
+  },
   worktreePath: worktree,
   model: "anthropic/claude-sonnet-5",
   reasoning: "high",
@@ -126,7 +166,8 @@ describe("PiRpcClient", () => {
     expect(rpc?.args).toEqual([
       "--mode",
       "rpc",
-      "--no-session",
+      "--session-dir",
+      attempt.sessionDirectory,
       "--no-extensions",
       "--no-approve",
       "--no-mcp",
@@ -285,8 +326,12 @@ describe("PiRpcClient", () => {
     );
   });
 
-  it("reports a pi older than the minimum as runtime_unavailable with the version it needs", async () => {
-    const pi = fakePi({ version: "0.79.10", rpc: () => undefined });
+  it("reports a pi missing required isolation flags as runtime_unavailable", async () => {
+    const pi = fakePi({
+      version: "0.79.10",
+      help: "--mode rpc",
+      rpc: () => undefined,
+    });
     const client = new PiRpcClient("/usr/local/bin/pi", {
       processFactory: pi.processFactory,
     });
@@ -295,8 +340,7 @@ describe("PiRpcClient", () => {
       _tag: "err",
       error: {
         reason: "runtime_unavailable",
-        phase: "version",
-        requiredVersion: PI_CLI_MINIMUM_VERSION,
+        phase: "native_isolation_unsupported",
       },
     });
     expect(pi.children).toHaveLength(0);

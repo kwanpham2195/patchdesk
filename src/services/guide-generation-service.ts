@@ -9,15 +9,10 @@ import {
   guidePreparedInputCodec,
   type GuidePreparationFailureReason,
 } from "#src/domain/guide-preparation";
-import type {
-  GuideAppOutcome,
-  GuideChildFrame,
-} from "#src/domain/guide-protocol";
 import { guideRuntimeCodec } from "#src/domain/guide-result";
 import { parseInsightRunId, type IsoTimestamp } from "#src/domain/ids";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import { err, ok, type Result } from "#src/domain/result";
-import { ExplanationRequestDispatch } from "./explanation-request-dispatch";
 import {
   GuideRunOperations,
   type GuideRunContext,
@@ -167,6 +162,7 @@ export class GuideGenerationService implements GuideGenerationStarter {
   async resume(
     request: GuideResumeRequest,
   ): Promise<Result<void, GuideResumeFailure>> {
+    if (!("transport" in request)) return err("invalid");
     const recovered = await this.recover({
       profileId: request.profileId,
       reviewId: request.reviewId,
@@ -448,11 +444,6 @@ export class GuideGenerationService implements GuideGenerationStarter {
         generation: pass.generation,
         cancelEpoch: pass.cancelEpoch,
       };
-      const staging = new ExplanationRequestDispatch(
-        this.authority.explanation,
-        this.artifacts,
-        this.now,
-      );
       const producer = await selectExplanationProducer(
         this.producers,
         this.artifacts,
@@ -484,17 +475,6 @@ export class GuideGenerationService implements GuideGenerationStarter {
           reason: "runtime_unavailable",
           effectKnown: true,
         };
-      else if (producer.transport === "api")
-        outcome = await producer.invokeGuide({
-          ...input,
-          handler: async (frame) => {
-            // After one unknown outcome nothing further is recorded or permitted on this connection.
-            if (halt.unknown) return { status: "unknown" };
-            const answered = await this.route(context, staging, frame);
-            if (answered.status === "unknown") halt.unknown = true;
-            return answered;
-          },
-        });
       else {
         const lifecycle = new NativeExplanationTurns(
           this.authority.explanation,
@@ -536,23 +516,6 @@ export class GuideGenerationService implements GuideGenerationStarter {
       controller,
       baseline,
     );
-  }
-
-  private route(
-    context: GuideRunContext,
-    staging: ExplanationRequestDispatch,
-    frame: GuideChildFrame,
-  ): Promise<GuideAppOutcome> {
-    switch (frame.kind) {
-      case "tool":
-        return this.operations.handle(context, frame.call);
-      case "request_open":
-        return Promise.resolve(staging.open(frame.totalBytes));
-      case "request_chunk":
-        return Promise.resolve(staging.chunk(frame));
-      case "request_commit":
-        return staging.commit(context, frame);
-    }
   }
 }
 

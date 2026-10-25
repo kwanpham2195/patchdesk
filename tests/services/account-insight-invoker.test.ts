@@ -16,7 +16,6 @@ import { ok } from "#src/domain/result";
 import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
 import { insightEvidenceReference } from "#src/services/insight-evidence-reference";
 
-// Matches PiInsightChildInvoker's Analysis run bound.
 const EXPECTED_ANALYSIS_TIMEOUT_MS = 20 * 60_000;
 
 const roots: string[] = [];
@@ -193,7 +192,11 @@ describe("AccountInsightInvoker", () => {
           "Inspect only the captured evidence for this Review. Do not modify files, access credentials, use network tools, or publish anything. Honor native permission decisions and report a denied required read without bypassing it.",
           `Native evidence directory: ${JSON.stringify(value.input.evidence.directory)}`,
           `Native evidence entry file: ${JSON.stringify(join(value.input.evidence.directory, `${value.input.evidence.entryPageId}.ndjson`))}`,
-          "Use native inspection tools to read this NDJSON entry, then the referenced page IDs as files in the same directory with the .ndjson suffix. Follow continuation references as needed. Read complete bounded pages without truncating their contents. Fragment text and original source coordinates are the captured evidence; page line numbers are not source citations.",
+          `Read the entry with this complete shell command, preserving both enclosing quotes: cat -- '${join(value.input.evidence.directory, `${value.input.evidence.entryPageId}.ndjson`).replaceAll("'", "'\\''")}'`,
+          "Use native inspection tools to read this NDJSON entry, then the referenced page IDs as files in the same directory with the .ndjson suffix. Read at most one captured page per native tool call and request enough output for the complete page.",
+          "A shell syntax error is not a permission refusal. Correct mismatched quotes and reread the same captured page. A native permission refusal remains authoritative; do not bypass it.",
+          "If page output is truncated, reread that same page in consecutive physical NDJSON line ranges, starting at its first line with one bounded record per call, for example sed -n 'N,Np' <captured-page>. Emit plain ranges without line-number decoration. Track the next unread physical line and finish every intervening record, including the continuation record, before following the continuation.",
+          "If a record itself is truncated, read contiguous UTF-8-safe subranges of that same record. Subdivide further on actual truncation or omission warnings until every part is complete; never skip the middle. If complete delivery cannot be obtained, report incomplete evidence, not partial success. Fragment text and original source coordinates are the captured evidence; physical page line numbers are read cursors, not source citations.",
         ].join("\n\n"),
       );
       expect(value.calls[0]?.[0].prompt).not.toContain(

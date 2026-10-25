@@ -43,8 +43,6 @@ describe("full check runner", () => {
       "typecheck:scripts",
       "check:error-ui",
       "check:imports",
-      "--dir runtime/insight typecheck",
-      "exec oxlint --deny-warnings runtime/insight",
       "test:all",
       "lint:staged",
       "lint:changed -- origin/main",

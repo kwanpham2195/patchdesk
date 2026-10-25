@@ -1,3 +1,4 @@
+import { readNativeSessionAttempts } from "#src/adapters/storage/native-session-attempt-store";
 import type { GuideRunStatus, GuideSummary } from "#src/domain/guide-progress";
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
@@ -49,6 +50,7 @@ type GuideSummarySource = {
   readonly view: GuideResultView | undefined;
   readonly run: GuideRunStatus;
   readonly failure: GuideSummary["failure"];
+  readonly nativeAttempts: GuideSummary["nativeAttempts"];
 };
 
 /**
@@ -62,7 +64,7 @@ export class GuideResultReader {
   private readonly diagnostics: ExplanationFailureDiagnosticReader;
 
   constructor(
-    paths: PatchdeskPaths,
+    private readonly paths: PatchdeskPaths,
     reader: typeof readBoundedInsightArtifactFile,
   ) {
     this.slots = new InsightSlotStore(paths, reader);
@@ -88,6 +90,7 @@ export class GuideResultReader {
   async summarySource(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    nativeAttemptCursor?: string,
   ): Promise<Result<GuideSummarySource, GuideResultFailure>> {
     const slot = await this.slots.read(profileId, reviewId, "guide");
     if (slot._tag === "err") return err("storage_unavailable");
@@ -99,7 +102,23 @@ export class GuideResultReader {
     if (failure._tag === "err") return failure;
     if (failure.value !== null && view.value?.runId === failure.value.runId)
       return err("invalid_result");
-    return ok({ view: view.value, run: run.value, failure: failure.value });
+    const runId = run.value?.runId ?? failure.value?.runId ?? view.value?.runId;
+    const parsedRun =
+      runId === undefined ? undefined : parseInsightRunId(runId);
+    const nativeAttempts =
+      parsedRun?._tag === "ok"
+        ? await readNativeSessionAttempts(
+            this.paths,
+            { profileId, reviewId, type: "guide", runId: parsedRun.value },
+            nativeAttemptCursor,
+          )
+        : undefined;
+    return ok({
+      view: view.value,
+      run: run.value,
+      failure: failure.value,
+      nativeAttempts,
+    });
   }
 
   private async publishedFromSlot(

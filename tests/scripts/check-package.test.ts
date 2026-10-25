@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkPackages } from "#scripts/check-package.mjs";
 
 describe("package checks", () => {
-  it("checks root ownership without running the runtime suite", async () => {
+  it("checks root ownership", async () => {
     const commands: string[] = [];
     const status = await checkPackages(
       ["root"],
@@ -20,15 +20,15 @@ describe("package checks", () => {
       "check:error-ui",
       "check:imports",
       "test:root",
-      "exec oxlint --deny-warnings --ignore-pattern runtime/insight/**",
+      "exec oxlint --deny-warnings",
     ]);
   });
 
-  it("checks both affected packages once when selected explicitly", async () => {
+  it("checks root once when selected repeatedly", async () => {
     const commands: string[] = [];
     expect(
       await checkPackages(
-        ["root", "insight", "insight"],
+        ["root", "root"],
         "/fixture",
         new AbortController().signal,
         async (_command, args) => {
@@ -37,14 +37,14 @@ describe("package checks", () => {
         },
       ),
     ).toBe(0);
-    expect(commands.slice(-3)).toEqual([
-      "--dir runtime/insight typecheck",
-      "exec oxlint --deny-warnings runtime/insight",
-      "test:insight",
+    expect(commands).toEqual([
+      "typecheck",
+      "typecheck:scripts",
+      "check:error-ui",
+      "check:imports",
+      "test:root",
+      "exec oxlint --deny-warnings",
     ]);
-    expect(commands.filter((value) => value === "test:insight")).toHaveLength(
-      1,
-    );
   });
 
   it("rejects the entire selection before executing an unknown package", async () => {
@@ -69,11 +69,11 @@ describe("package checks", () => {
     ).toBe(2);
   });
 
-  it("stops on runtime compiler failure without lint or tests", async () => {
+  it("stops on compiler failure without lint or tests", async () => {
     const commands: string[] = [];
     expect(
       await checkPackages(
-        ["insight"],
+        ["root"],
         "/fixture",
         new AbortController().signal,
         async (_command, args) => {
@@ -82,6 +82,6 @@ describe("package checks", () => {
         },
       ),
     ).toBe(7);
-    expect(commands).toEqual(["--dir runtime/insight typecheck"]);
+    expect(commands).toEqual(["typecheck"]);
   });
 });

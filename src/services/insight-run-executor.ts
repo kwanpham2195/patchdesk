@@ -516,6 +516,17 @@ export class InsightRunExecutor {
             result: this.invokers[input.type].invoke(input, {
               signal: controller.signal,
               onActivity,
+              onAnalysisCommandFailure:
+                input.type === "analysis" &&
+                input.provider === "codex-cli-account"
+                  ? (failure) => {
+                      void this.recordDiagnostic(
+                        input,
+                        "analysis",
+                        `codex_first_command_failed run=${input.runId} ordinal=${failure.commandOrdinal} exit=${failure.exitCode ?? "none"} target=${failure.targetClass} class=${failure.failureClass}`,
+                      );
+                    }
+                  : undefined,
             }),
           },
         };

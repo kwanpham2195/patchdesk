@@ -161,6 +161,7 @@ export function createCodexExplanationTurnListener(
           ? ["finish_accepted", "finish_signal"]
           : ["provider_completed_without_finish", "bound_completion"],
       );
+      if (finishSignal.aborted) return;
       stop(
         codexExplanationFailure(true, "native_turn_ended", "execution_failed"),
       );

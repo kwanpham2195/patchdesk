@@ -83,7 +83,6 @@ import { ReviewOperationCoordinator } from "#src/services/review-operation-coord
 import { workbenchWindowChrome } from "./window-chrome";
 import { windowBackgroundColor } from "./window-appearance";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
-import { LocalPiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
 import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
 import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
 import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
@@ -95,7 +94,6 @@ import type { InsightCaptureDiagnostics } from "./desktop-insight-capture-diagno
 
 const renderer = rendererSource(process.env, app.isPackaged);
 const rendererOrigin = renderer.origin;
-const runtimeModelCatalog = new LocalPiRuntimeModelCatalog();
 let runningLocalApi: LocalApiServer | undefined;
 let captureDiagnostics: InsightCaptureDiagnostics | undefined;
 let captureDiagnosticsStarting: Promise<void> | undefined;
@@ -271,7 +269,7 @@ const reviewWindow = createReviewWindow({
 const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
   new URL("./", import.meta.url),
   async (insightResources) => {
-    const insightProviders = createInsightProviderCatalog(runtimeModelCatalog);
+    const insightProviders = createInsightProviderCatalog();
     if (__PATCHDESK_CAPTURE_DIAGNOSTICS__ && !app.isPackaged) {
       if (captureDiagnosticsClosed || stopping)
         return { _tag: "recovery-failed" };
@@ -309,7 +307,6 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
       },
       insights: (github) =>
         recoverInsights(
-          runtimeModelCatalog,
           insightProviders,
           reviewOperations,
           github,
@@ -337,7 +334,6 @@ const artifactApiLifecycle = createDesktopInsightArtifactLifecycle(
       diagnostics,
       logs,
       desktopNotifier,
-      modelCatalog: runtimeModelCatalog,
       trash: {
         async move(path) {
           try {
@@ -415,11 +411,8 @@ async function stopArtifactApi(): Promise<void> {
   }
 }
 
-function createInsightProviderCatalog(
-  modelCatalog: LocalPiRuntimeModelCatalog,
-): InsightProviderCatalog {
+function createInsightProviderCatalog(): InsightProviderCatalog {
   return new InsightProviderCatalog(
-    modelCatalog,
     (executablePath) => new CodexAppServerClient(executablePath),
     (executablePath) => new PiRpcClient(executablePath),
     (name) => discoverPathOnlyExecutable(name),
@@ -439,7 +432,6 @@ const createInsightCoordinator = insightCoordinatorFactory({
 });
 
 async function recoverInsights(
-  modelCatalog: LocalPiRuntimeModelCatalog,
   providerCatalog: InsightProviderCatalog,
   operations: ReviewOperationCoordinator,
   github: GitHubReader,
@@ -448,7 +440,6 @@ async function recoverInsights(
   if (__PATCHDESK_CAPTURE_DIAGNOSTICS__)
     captureDiagnostics?.connectContext(createContextPack(github));
   const coordinator = createInsightCoordinator(
-    modelCatalog,
     providerCatalog,
     operations,
     github,

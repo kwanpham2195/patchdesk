@@ -61,27 +61,21 @@ export type ExplanationAuthorityInternals = {
 export type ExplanationResumeInput = {
   readonly generation: number;
   readonly authorization: InsightArtifactReference;
+  readonly native: {
+    readonly startCount: number;
+    readonly startsRoot: string;
+    readonly observationsRoot: string;
+  };
 } & (
-  | { readonly dispatchCount: number; readonly native?: never }
   | {
-      readonly native: {
-        readonly startCount: number;
-        readonly startsRoot: string;
-        readonly observationsRoot: string;
-      };
-      readonly dispatchCount?: never;
+      readonly guideRuntime: InsightArtifactReference;
+      readonly walkthroughRuntime?: never;
     }
-) &
-  (
-    | {
-        readonly guideRuntime: InsightArtifactReference;
-        readonly walkthroughRuntime?: never;
-      }
-    | {
-        readonly walkthroughRuntime: InsightArtifactReference;
-        readonly guideRuntime?: never;
-      }
-  );
+  | {
+      readonly walkthroughRuntime: InsightArtifactReference;
+      readonly guideRuntime?: never;
+    }
+);
 
 /**
  * Guide and Walkthrough journal and slot transitions over the shared authority locks. Lock order is unchanged: producer
@@ -150,7 +144,7 @@ export class ExplanationRunTransactions {
 
   /**
    * Explicit Resume of a run paused for an unknown paid effect. Under the Review, slot and journal locks it requires
-   * the pause, the acknowledged generation and the acknowledged dispatch count, then advances the generation and the
+   * the pause, the acknowledged generation and native start evidence, then advances the generation and the
    * cancel epoch together, records the `resume` Authorization and a fresh GuideRuntime1, marks usage unknown and
    * clears the pause. Dispatch intents, receipts and the prior runtime stay in storage untouched.
    */
@@ -170,17 +164,13 @@ export class ExplanationRunTransactions {
           state.walkthroughRuntime !== undefined &&
           input.walkthroughRuntime !== undefined) &&
       state.generation === input.generation &&
-      (input.native === undefined
-        ? state.nativeExecution === undefined &&
-          state.dispatches.count === input.dispatchCount &&
-          input.dispatchCount > 0
-        : state.dispatches.count === 0 &&
-          state.nativeExecution !== undefined &&
-          state.nativeExecution.starts.count === input.native.startCount &&
-          input.native.startCount > 0 &&
-          state.nativeExecution.starts.root.hash === input.native.startsRoot &&
-          state.nativeExecution.observations.root.hash ===
-            input.native.observationsRoot)
+      state.dispatches.count === 0 &&
+      state.nativeExecution !== undefined &&
+      state.nativeExecution.starts.count === input.native.startCount &&
+      input.native.startCount > 0 &&
+      state.nativeExecution.starts.root.hash === input.native.startsRoot &&
+      state.nativeExecution.observations.root.hash ===
+        input.native.observationsRoot
         ? ok({
             status: "running",
             generation: state.generation + 1,

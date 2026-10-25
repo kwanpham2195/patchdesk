@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "./result";
 
-/** Providers that may execute an Insight: an API key through Pi, or a login an external CLI owns. */
+/** Historical provider identities retained in saved Insight data. */
 export const INSIGHT_PROVIDERS = [
   "pi",
   "codex-cli-account",
@@ -19,7 +19,7 @@ export type AccountInsightProvider = (typeof ACCOUNT_INSIGHT_PROVIDERS)[number];
 export function isAccountInsightProvider(
   provider: InsightProvider,
 ): provider is AccountInsightProvider {
-  return provider !== "pi";
+  return ACCOUNT_INSIGHT_PROVIDERS.some((candidate) => candidate === provider);
 }
 
 /** Whether a provider's runs stream the activity trace (ADR 0043); only Codex does, so every other run shows its start time. */

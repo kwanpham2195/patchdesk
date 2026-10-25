@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { isAccountInsightProvider } from "#src/domain/insight-provider";
 import { walkthroughPreparedInputCodec } from "#src/domain/walkthrough-preparation";
 
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
@@ -28,6 +29,7 @@ import { sessionRepresentsReview } from "#src/domain/review";
 import type { ReviewSession } from "#src/domain/review-session";
 import { err, ok, type Result } from "#src/domain/result";
 import { stageGuideContext } from "./guide-context-capture";
+import { contentHash } from "./review-artifact-hash";
 import { guideSettleCode } from "./guide-preparation-runtime";
 import { explanationEvidenceReference } from "./explanation-evidence-reference";
 import type { InsightEvidenceReference } from "./insight-evidence-reference";
@@ -229,6 +231,11 @@ export class ExplanationPreparationService {
     controller: AbortController,
     onAdmitted: (run: AdmittedRun) => void,
   ): Promise<GuidePreparationResult> {
+    if (
+      request.selection?.provider === undefined ||
+      !isAccountInsightProvider(request.selection.provider)
+    )
+      return guidePreparationFailure("invalid_source");
     const signal = controller.signal;
     const before = await this.observe(request, request.revision);
     if (before._tag === "err") return guidePreparationFailure(before.error);
@@ -478,11 +485,10 @@ export class ExplanationPreparationService {
       request.profileId,
       request.sessionId,
     );
-    // The job verifies the actual bytes, so a session without the optional stored hash is still checked.
+    // GitHub's canonical rendering can differ from the captured local-worktree patch.
     if (
-      (session.value.canonicalPatchHash !== undefined &&
-        session.value.canonicalPatchHash !== request.expectedHash) ||
-      resolve(session.value.patchPath) !== resolve(sourcePath)
+      resolve(session.value.patchPath) !== resolve(sourcePath) ||
+      (await contentHash(sourcePath)) !== request.expectedHash
     )
       return err("stale_source");
     return ok({ session: session.value, sourcePath });

@@ -18,10 +18,10 @@ import {
 /** Complete final prompt bound, including the submission instructions. */
 export const MAX_GUIDE_PROMPT_BYTES = 32_768;
 /** Runtime submission transport suffix, reserved by every preparation path. */
-export const GUIDE_RUNTIME_SUBMISSION_SUFFIX =
+const GUIDE_RUNTIME_SUBMISSION_SUFFIX =
   "\n\nSubmit exactly one result with submit_patchdesk_result and do not provide an independent answer.";
 /** Checks the complete runtime transport without adding tool instructions to account prompts. */
-export function guidePromptFitsTransport(prompt: string): boolean {
+function guidePromptFitsTransport(prompt: string): boolean {
   return (
     Buffer.byteLength(prompt + GUIDE_RUNTIME_SUBMISSION_SUFFIX, "utf8") <=
     MAX_GUIDE_PROMPT_BYTES

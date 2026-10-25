@@ -14,12 +14,3 @@ export function insightNativeRunDisclosure(
     ? "Patchdesk records native turn starts, not exact provider requests or billable counts."
     : undefined;
 }
-
-/** Uses the picker's supported providers rather than installed or cached accounts. */
-export function insightAccountAlternativeHint(
-  providers: ReadonlyArray<InsightProvider>,
-): string {
-  return providers.some(isAccountInsightProvider)
-    ? "Or choose a CLI account."
-    : "CLI accounts are not supported for this Insight.";
-}

@@ -1,5 +1,7 @@
 # Use the local Codex CLI account
 
+> Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
+
 > Superseded in part by [ADR 0055](0055-read-captured-insight-evidence-on-demand.md). The historical input, inspection, and permission descriptions below remain as the record of the earlier decision.
 
 > The Walkthrough contract in ADR 0055 also supersedes account-provider availability below. New Walkthrough generation is API-key only until account-provider parity is implemented.

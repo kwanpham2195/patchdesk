@@ -12,7 +12,6 @@ const roots: string[] = [];
 const oneMiB = 1024 * 1024;
 const fixtureLimits = {
   asar: 1,
-  insightRuntime: 1,
   app: 2,
   dmg: 1,
   zip: 1,
@@ -26,7 +25,7 @@ afterEach(
 );
 
 describe("validatePackageSizes", () => {
-  it("measures all five artifacts without building", async () => {
+  it("measures all four artifacts without building", async () => {
     const fixture = await createFixture();
 
     const measurements = await validatePackageSizes(fixture, fixtureLimits);
@@ -39,8 +38,7 @@ describe("validatePackageSizes", () => {
       })),
     ).toEqual([
       { name: "app.asar", bytes: 200, limitMiB: 1 },
-      { name: "insight-runtime", bytes: 300, limitMiB: 1 },
-      { name: "Patchdesk.app", bytes: 600, limitMiB: 2 },
+      { name: "Patchdesk.app", bytes: 300, limitMiB: 2 },
       { name: "DMG", bytes: 400, limitMiB: 1 },
       { name: "ZIP", bytes: 500, limitMiB: 1 },
     ]);
@@ -76,7 +74,6 @@ describe("validatePackageSizes", () => {
   it("pins rounded production limits with headroom", () => {
     expect(PACKAGE_SIZE_LIMITS_MIB).toEqual({
       asar: 30,
-      insightRuntime: 30,
       app: 360,
       dmg: 135,
       zip: 145,
@@ -89,14 +86,12 @@ async function createFixture() {
   roots.push(root);
   const bundle = join(root, "Patchdesk.app");
   const resources = join(bundle, "Contents", "Resources");
-  const insightRuntime = join(resources, "insight-runtime");
   const asar = join(resources, "app.asar");
   const dmg = join(root, "Patchdesk.dmg");
   const zip = join(root, "Patchdesk.zip");
-  await mkdir(insightRuntime, { recursive: true });
+  await mkdir(resources, { recursive: true });
   await Promise.all([
     writeFile(asar, Buffer.alloc(200)),
-    writeFile(join(insightRuntime, "runtime.js"), Buffer.alloc(300)),
     writeFile(join(bundle, "binary"), Buffer.alloc(100)),
     writeFile(dmg, Buffer.alloc(400)),
     writeFile(zip, Buffer.alloc(500)),

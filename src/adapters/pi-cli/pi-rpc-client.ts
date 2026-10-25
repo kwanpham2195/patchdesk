@@ -8,6 +8,7 @@ import {
   type SpawnOptions,
 } from "node:child_process";
 import * as v from "valibot";
+import type { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
 
 import { err, ok, type Result } from "#src/domain/result";
 import type { InsightReasoning } from "#src/domain/insight-provider";
@@ -21,12 +22,6 @@ import {
   type PiRpcRequestFailure,
 } from "./pi-rpc-channel";
 
-/**
- * The oldest pi this client drives: 0.79.0 added `--no-approve` and 0.80.4
- * added the `agent_settled` event a run waits for.
- */
-export const PI_CLI_MINIMUM_VERSION = "0.80.4";
-const MINIMUM_VERSION_PARTS = [0, 80, 4] as const;
 /** Bash is a native inspection tool, not an enforced read-only shell. */
 const PI_INSIGHT_TOOLS = ["read", "grep", "find", "ls", "bash"] as const;
 const PI_INSIGHT_ISOLATION_FLAGS = [
@@ -77,12 +72,13 @@ export type PiRpcFailure = InsightFailureDiagnostic & {
     | "tool"
     | "turn"
     | "native_isolation_unsupported";
-  /** Set when the installed pi is older than `PI_CLI_MINIMUM_VERSION`. */
+  /** Historical release-gate diagnostic; current admission never emits it. */
   readonly requiredVersion?: string;
 };
 
 /** An app-owned immutable worktree and prompt bound to one run. pi has no output-schema channel, so the prompt carries the result contract. */
 export type PiRpcRunInput = {
+  readonly attempt?: NativeSessionAttemptStore;
   readonly worktreePath: RepresentedReviewWorktree;
   readonly model: string;
   readonly reasoning: InsightReasoning;
@@ -104,9 +100,12 @@ type PiModelEntry = v.InferOutput<typeof piModelSchema>;
 const modelListDataSchema = v.looseObject({
   models: v.array(v.fallback(v.optional(piModelSchema), undefined)),
 });
-const sessionStateSchema = v.looseObject({
-  model: v.optional(v.looseObject({ id: v.string(), provider: v.string() })),
-  thinkingLevel: v.optional(v.string()),
+export const piInsightSessionStateSchema = v.looseObject({
+  sessionId: v.pipe(v.string(), v.uuid()),
+  sessionFile: v.string(),
+  model: v.looseObject({ id: v.string(), provider: v.string() }),
+  thinkingLevel: v.picklist(INSIGHT_REASONING_LEVELS),
+  isStreaming: v.literal(false),
 });
 const assistantMessageSchema = v.looseObject({
   role: v.literal("assistant"),
@@ -121,7 +120,7 @@ type AssistantMessage = v.InferOutput<typeof assistantMessageSchema>;
 const messageEndSchema = v.looseObject({ message: v.unknown() });
 const toolExecutionStartSchema = v.looseObject({ toolName: v.string() });
 
-/** Main-process client for `pi --mode rpc`. Every public operation owns one fresh `--no-session` child. */
+/** Each operation owns a fresh RPC child; generating explanations alone retain isolated native history. */
 export class PiRpcClient {
   private readonly processFactory: PiProcessFactory;
 
@@ -132,6 +131,39 @@ export class PiRpcClient {
     this.processFactory =
       options.processFactory ??
       ((file, args, spawnOptions) => spawn(file, [...args], spawnOptions));
+  }
+
+  /** Fresh explanation history is isolated from nonpersistent catalog discovery. */
+  async openExplanation(
+    input: PiRpcRunInput,
+    sessionDirectory: string,
+    environment: NodeJS.ProcessEnv,
+    signal: AbortSignal,
+  ): Promise<
+    Result<
+      { readonly channel: PiRpcChannel; readonly version: string },
+      PiRpcFailure
+    >
+  > {
+    const version = await this.readVersion();
+    if (version._tag === "err") return version;
+    const opened = await this.open(
+      [
+        ...PI_INSIGHT_ISOLATION_FLAGS,
+        "--tools",
+        PI_INSIGHT_TOOLS.join(","),
+        "--model",
+        input.model,
+        "--thinking",
+        input.reasoning,
+      ],
+      input.worktreePath,
+      signal,
+      { sessionDirectory, environment },
+    );
+    return opened._tag === "err"
+      ? opened
+      : ok({ channel: opened.value, version: version.value });
   }
 
   /** Lists the models the pi login can run, from a throwaway child with no tools. */
@@ -170,6 +202,9 @@ export class PiRpcClient {
     input: PiRpcRunInput,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<unknown, PiRpcFailure>> {
+    const attempt = input.attempt;
+    if (attempt === undefined)
+      return err({ reason: "runtime_unavailable", phase: "start" });
     if (
       Buffer.byteLength(input.prompt, "utf8") >
       Math.min(
@@ -180,12 +215,13 @@ export class PiRpcClient {
       return err({ reason: "invalid_result", phase: "prompt" });
     const version = await this.readVersion();
     if (version._tag === "err") return version;
-    const help = await this.readCliOutput("--help");
+    attempt.record.observed.version = version.value;
+    const helpText = await this.readCliOutput("--help");
     if (options.signal?.aborted)
       return err({ reason: "cancelled", phase: "start" });
     if (
-      help === undefined ||
-      !PI_INSIGHT_ISOLATION_FLAGS.every((flag) => help.includes(flag))
+      helpText === undefined ||
+      !PI_INSIGHT_ISOLATION_FLAGS.every((flag) => helpText.includes(flag))
     )
       return err({
         reason: "runtime_unavailable",
@@ -203,9 +239,11 @@ export class PiRpcClient {
       ],
       input.worktreePath,
       options.signal,
+      { sessionDirectory: attempt.sessionDirectory, environment: {} },
     );
     if (opened._tag === "err") return opened;
     const channel = opened.value;
+    attempt.record.cleanup.process = "pending";
     const controller = new AbortController();
     const onAbort = (): void => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -217,6 +255,7 @@ export class PiRpcClient {
     );
     try {
       const result = await runPrompt(channel, input, controller.signal);
+      if (result._tag === "err") attempt.fail("execution", "native_execution");
       return result._tag === "err"
         ? err({
             ...result.error,
@@ -230,12 +269,24 @@ export class PiRpcClient {
     } finally {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
-      await channel.stop();
+      let stopped = false;
+      try {
+        await channel.stop();
+        stopped = true;
+        attempt.record.cleanup.process = "succeeded";
+        await attempt.capture();
+      } finally {
+        if (!stopped) {
+          attempt.record.cleanup.process = "unknown";
+          attempt.fail("cleanup", "native_stop");
+        }
+        await attempt.save();
+      }
     }
   }
 
   /**
-   * Checks the installed version, then starts one RPC child. Extensions are
+   * Checks CLI flags, then starts one RPC child. Extensions are
    * off because they run with full access, and `--no-approve` ignores the
    * reviewed worktree's trust-gated project-local configuration.
    */
@@ -243,14 +294,34 @@ export class PiRpcClient {
     args: ReadonlyArray<string>,
     cwd: RepresentedReviewWorktree | undefined,
     signal: AbortSignal | undefined,
+    session?: {
+      readonly sessionDirectory: string;
+      readonly environment: NodeJS.ProcessEnv;
+    },
   ): Promise<Result<PiRpcChannel, PiRpcFailure>> {
     if (signal?.aborted) return err({ reason: "cancelled", phase: "start" });
     const version = await this.readVersion();
     if (version._tag === "err") return version;
+    const helpText = await this.readCliOutput("--help");
+    if (signal?.aborted) return err({ reason: "cancelled", phase: "start" });
+    if (
+      helpText === undefined ||
+      ![
+        "--mode",
+        session === undefined ? "--no-session" : "--session-dir",
+        "--no-extensions",
+        "--no-approve",
+        ...args.filter((argument) => argument.startsWith("--")),
+      ].every((flag) => helpText.includes(flag))
+    )
+      return err({
+        reason: "runtime_unavailable",
+        phase: "native_isolation_unsupported",
+      });
     const spawnOptions: SpawnOptions = {
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
-      env: allowlistedPiEnvironment(),
+      env: { ...allowlistedPiEnvironment(), ...session?.environment },
     };
     const opened = PiRpcChannel.open(
       this.processFactory,
@@ -258,7 +329,9 @@ export class PiRpcClient {
       [
         "--mode",
         "rpc",
-        "--no-session",
+        ...(session === undefined
+          ? ["--no-session"]
+          : ["--session-dir", session.sessionDirectory]),
         "--no-extensions",
         "--no-approve",
         ...args,
@@ -272,7 +345,7 @@ export class PiRpcClient {
       : err({ reason: "runtime_unavailable", phase: "start" });
   }
 
-  private async readVersion(): Promise<Result<void, PiRpcFailure>> {
+  private async readVersion(): Promise<Result<string, PiRpcFailure>> {
     const unavailable = err({
       reason: "runtime_unavailable" as const,
       phase: "version" as const,
@@ -280,18 +353,7 @@ export class PiRpcClient {
     const output = await this.readCliOutput("--version");
     const match = output?.match(/(\d+)\.(\d+)\.(\d+)/u);
     if (match === null || match === undefined) return unavailable;
-    const installed = [Number(match[1]), Number(match[2]), Number(match[3])];
-    for (const [index, required] of MINIMUM_VERSION_PARTS.entries()) {
-      const part = installed[index] ?? 0;
-      if (part > required) return ok(undefined);
-      if (part < required)
-        return err({
-          reason: "runtime_unavailable",
-          phase: "version",
-          requiredVersion: PI_CLI_MINIMUM_VERSION,
-        });
-    }
-    return ok(undefined);
+    return ok(match[0]);
   }
 
   private async readCliOutput(
@@ -354,15 +416,38 @@ async function runPrompt(
       reason: runFailureReason(state.error, signal),
       phase: "session_state",
     });
-  const parsedState = v.safeParse(sessionStateSchema, state.value.data);
+  const parsedState = v.safeParse(
+    piInsightSessionStateSchema,
+    state.value.data,
+  );
+  if (parsedState.success && input.attempt !== undefined) {
+    input.attempt.record.observed.nativeProvider =
+      parsedState.output.model.provider;
+    input.attempt.record.observed.model = `${parsedState.output.model.provider}/${parsedState.output.model.id}`;
+    input.attempt.record.observed.reasoning = parsedState.output.thinkingLevel;
+    input.attempt.record.observed.nativeSessionId =
+      parsedState.output.sessionId;
+  }
   if (
     !parsedState.success ||
-    parsedState.output.model === undefined ||
     `${parsedState.output.model.provider}/${parsedState.output.model.id}` !==
       input.model ||
     parsedState.output.thinkingLevel !== input.reasoning
   )
     return err({ reason: "runtime_unavailable", phase: "session_state" });
+
+  const attempt = input.attempt;
+  if (attempt === undefined)
+    return err({ reason: "runtime_unavailable", phase: "session_state" });
+  if (
+    !(await attempt.bindHistory(
+      parsedState.output.sessionFile,
+      parsedState.output.sessionId,
+    ))
+  ) {
+    attempt.fail("prepare", "storage");
+    return err({ reason: "runtime_unavailable", phase: "session_state" });
+  }
 
   let lastAssistant: AssistantMessage | undefined;
   let resolveRun: (result: Result<unknown, PiRpcFailure>) => void = () =>

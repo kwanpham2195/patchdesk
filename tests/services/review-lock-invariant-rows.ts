@@ -236,6 +236,7 @@ export const lockRows: ReadonlyArray<LockRow> = [
         profileId,
         reviewId,
         type: "analysis",
+        provider: "codex-cli-account",
         model: "gpt-5-codex",
         reasoning: "high",
         language: "en",

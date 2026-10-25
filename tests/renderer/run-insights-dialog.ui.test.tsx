@@ -34,7 +34,7 @@ const catalog = {
   models: [
     ...providerCatalog.models,
     {
-      provider: "pi",
+      provider: "codex-cli-account",
       id: "second-model",
       label: "Second model",
       reasoning: ["low", "high"],
@@ -138,13 +138,13 @@ describe("Run Insights dialog", () => {
   it("seeds each row from its saved options, checks only Insights without a current result, and starts each checked one once", async () => {
     const bodies = installRuns(accepted);
     saveInsightRunPreference("profile", "brief", {
-      provider: "pi",
+      provider: "codex-cli-account",
       model: "second-model",
       reasoning: "high",
       language: "vi",
     });
     saveInsightRunPreference("profile", "walkthrough", {
-      provider: "pi",
+      provider: "codex-cli-account",
       model: "fixture-model",
       reasoning: "medium",
       language: "en",

@@ -5,7 +5,7 @@ import * as v from "valibot";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { WalkthroughProgressStore } from "#src/adapters/storage/walkthrough-progress-store";
-import type { ApiExplanationProducer } from "#src/services/explanation-producer";
+import type { NativeExplanationProducer } from "#src/services/explanation-producer";
 import { WalkthroughResultReader } from "#src/services/walkthrough-result-reader";
 import { WalkthroughProgressService } from "#src/services/walkthrough-result-progress";
 import { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
@@ -45,7 +45,7 @@ describe("large Walkthrough retention", () => {
       },
     ];
     let producer:
-      | Pick<ApiExplanationProducer, "invokeWalkthroughSession">
+      | Pick<NativeExplanationProducer, "invokeWalkthroughSession">
       | undefined;
     const value = await fixture(
       {
@@ -115,13 +115,13 @@ describe("large Walkthrough retention", () => {
             { tool: "finish", input: { opId: "finish" } },
           ];
           for (const call of calls) {
-            const outcome = await input.handler(
+            const outcome = await input.tool(
               v.parse(walkthroughChildFrameSchema, {
                 kind: "tool",
                 ...input.identity,
                 correlation: ++correlation,
                 call,
-              }),
+              }).call,
             );
             expect(outcome.status).toBe("receipt");
           }
@@ -133,7 +133,7 @@ describe("large Walkthrough retention", () => {
           profileId,
           reviewId: value.review.id,
           type: "walkthrough",
-          provider: "pi",
+          provider: "codex-cli-account",
           model: "model",
           language: "en",
           reasoning: "medium",

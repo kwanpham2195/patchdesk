@@ -1,10 +1,13 @@
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
-import type { ApiExplanationProducer } from "#src/services/explanation-producer";
+import type {
+  NativeExplanationProducer,
+  NativeExplanationLifecycle,
+  ExplanationProducerOutcome,
+} from "#src/services/explanation-producer";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
-import type { PiInsightChildInvoker } from "#src/services/pi-insight-child-invoker";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,7 +51,7 @@ import type { BriefReachComputer } from "#src/services/brief-reach-service";
 import { CommandRunner } from "#src/adapters/github/command-runner";
 import { FakeGitHubAdapter } from "#src/adapters/github/github-adapter";
 import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
-import type { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
+import { InsightProviderCatalog } from "#src/services/insight-provider-catalog";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
 import { ReviewContextService } from "#src/services/review-context-service";
@@ -137,8 +140,11 @@ export function contextPackFixture(
 }
 
 type FixtureOptions = {
-  walkthroughInvoker?: Pick<ApiExplanationProducer, "invokeWalkthroughSession">;
-  guideInvoker?: Pick<PiInsightChildInvoker, "invokeGuide">;
+  walkthroughInvoker?: Pick<
+    NativeExplanationProducer,
+    "invokeWalkthroughSession"
+  >;
+  guideInvoker?: Pick<NativeExplanationProducer, "invokeGuide">;
   insightStore?: (paths: PatchdeskPaths) => InsightStore;
   operations?: ReviewOperationCoordinator;
   recordDiagnostics?: boolean;
@@ -164,7 +170,17 @@ export async function fixture(
     operations = new ReviewOperationCoordinator(),
     recordDiagnostics = false,
     reach,
-    providerCatalog,
+    providerCatalog = new InsightProviderCatalog(
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      () => ({
+        listModels: async () =>
+          ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
+      }),
+      async (name) => `/fixture/bin/${name}`,
+    ),
     notifier,
     github,
     localSource,
@@ -299,9 +315,12 @@ export async function fixture(
           slots,
           resources,
           {
-            pi: {
-              transport: "api",
-              ...guideInvoker,
+            "codex-cli-account": {
+              transport: "native",
+              invokeGuide: (input) =>
+                invokeNativeFixture(input.lifecycle, () =>
+                  guideInvoker.invokeGuide(input),
+                ),
               invokeWalkthroughSession: async () => {
                 throw new Error("Unexpected Walkthrough producer");
               },
@@ -314,11 +333,6 @@ export async function fixture(
     sessions,
     insights,
     paths,
-    {
-      async get() {
-        return ok({ models: [{ id: "model", label: "Model" }] });
-      },
-    },
     { analysis: invoker, walkthrough: invoker, brief: invoker, guide: invoker },
     operations,
     contextPack.service,
@@ -348,9 +362,12 @@ export async function fixture(
           slots,
           resources,
           {
-            pi: {
-              transport: "api",
-              ...walkthroughInvoker,
+            "codex-cli-account": {
+              transport: "native",
+              invokeWalkthroughSession: (input) =>
+                invokeNativeFixture(input.lifecycle, () =>
+                  walkthroughInvoker.invokeWalkthroughSession(input),
+                ),
               invokeGuide: async () => {
                 throw new Error("Unexpected Guide producer");
               },
@@ -385,6 +402,26 @@ export async function fixture(
     diagnostics,
     resources,
   };
+}
+
+async function invokeNativeFixture(
+  lifecycle: NativeExplanationLifecycle,
+  invoke: () => Promise<ExplanationProducerOutcome>,
+): Promise<ExplanationProducerOutcome> {
+  must(
+    await lifecycle.start({
+      version: "fixture-1",
+      prompt: "Review the captured evidence.",
+      toolContractHash: "a".repeat(64),
+    }),
+  );
+  must(await lifecycle.observe({ kind: "accepted_start" }));
+  const outcome = await invoke();
+  must(await lifecycle.observe({ kind: "ended", outcome: "known" }));
+  must(
+    await lifecycle.observe({ kind: "cessation_confirmed", outcome: "known" }),
+  );
+  return outcome;
 }
 
 export async function settled(
