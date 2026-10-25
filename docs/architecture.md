@@ -261,8 +261,11 @@ The dev app listens on `patchdesk-dev/mcp/patchdesk.sock` under its own data roo
 ### `docs/adr/`
 
 The architecture decision records, one file per decision, numbered in the order they were made.
-They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, fresh native Insight sessions, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys, `codex`, and `pi`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
+They record decisions about the pull-request lifecycle, GitHub's pending review,
+and bounded model runs. Other records cover local Codex and pi accounts,
+native Insight execution, profile-scoped GitHub authentication, login-shell
+environment imports, Visited pull requests, Codex activity, desktop
+notifications, and polling watched pull requests.
 
 ### `tests/`
 
