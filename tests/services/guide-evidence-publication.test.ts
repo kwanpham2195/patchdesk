@@ -189,6 +189,16 @@ it("rejects a replacement with a missing captured patch block and preserves the 
       original.digest,
     ),
   );
+  // Publication precedes ownership release; the replacement must wait for both.
+  await vi.waitFor(
+    () =>
+      expect(
+        value.resources?.ownership
+          .forScope(value.paths.dataDirectory())
+          .has(first.runId),
+      ).toBe(false),
+    { timeout: 10_000 },
+  );
   const priorSlot = must(await slots.read(profileId, value.review.id, "guide"));
   await writeFile(
     value.session.patchPath,
