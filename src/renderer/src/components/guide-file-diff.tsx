@@ -29,7 +29,7 @@ export function GuideFileDiff({
     <div
       role="group"
       aria-label={`Guide evidence ${path}`}
-      className="mt-3 min-w-0 overflow-hidden rounded-md border"
+      className="min-w-0 overflow-hidden border-t"
     >
       {evidence.diff === undefined ? (
         <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs">
@@ -61,6 +61,7 @@ export function GuideFileDiff({
           collapsedPaths={new Set()}
           onPreferencesChange={onPreferencesChange}
           showViewOptions={false}
+          showFileHeaders={false}
           markdownPreviewActive={markdownPreviewActive}
           onMarkdownPreviewChange={setMarkdownPreviewActive}
           onCollapsedPathsChange={() => undefined}

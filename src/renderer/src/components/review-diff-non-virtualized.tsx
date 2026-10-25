@@ -42,6 +42,7 @@ type NonVirtualizedReviewDiffProps = Pick<
   | "bodyContext"
   | "onOpenFindingInAnalysis"
   | "beginRangeAuthoring"
+  | "showFileHeaders"
 >;
 
 export function NonVirtualizedReviewDiff({
@@ -66,6 +67,7 @@ export function NonVirtualizedReviewDiff({
   bodyContext,
   onOpenFindingInAnalysis,
   beginRangeAuthoring,
+  showFileHeaders,
 }: NonVirtualizedReviewDiffProps): React.JSX.Element {
   const renderAnnotation = useCallback(
     (annotation: DiffLineAnnotation<ReviewInlineAnnotation | undefined>) =>
@@ -140,6 +142,7 @@ export function NonVirtualizedReviewDiff({
     unsafeCSS: pierreDiffColorsCss,
     disableBackground: !preferences.backgrounds,
     disableLineNumbers: !preferences.lineNumbers,
+    disableFileHeader: !showFileHeaders,
     diffStyle: preferences.diffStyle,
     overflow: preferences.overflow,
     hunkSeparators: "line-info" as const,

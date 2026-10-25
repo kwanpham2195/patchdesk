@@ -132,35 +132,36 @@ function InsightResumeControls({
   return (
     <section
       aria-label={`${noun} run`}
-      className="mb-3 flex shrink-0 flex-col gap-2 rounded-md border p-3 text-sm"
+      className="mb-2 flex shrink-0 flex-col gap-1.5 rounded-md border px-3 py-2 text-sm"
     >
-      <p role="status">
-        {noun} · Paused. The previous response is unknown. A new generation
-        starts again from the same prepared inputs.
-      </p>
-      {resumeReady ? null : <p>{resumeSpendDisclosure(run)}</p>}
-      <div className="flex gap-2">
-        <Button
-          size="xs"
-          disabled={
-            !resumeReady || controls.busy || disabledReason !== undefined
-          }
-          onClick={() => {
-            setAcknowledged(false);
-            setConfirming(true);
-          }}
-        >
-          Start new generation
-        </Button>
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={controls.busy || cancelDisabledReason !== undefined}
-          onClick={controls.cancel}
-        >
-          Cancel run
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p role="status">{noun} paused · Previous response unknown.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="xs"
+            disabled={
+              !resumeReady || controls.busy || disabledReason !== undefined
+            }
+            onClick={() => {
+              setAcknowledged(false);
+              setConfirming(true);
+            }}
+          >
+            Start new generation
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={controls.busy || cancelDisabledReason !== undefined}
+            onClick={controls.cancel}
+          >
+            Cancel run
+          </Button>
+        </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        {resumeSpendDisclosure(run)}
+      </p>
       <Dialog
         open={confirming}
         onOpenChange={(open) => {

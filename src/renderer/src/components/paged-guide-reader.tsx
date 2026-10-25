@@ -135,37 +135,37 @@ export function PagedGuideReader({
     );
   const source = { profileId, reviewId, digest: guide.summary.digest };
   const completeness = guide.summary.completeness;
+  const contextNotice =
+    Math.max(
+      completeness.knownOmittedChecks,
+      completeness.knownOmittedThreads,
+      completeness.knownOmittedRules,
+    ) > 0
+      ? "Partial source context"
+      : {
+          complete: null,
+          partial: "Partial source context",
+          unknown: "Source context completeness unknown",
+        }[completeness.upstreamCompleteness];
   return (
     <div
       aria-label="Guide"
       data-guide-reader
       className="@container flex h-full min-h-0 min-w-0 flex-col"
     >
-      {openDisabled === undefined ? null : (
-        <p role="note" className="mb-3 text-sm text-muted-foreground">
-          {openDisabled}
-        </p>
-      )}
       <GuideReadingSaveError reading={reading} />
-      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold">Review Guide</h2>
-          <p className="text-xs text-muted-foreground">
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <p>
             {guide.summary.groups} groups · {guide.summary.inventory} files
             {reading === undefined
               ? null
               : ` · ${guide.groups.filter((group) => reviewed.has(group.id)).length}/${guide.summary.groups} reviewed`}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Captured context omitted {completeness.knownOmittedChecks} checks,{" "}
-            {completeness.knownOmittedThreads} discussion threads and{" "}
-            {completeness.knownOmittedRules} rule entries.{" "}
-            {completeness.upstreamCompleteness === "unknown"
-              ? "Source context completeness is unknown."
-              : completeness.upstreamCompleteness === "partial"
-                ? "Source context is partial."
-                : "Source context is complete."}
-          </p>
+          {contextNotice === null ? null : <p role="note">{contextNotice}</p>}
+          {openDisabled === undefined ? null : (
+            <p role="note">{openDisabled}</p>
+          )}
         </div>
         <ReviewDiffOptionsPopover
           preferences={viewPreferences}
@@ -182,7 +182,10 @@ export function PagedGuideReader({
       </div>
       <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 @min-[48rem]:grid-cols-[3rem_minmax(0,1fr)] @min-[48rem]:grid-rows-[minmax(0,1fr)]">
         <GuideMinimap root={root} groups={minimapGroups} />
-        <div data-guide-viewport className="min-h-0 min-w-0 overflow-auto">
+        <div
+          data-guide-viewport
+          className="min-h-0 min-w-0 overflow-auto [container-type:size]"
+        >
           <div ref={root}>
             <PagedGuideSections
               guide={guide}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Info } from "lucide-react";
 import * as v from "valibot";
 
 import {
@@ -16,6 +16,7 @@ import { useCapturedText } from "#src/renderer/src/hooks/use-paged-guide";
 import { GeneratedMarkdown } from "./generated-markdown";
 import { GuideFileDiff } from "./guide-file-diff";
 import { Button } from "./ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import type { WalkthroughDiffAuthoring } from "./walkthrough-diff-authoring";
 
 const evidenceLabels = {
@@ -164,6 +165,19 @@ export function PagedGuideFileRow({
             </span>
           )}
         </button>
+        {relevance === undefined || relevance.trim() === "" ? null : (
+          <Popover>
+            <PopoverTrigger
+              aria-label={`Why ${path} is in this group`}
+              render={<Button size="icon-xs" variant="ghost" />}
+            >
+              <Info aria-hidden="true" />
+            </PopoverTrigger>
+            <PopoverContent align="end" aria-label={`Context for ${path}`}>
+              <p className="break-words text-sm">{relevance}</p>
+            </PopoverContent>
+          </Popover>
+        )}
         {onOpenInDiff === undefined ||
         file === null ||
         disabledReason !== undefined ? null : (
@@ -191,11 +205,6 @@ export function PagedGuideFileRow({
           </Button>
         </div>
       ) : null}
-      {relevance === undefined ? null : (
-        <p className="min-w-0 break-words px-2.5 pb-2 text-xs text-muted-foreground">
-          {relevance}
-        </p>
-      )}
       {file === null || file.evidence === "text" ? null : (
         <p className="px-2.5 pb-2 text-xs text-muted-foreground">
           {evidenceLabels[file.evidence]}
@@ -252,47 +261,60 @@ export function PagedGuideGroupHeader({
   readonly reviewed: boolean;
 }): React.JSX.Element {
   return (
-    <section aria-labelledby={`guide-${id}`} className="min-w-0 space-y-3">
-      <p className="font-mono text-xs text-muted-foreground">
-        {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-      </p>
-      <h3 id={`guide-${id}`} className="text-base font-semibold">
+    <section
+      aria-labelledby={`guide-${id}`}
+      className="min-w-0 self-start @min-[48rem]:sticky @min-[48rem]:top-0 @min-[48rem]:flex @min-[48rem]:max-h-[100cqh] @min-[48rem]:min-h-0 @min-[48rem]:flex-col"
+    >
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3">
+        <p className="font-mono text-xs text-muted-foreground">
+          {String(index + 1).padStart(2, "0")} /{" "}
+          {String(total).padStart(2, "0")}
+        </p>
+        {reading === undefined ? null : (
+          <Button
+            size="xs"
+            variant={reviewed ? "secondary" : "outline"}
+            className={reviewed ? "text-status-success" : undefined}
+            aria-label={`Reviewed ${title}`}
+            aria-pressed={reviewed}
+            onClick={() => {
+              const { reviewedGroupIds, expandedAppearances, anchor } =
+                reading.progress;
+              reading.edit({
+                reviewedGroupIds: reviewed
+                  ? reviewedGroupIds.filter((groupId) => groupId !== id)
+                  : [...reviewedGroupIds, id],
+                expandedAppearances,
+                anchor,
+              });
+            }}
+          >
+            {reviewed ? (
+              <Check data-icon="inline-start" aria-hidden="true" />
+            ) : null}
+            {reviewed ? "Reviewed" : "Mark reviewed"}
+          </Button>
+        )}
+      </div>
+      <h3 id={`guide-${id}`} className="mb-3 shrink-0 text-base font-semibold">
         {title}
       </h3>
-      {reading === undefined ? null : (
-        <Button
-          size="xs"
-          variant={reviewed ? "secondary" : "outline"}
-          className={reviewed ? "text-status-success" : undefined}
-          aria-label={`Reviewed ${title}`}
-          aria-pressed={reviewed}
-          onClick={() => {
-            const { reviewedGroupIds, expandedAppearances, anchor } =
-              reading.progress;
-            reading.edit({
-              reviewedGroupIds: reviewed
-                ? reviewedGroupIds.filter((groupId) => groupId !== id)
-                : [...reviewedGroupIds, id],
-              expandedAppearances,
-              anchor,
-            });
-          }}
-        >
-          {reviewed ? (
-            <Check data-icon="inline-start" aria-hidden="true" />
-          ) : null}
-          {reviewed ? "Reviewed" : "Mark reviewed"}
-        </Button>
-      )}
-      <GeneratedMarkdown
-        markdown={explanation}
-        className="break-words text-sm"
-      />
-      {hasMoreExplanation ? (
-        <Button size="xs" variant="outline" onClick={onLoadMoreExplanation}>
-          Show the rest of this explanation
-        </Button>
-      ) : null}
+      <div
+        role="region"
+        aria-label={`${title} explanation`}
+        tabIndex={0}
+        className="min-h-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[48rem]:overflow-y-auto @min-[48rem]:overscroll-contain"
+      >
+        <GeneratedMarkdown
+          markdown={explanation}
+          className="break-words text-sm"
+        />
+        {hasMoreExplanation ? (
+          <Button size="xs" variant="outline" onClick={onLoadMoreExplanation}>
+            Show the rest of this explanation
+          </Button>
+        ) : null}
+      </div>
     </section>
   );
 }

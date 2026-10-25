@@ -8,9 +8,9 @@ Guide is an optional Insight in the Review workbench. It groups changed files by
 
 Open Insights and select Guide. Generate Guide opens the [Insight run dialog](brief.md#begin-an-action). Choose Codex CLI account or pi CLI account, then a model, reasoning level, and language. Confirm the run to start generation.
 
-The result shows a distinct file count, a group count, and Reviewed progress. Numbered groups have an explanation and expandable file rows. Others holds changed files outside the groups. Expanding a row shows that file's complete retained diff, including changes the group explanation does not discuss. Repeated appearances expand independently.
+A compact toolbar shows the file count, group count, Reviewed progress, and View menu. Numbered groups have an explanation and expandable file rows. Others holds changed files outside the groups. Expanding a row shows that file's complete retained diff, including changes the group explanation does not discuss. Repeated appearances expand independently.
 
-Groups, file lists, and long text load in pages. Show more files continues a list; Show the rest of this explanation continues a long explanation. The reader also states known omissions from captured checks, discussion threads, and rules, and whether source context completeness is known.
+Groups, file lists, and long text load in pages. Show more files continues a list; Show the rest of this explanation continues a long explanation. A short notice remains visible when source context is partial or its completeness is unknown.
 
 Mark reviewed records progress for one group. Viewed records progress for a file and is shared with Diff and every Guide appearance. Neither action submits a GitHub review. Notes, comments, replies, and drafts use the [shared inline actions](inline-conversations.md).
 
@@ -35,7 +35,7 @@ stateDiagram-v2
 
 Opening Guide does not start a run. Only a saved result in the new paged format is readable; earlier-format Guides and their reading progress are not imported. An outdated result keeps its own patch rather than showing newer source. Without a readable result, the reader offers Generate Guide. A saved failed run shows its failure separately, including whether an earlier result remains available.
 
-At wide widths, explanations and files occupy separate columns. Narrow layouts stack them. The minimap's current indicator follows the visible group. A check identifies a Reviewed group, independently of the current marker. Equal marker spacing represents group order, not the relative height of each group.
+At wide widths, the current group's title and review control stay docked on the left while the files and diffs scroll on the right. A long explanation scrolls within the available height beneath the title and control. Groups share one continuous reading area; files do not each get a vertical scrollbar. Narrow layouts stack the explanation above its files. The minimap's current indicator follows the visible group. A check identifies a Reviewed group, independently of the current marker. Equal marker spacing represents group order, not the relative height of each group.
 
 ### Leave unchanged
 
@@ -49,7 +49,7 @@ Every entry point, including Try again and agent-request approval, offers the tw
 
 Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview groups before Enter or Space selects one. The preview has no focusable actions. Escape closes it and returns focus to the rail or compact Preview control. The opened narrow group list wraps long names; its closed trigger can truncate them.
 
-A file row expands or collapses only that appearance. Text diffs show code without a Patch metadata disclosure. Nontext evidence displays its retained metadata directly. File names and Viewed controls share an aligned header row. A single View menu applies to all expanded files, including files opened later. Markdown Preview remains available for eligible retained files.
+A file row expands or collapses only that appearance. Text diffs show code without a Patch metadata disclosure. Nontext evidence displays its retained metadata directly. Each file has one filename, status, and actions header. The information button explains why the file belongs to its group without repeating that prose above the code. A single View menu applies to all expanded files, including files opened later. Markdown Preview remains available for eligible retained files.
 
 ### While the action runs
 
@@ -77,7 +77,7 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 
 Failed, cancelled, and superseded runs keep distinct messages after reopening. Try again appears only when the recorded failure permits a retry and the current Review can run one. Cancelling or superseding a run does not itself offer a retry button.
 
-The failure explanation, recovery action, and previous-result notice stay visible. Details shows safe run and native attempt metadata, keeping the first host failure separate from history capture and cleanup outcomes. Readable history has unknown completeness. Missing history does not remove recovery, and Details does not expose private paths or native bodies. A retired API generation cannot resume through a native provider.
+A cancelled replacement with a readable result shows one short statement that the previous result is displayed. Its information button opens run details without shifting the reading area. Failure explanations and recovery actions remain visible. Run details show safe run and native attempt metadata, keeping the first host failure separate from history capture and cleanup outcomes. Readable history has unknown completeness. Missing history does not remove recovery, and run details do not expose private paths or native bodies. A retired API generation cannot resume through a native provider.
 
 ## Variants
 
@@ -133,6 +133,7 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 - Readable Guides are retained across failed or cancelled replacement runs. Reading state does not transfer to a different successful result.
 - A stale Guide permits inspection and local reading progress, but not authoring against its older revision.
 - The minimap is adapted from T3 Code and includes its MIT notice in the shipped renderer.
+- The docked explanation can take keyboard focus and scroll with Page Up or Page Down. File expansion and information buttons remain keyboard accessible; Escape returns focus from an information popover to its button.
 
 ## Open questions and verification
 
@@ -150,3 +151,5 @@ Paged generation, reading, progress, and failure behavior revised from source co
 Preview behavior follows committed source `8d8600d8`; locked-pause presentation follows `7c9833ce`. The scoped parent checks above preceded those commits and do not establish full lifecycle verification.
 
 Native-only controls, collapsed Activity, safe Details, and acknowledgment behavior are revised from the uncommitted source following `a18b0753` on 2026-10-25, under [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Final desktop and narrow acceptance for those controls remains pending. Successful native lifecycle checks do not establish useful explanation coverage; that follow-up is tracked in [#830](https://github.com/kwanpham2195/patchdesk/issues/830).
+
+The compact reading layout was checked over CDP on 2026-10-25 using a saved 516-file Guide. Checks covered a large expanded diff, docked group transitions, member pagination, exact scroll restoration after reload, keyboard expansion and popover focus, a short window, and stacked layouts at 900 and 560 pixels. No provider work or recovery action was started. Current authoring was unavailable on that Review, so this pass does not verify publishing comments.
