@@ -29,11 +29,10 @@ export type CodexInsightProvider = {
   readonly settings: JsonObject;
 };
 
-/** Config/read merges process overrides but leaves native defaults null; managed requirements still win. */
+/** Config/read leaves the built-in OpenAI default null; thread/start must confirm the resolved provider. */
 export function resolveCodexInsightProvider(
   config: JsonObject,
   requirements: JsonObject,
-  nativeVersion: string | undefined,
 ): Result<CodexInsightProvider, "native_policy_unsupported"> {
   const configured = v.safeParse(configSchema, config);
   const managed = v.safeParse(requirementsSchema, requirements);
@@ -42,13 +41,6 @@ export function resolveCodexInsightProvider(
   const value = configured.output.config;
   const required = managed.output.requirements;
   const selected = required?.modelProvider ?? value.model_provider;
-  // Only this verified native version's default is supported, not an assumed default for unknown servers.
-  if (
-    selected === null &&
-    nativeVersion !== "0.162.1" &&
-    nativeVersion !== "0.163.0"
-  )
-    return err("native_policy_unsupported");
   const id = selected ?? "openai";
   const definition =
     required?.modelProviders?.[id] ?? value.model_providers?.[id] ?? null;

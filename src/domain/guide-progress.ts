@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { nativeSessionAttemptPageSchema } from "./native-session-attempt";
 
 import { guideFileIdSchema, guideGroupIdSchema } from "./guide";
 import type { InsightArtifactCodec } from "./insight-artifact-index";
@@ -186,6 +187,7 @@ export type GuideRunStatus = v.InferOutput<typeof guideRunSchema>;
 export const guideSummaryRequestSchema = v.strictObject({
   profileId: profileIdSchema,
   reviewId: reviewIdSchema,
+  nativeAttemptCursor: v.exactOptional(v.pipe(v.string(), v.uuid())),
 });
 export const guidePageRequestSchema = v.strictObject({
   profileId: profileIdSchema,
@@ -264,11 +266,13 @@ export const guideSummarySchema = v.variant("_tag", [
     _tag: v.literal("none"),
     run: guideRunSchema,
     failure: guideFailureSchema,
+    nativeAttempts: v.exactOptional(nativeSessionAttemptPageSchema),
   }),
   v.strictObject({
     _tag: v.literal("ready"),
     run: guideRunSchema,
     failure: guideFailureSchema,
+    nativeAttempts: v.exactOptional(nativeSessionAttemptPageSchema),
     runId: v.string(),
     sessionId: v.string(),
     revision: v.strictObject({

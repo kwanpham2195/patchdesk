@@ -1,4 +1,5 @@
 import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
+import type { CodexAnalysisCommandFailure } from "#src/adapters/codex/codex-analysis-command-diagnostic";
 import type {
   GitSha,
   InsightRunId,
@@ -50,6 +51,10 @@ type InsightInvocationFailure = {
 export type InsightInvocationOptions = {
   readonly signal: AbortSignal;
   readonly onActivity?: InsightActivitySink | undefined;
+  /** Receives only the first Codex Analysis command failure's closed diagnostic projection. */
+  readonly onAnalysisCommandFailure?:
+    | ((failure: CodexAnalysisCommandFailure) => void)
+    | undefined;
 };
 /** Invokers leave result validation to the executor. */
 export type InsightInvoker = {

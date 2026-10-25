@@ -3,10 +3,7 @@ import { randomUUID } from "node:crypto";
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { guidePreparedInputCodec } from "#src/domain/guide-preparation";
-import {
-  guideDispatchIntentCodec,
-  guideRuntimeCodec,
-} from "#src/domain/guide-result";
+import { guideRuntimeCodec } from "#src/domain/guide-result";
 import {
   parseReviewSessionId,
   type IsoTimestamp,
@@ -106,6 +103,7 @@ export class GuideResumePreparation {
       GuideResumeFailure
     >
   > {
+    if (!("transport" in request)) return err("invalid");
     const { profileId, reviewId } = request;
     const active = await this.authority.status.activeRun({
       profileId,
@@ -134,39 +132,22 @@ export class GuideResumePreparation {
       state.nativeExecution === undefined
         ? undefined
         : await nativeTurnStatus(this.artifacts, { run }, state);
-    const nativeRequest = "transport" in request;
-    if (nativeRequest !== (state.nativeExecution !== undefined))
-      return err("stale");
+    if (state.nativeExecution === undefined) return err("stale");
     if (
-      nativeRequest &&
-      (native?._tag !== "ok" ||
-        native.value.generation !== state.generation ||
-        !native.value.ceased ||
-        request.acknowledgedStarts !== state.nativeExecution?.starts.count ||
-        request.lastStartHash !== native.value.newest.hash)
+      native?._tag !== "ok" ||
+      native.value.generation !== state.generation ||
+      !native.value.ceased ||
+      request.acknowledgedStarts !== state.nativeExecution?.starts.count ||
+      request.lastStartHash !== native.value.newest.hash
     )
       return err("stale");
-    if (
-      !nativeRequest &&
-      (state.dispatches.count === 0 ||
-        state.dispatches.count !== request.acknowledgedDispatches)
-    )
-      return err("stale");
-    const [failure, newest, binding, previous] = await Promise.all([
+    const [failure, binding, previous, prepared] = await Promise.all([
       this.artifacts.readObject(
         profileId,
         reviewId,
         insightFailureRecordCodec,
         state.failure,
       ),
-      nativeRequest
-        ? Promise.resolve(ok([]))
-        : store.readIndex(
-            "GuideDispatchIntent1",
-            state.dispatches,
-            state.dispatches.count - 1,
-            1,
-          ),
       this.artifacts.readObject(
         profileId,
         reviewId,
@@ -179,17 +160,15 @@ export class GuideResumePreparation {
         insightAuthorizationCodec,
         state.authorization,
       ),
+      this.artifacts.readObject(
+        profileId,
+        reviewId,
+        guidePreparedInputCodec,
+        state.guidePreparation,
+      ),
     ]);
-    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the preceding batch occupies all four authority read permits
-    const prepared = await this.artifacts.readObject(
-      profileId,
-      reviewId,
-      guidePreparedInputCodec,
-      state.guidePreparation,
-    );
     if (
       failure._tag === "err" ||
-      newest._tag === "err" ||
       binding._tag === "err" ||
       previous._tag === "err" ||
       prepared._tag === "err"
@@ -198,25 +177,6 @@ export class GuideResumePreparation {
     if (
       failure.value.code !== "paid_dispatch_unknown" ||
       failure.value.recovery !== "resume_required"
-    )
-      return err("stale");
-    const entry = newest.value[0];
-    const intent = nativeRequest
-      ? undefined
-      : entry === undefined
-        ? undefined
-        : await this.artifacts.readObject(
-            profileId,
-            reviewId,
-            guideDispatchIntentCodec,
-            entry.value,
-          );
-    if (!nativeRequest && (intent === undefined || intent._tag === "err"))
-      return err("storage");
-    if (
-      !nativeRequest &&
-      intent?._tag === "ok" &&
-      intent.value.requestHash !== request.lastRequestHash
     )
       return err("stale");
     const [identity, selection] = await Promise.all([
@@ -241,23 +201,13 @@ export class GuideResumePreparation {
     ]);
     const reasoning = selection.value.reasoning;
     if (sessionId._tag === "err" || model._tag === "err") return err("storage");
-    if (
-      nativeRequest
-        ? selection.value.provider === "pi"
-        : selection.value.provider !== "pi" ||
-          (reasoning !== "low" &&
-            reasoning !== "medium" &&
-            reasoning !== "high")
-    )
-      return err("invalid");
+    if (selection.value.provider === "pi") return err("invalid");
     const parsedSession = parseReviewSessionId(sessionId.value);
     if (parsedSession._tag === "err") return err("invalid");
     const disposition = await this.artifacts.writeTextRoot(
       profileId,
       reviewId,
-      nativeRequest
-        ? `Maintainer acknowledged ${request.acknowledgedStarts} native turn start(s), newest ${request.lastStartHash}. Generation ${state.generation + 1} may spend again and cannot recover the previous response.`
-        : `Maintainer acknowledged ${state.dispatches.count} recorded request(s) of generation ${state.generation} whose responses are unknown, newest ${request.lastRequestHash}. A new generation ${state.generation + 1} starts from the same prepared inputs; it does not recover those responses.`,
+      `Maintainer acknowledged ${request.acknowledgedStarts} native turn start(s), newest ${request.lastStartHash}. Generation ${state.generation + 1} may spend again and cannot recover the previous response.`,
     );
     if (disposition._tag === "err") return err("storage");
     const [authorization, receipts] = await Promise.all([
@@ -325,15 +275,11 @@ export class GuideResumePreparation {
       },
       resume: {
         generation: state.generation,
-        ...(nativeRequest && state.nativeExecution !== undefined
-          ? {
-              native: {
-                startCount: state.nativeExecution.starts.count,
-                startsRoot: state.nativeExecution.starts.root.hash,
-                observationsRoot: state.nativeExecution.observations.root.hash,
-              },
-            }
-          : { dispatchCount: state.dispatches.count }),
+        native: {
+          startCount: state.nativeExecution.starts.count,
+          startsRoot: state.nativeExecution.starts.root.hash,
+          observationsRoot: state.nativeExecution.observations.root.hash,
+        },
         authorization: authorization.value,
         guideRuntime: runtime.value,
       },

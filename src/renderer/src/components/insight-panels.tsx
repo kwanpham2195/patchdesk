@@ -1,8 +1,5 @@
-import { useState } from "react";
-import {
-  CODEX_EXPLANATION_SUPPORTED_VERSIONS,
-  CODEX_EXPLANATION_VERSION_MESSAGE,
-} from "#src/domain/codex-explanation-version";
+import { useEffect, useState } from "react";
+import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
 
 import { History, Pause, Play } from "lucide-react";
 
@@ -29,7 +26,8 @@ import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { InsightRunActivity } from "#src/renderer/src/insight-contracts";
 import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
-import { RelativeTime } from "./relative-time";
+import { InsightAttemptDetails } from "./insight-attempt-details";
+import type { NativeSessionAttemptPage } from "#src/domain/native-session-attempt";
 import { INSIGHT_STATUS_LABELS } from "#src/renderer/src/insight-status";
 import { INSIGHT_ICONS } from "#src/renderer/src/insight-icons";
 import { InsightStatusIcon } from "./insight-status-icon";
@@ -231,53 +229,100 @@ export function InsightRunning({
   projection,
   activity,
   status,
+  onCancel,
+  cancelDisabled = false,
+  startedAt,
+  children,
 }: {
   readonly status?: InsightRunController["status"] | undefined;
   readonly type: InsightRunDialogType;
-  readonly projection: InsightProjection | undefined;
+  readonly projection?: InsightProjection | undefined;
   /** Absent for a Pi run, which projects no trace. */
-  readonly activity: InsightRunActivity | undefined;
+  readonly activity?: InsightRunActivity | undefined;
+  readonly onCancel?: (() => void) | undefined;
+  readonly cancelDisabled?: boolean;
+  readonly startedAt?: string | undefined;
+  readonly children?: React.ReactNode;
 }): React.JSX.Element {
   const phase =
     status === undefined || status === "idle"
       ? projection?.activeRun?.status
       : status;
-  const preparing = phase === "queued";
+  const start = startedAt ?? projection?.activeRun?.startedAt;
   return (
-    <Empty className={INSIGHT_STATE_CLASS}>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Spinner />
-        </EmptyMedia>
-        <EmptyTitle>
-          {INSIGHT_NOUNS[type]} is{" "}
-          {preparing
-            ? "preparing"
+    <section
+      aria-label={`${INSIGHT_NOUNS[type]} run`}
+      className="flex shrink-0 flex-col gap-2 rounded-md border p-3 text-sm"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {phase === "cancelled" ||
+        phase === "completed" ||
+        phase === "failed" ? null : (
+          <Spinner aria-hidden="true" />
+        )}
+        <p role="status" className="min-w-0 flex-1">
+          {INSIGHT_NOUNS[type]} ·{" "}
+          {phase === "queued" ||
+          (phase === "running" && activity?.phase === "preparing")
+            ? "Preparing"
             : phase === "cancelling"
-              ? "cancelling"
-              : "running"}
-        </EmptyTitle>
-        <EmptyDescription>
-          {preparing ? (
-            "Preparing…"
-          ) : projection?.activeRun !== undefined ? (
-            <RelativeTime
-              iso={projection.activeRun.startedAt}
-              prefix="Started "
-            />
-          ) : phase === "cancelling" ? (
-            "Cancelling…"
-          ) : (
-            "Generation in progress…"
+              ? "Cancelling"
+              : phase === "error"
+                ? "Status unavailable"
+                : phase === "cancelled"
+                  ? "Cancelled"
+                  : phase === "completed"
+                    ? "Completed"
+                    : phase === "failed"
+                      ? "Failed"
+                      : "Running"}
+          {start === undefined ? null : (
+            <>
+              {" "}
+              · <InsightElapsedTime startedAt={start} />
+            </>
           )}
-        </EmptyDescription>
-      </EmptyHeader>
+        </p>
+        {onCancel === undefined ||
+        phase === "cancelling" ||
+        phase === "cancelled" ||
+        phase === "completed" ||
+        phase === "failed" ? null : (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={cancelDisabled}
+            onClick={onCancel}
+          >
+            Cancel run
+          </Button>
+        )}
+      </div>
       {activity === undefined ? null : (
-        <EmptyContent className="max-w-none">
-          <InsightActivityTrace activity={activity} />
-        </EmptyContent>
+        <InsightActivityTrace activity={activity} />
       )}
-    </Empty>
+      {children}
+    </section>
+  );
+}
+
+function InsightElapsedTime({
+  startedAt,
+}: {
+  readonly startedAt: string;
+}): React.JSX.Element {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
+  return (
+    <time dateTime={startedAt} className="tabular-nums">
+      {seconds < 60
+        ? `${seconds}s elapsed`
+        : `${Math.floor(seconds / 60)}m ${seconds % 60}s elapsed`}
+    </time>
   );
 }
 
@@ -290,41 +335,47 @@ function InsightActivityTrace({
   if (activity.reasoningLine === undefined && activity.commands.length === 0)
     return null;
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2 text-left">
-      {activity.reasoningLine === undefined ? null : (
-        <p className="truncate text-sm">{activity.reasoningLine}</p>
-      )}
-      {activity.commands.length === 0 ? null : (
-        <ol
-          aria-label="Commands"
-          className="flex max-h-72 flex-col gap-1 overflow-y-auto font-mono text-xs"
-        >
-          {activity.commands.map((command) => (
-            <li key={command.id} className="flex min-w-0 items-center gap-2">
-              <span className="w-16 shrink-0 text-muted-foreground">
-                {command.status === "in_progress" ? (
-                  <Spinner aria-label="Running" />
-                ) : command.status === "declined" ? (
-                  "declined"
-                ) : command.exitCode === undefined ? (
-                  command.status
-                ) : (
-                  `exit ${String(command.exitCode)}`
-                )}
-              </span>
-              <span className="min-w-0 flex-1 truncate" title={command.command}>
-                {command.command}
-              </span>
-              {command.durationMs === undefined ? null : (
-                <span className="shrink-0 text-muted-foreground tabular-nums">
-                  {(command.durationMs / 1000).toFixed(1)}s
+    <details className="w-full min-w-0 text-left text-xs">
+      <summary className="cursor-pointer">Activity</summary>
+      <div className="flex min-w-0 flex-col gap-2 pt-2">
+        {activity.reasoningLine === undefined ? null : (
+          <p className="truncate text-sm">{activity.reasoningLine}</p>
+        )}
+        {activity.commands.length === 0 ? null : (
+          <ol
+            aria-label="Commands"
+            className="flex max-h-72 flex-col gap-1 overflow-y-auto font-mono text-xs"
+          >
+            {activity.commands.map((command) => (
+              <li key={command.id} className="flex min-w-0 items-center gap-2">
+                <span className="w-16 shrink-0 text-muted-foreground">
+                  {command.status === "in_progress" ? (
+                    <Spinner aria-label="Running" />
+                  ) : command.status === "declined" ? (
+                    "declined"
+                  ) : command.exitCode === undefined ? (
+                    command.status
+                  ) : (
+                    `exit ${String(command.exitCode)}`
+                  )}
                 </span>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
+                <span
+                  className="min-w-0 flex-1 truncate"
+                  title={command.command}
+                >
+                  {command.command}
+                </span>
+                {command.durationMs === undefined ? null : (
+                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                    {(command.durationMs / 1000).toFixed(1)}s
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -336,6 +387,8 @@ export function InsightFailed({
   activity,
   guideFailure,
   retainedHeadSha,
+  nativeAttempts,
+  detailsSource,
 }: {
   readonly projection: InsightProjection;
   /** Absent on a merged or closed Review, where the service refuses a run, so neither Try again nor Re-prepare Review is drawn. */
@@ -348,6 +401,15 @@ export function InsightFailed({
   readonly guideFailure?: NonNullable<GuideSummary["failure"]>;
   /** Published Guide revision for the retained-document line. */
   readonly retainedHeadSha?: string;
+  readonly nativeAttempts?: NativeSessionAttemptPage | undefined;
+  readonly detailsSource?:
+    | {
+        readonly profileId: string;
+        readonly reviewId: string;
+        readonly type: InsightRunDialogType;
+        readonly runId: string;
+      }
+    | undefined;
 }): React.JSX.Element {
   const failure = guideFailure ?? projection.replacementFailure;
   const category = failure?.category;
@@ -378,14 +440,10 @@ export function InsightFailed({
     >
       <AlertDescription className="basis-full space-y-1">
         <p>{message}</p>
-        <CodexVersionDetails diagnostic={guideFailure?.diagnostic} />
         {retainedHead === undefined ? (
           <p>No retained result.</p>
         ) : (
-          <p>
-            Retained from {retainedHead.slice(0, 8)}:{" "}
-            {retainedDescription ?? "retained document"}
-          </p>
+          <p>Showing the previous result.</p>
         )}
         {reprepareFailed ? <p>The Review could not be re-prepared.</p> : null}
       </AlertDescription>
@@ -402,6 +460,34 @@ export function InsightFailed({
             : "Try again"}
         </Button>
       )}
+      <details className="min-w-0 basis-full text-xs">
+        <summary className="cursor-pointer">Details</summary>
+        <div className="flex min-w-0 flex-col gap-2 pt-2">
+          <CodexVersionDetails diagnostic={guideFailure?.diagnostic} />
+          {retainedHead === undefined ? null : (
+            <p>
+              Published revision: {retainedHead}. {retainedDescription}
+            </p>
+          )}
+          {failure === undefined ? null : (
+            <p>
+              Run: {failure.runId ?? "unavailable"} · Failure:{" "}
+              {category ?? "unclassified"}
+            </p>
+          )}
+          {projection.replacementFailure === undefined ? null : (
+            <p>
+              Requested model: {projection.replacementFailure.model} ·
+              Reasoning: {projection.replacementFailure.reasoning}
+            </p>
+          )}
+          <InsightAttemptDetails
+            key={detailsSource?.runId ?? nativeAttempts?.attempts[0]?.runId}
+            page={nativeAttempts}
+            source={detailsSource}
+          />
+        </div>
+      </details>
       {activity === undefined ? null : (
         <div className="min-w-0 basis-full">
           <InsightActivityTrace activity={activity} />
@@ -458,8 +544,8 @@ function CodexVersionDetails({
 }): React.JSX.Element | null {
   return diagnostic === "unsupported_codex_version" ? (
     <p>
-      Supported Codex versions:{" "}
-      {CODEX_EXPLANATION_SUPPORTED_VERSIONS.join(", ")}.
+      This saved failure used an earlier release-based compatibility policy. New
+      runs validate the required Codex APIs instead.
     </p>
   ) : null;
 }

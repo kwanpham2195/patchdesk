@@ -15,12 +15,6 @@ import {
 import {
   explanationOperationIdentity,
   explanationFrameIdentity,
-  explanationRequestOpenSchema,
-  explanationRequestChunkSchema,
-  explanationRequestCommitSchema,
-  explanationHandleSchema,
-  explanationStoredSchema,
-  explanationPermissionSchema,
 } from "./explanation-channel";
 
 const P = insightArtifactPositiveSchema;
@@ -124,9 +118,6 @@ export const guideChildFrameSchema = v.variant("kind", [
     ...frameIdentity,
     call: toolCallSchema,
   }),
-  explanationRequestOpenSchema,
-  explanationRequestChunkSchema,
-  explanationRequestCommitSchema,
 ]);
 export type GuideChildFrame = v.InferOutput<typeof guideChildFrameSchema>;
 
@@ -148,7 +139,7 @@ export const GUIDE_REFUSAL_REASONS = [
 export type GuideRefusalReason = (typeof GUIDE_REFUSAL_REASONS)[number];
 
 /** App to child. Replies repeat the connection identity so the child can verify who answered. */
-export const guideAppReplySchema = v.strictObject({
+const guideAppReplySchema = v.strictObject({
   kind: v.literal("reply"),
   ...frameIdentity,
   outcome: v.variant("status", [
@@ -158,9 +149,6 @@ export const guideAppReplySchema = v.strictObject({
       result: receiptResultUnion,
     }),
     v.strictObject({ status: v.literal("not_found") }),
-    explanationHandleSchema,
-    explanationStoredSchema,
-    explanationPermissionSchema,
     v.strictObject({
       status: v.literal("refused"),
       reason: v.picklist(GUIDE_REFUSAL_REASONS),

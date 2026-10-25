@@ -39,37 +39,27 @@ it("rejects a replacement with a missing captured patch block and preserves the 
         async invokeGuide(input) {
           passes += 1;
           expect(
-            await input.handler({
-              ...input.identity,
-              correlation: 1,
-              kind: "tool",
-              call: {
-                tool: "open_group",
-                input: {
-                  opId: v.parse(insightArtifactIdSchema, "group"),
-                  title: "Guard",
-                  explanation: "Review the guard.",
-                },
+            await input.tool({
+              tool: "open_group",
+              input: {
+                opId: v.parse(insightArtifactIdSchema, "group"),
+                title: "Guard",
+                explanation: "Review the guard.",
               },
             }),
           ).toMatchObject({ status: "receipt" });
           expect(
-            await input.handler({
-              ...input.identity,
-              correlation: 2,
-              kind: "tool",
-              call: {
-                tool: "add_members",
-                input: {
-                  opId: v.parse(insightArtifactIdSchema, "member"),
-                  groupId: v.parse(guideGroupIdSchema, "g1"),
-                  members: [
-                    {
-                      fileId: v.parse(guideFileIdSchema, "f1"),
-                      relevance: "Guard change.",
-                    },
-                  ],
-                },
+            await input.tool({
+              tool: "add_members",
+              input: {
+                opId: v.parse(insightArtifactIdSchema, "member"),
+                groupId: v.parse(guideGroupIdSchema, "g1"),
+                members: [
+                  {
+                    fileId: v.parse(guideFileIdSchema, "f1"),
+                    relevance: "Guard change.",
+                  },
+                ],
               },
             }),
           ).toMatchObject({ status: "receipt" });
@@ -118,14 +108,9 @@ it("rejects a replacement with a missing captured patch block and preserves the 
             );
           }
           expect(
-            await input.handler({
-              ...input.identity,
-              correlation: 3,
-              kind: "tool",
-              call: {
-                tool: "finish",
-                input: { opId: v.parse(insightArtifactIdSchema, "finish") },
-              },
+            await input.tool({
+              tool: "finish",
+              input: { opId: v.parse(insightArtifactIdSchema, "finish") },
             }),
           ).toMatchObject({ status: "receipt" });
           return { _tag: "finished" };
@@ -162,6 +147,7 @@ it("rejects a replacement with a missing captured patch block and preserves the 
     value.operations,
   );
   const request = {
+    provider: "codex-cli-account" as const,
     ...key,
     model: "model",
     reasoning: "medium",

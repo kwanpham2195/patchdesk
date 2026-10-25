@@ -2,11 +2,12 @@ import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-dis
 import { definedProps } from "#src/domain/defined-props";
 import { supportedInsightTypes } from "#src/domain/insight-provider-capabilities";
 import type { InsightType } from "#src/domain/insight-record";
-import type {
-  AccountInsightProvider,
-  InsightProvider,
-  InsightReasoning,
-  InsightSelection,
+import {
+  isAccountInsightProvider,
+  type AccountInsightProvider,
+  type InsightProvider,
+  type InsightReasoning,
+  type InsightSelection,
 } from "#src/domain/insight-provider";
 import { casesHandled, err, ok, type Result } from "#src/domain/result";
 import type {
@@ -14,10 +15,6 @@ import type {
   CodexAppServerFailure,
   CodexModel,
 } from "#src/adapters/codex/codex-app-server-client";
-import type {
-  ModelListPrice,
-  PiRuntimeModelCatalog,
-} from "#src/adapters/pi/pi-runtime-model-catalog";
 import type {
   PiCliModel,
   PiRpcClient,
@@ -40,8 +37,6 @@ type InsightProviderModel = {
   readonly label: string;
   readonly reasoning: ReadonlyArray<InsightReasoning>;
   readonly defaultReasoning?: InsightReasoning;
-  /** Absent for account-provider models and Pi models without a fixed list price. */
-  readonly cost?: ModelListPrice;
 };
 
 /** Complete passive or activated Insight provider catalog. */
@@ -96,11 +91,10 @@ export class InsightProviderCatalog {
    * record type is what forces every provider to have a source at all.
    */
   private readonly sources: Readonly<
-    Record<InsightProvider, ProviderModelSource>
+    Record<AccountInsightProvider, ProviderModelSource>
   >;
 
   constructor(
-    pi: PiRuntimeModelCatalog,
     codexClientFactory: CodexClientFactory,
     piCliClientFactory: PiCliClientFactory,
     executableResolver: (name: string) => Promise<string | undefined> = (
@@ -108,7 +102,6 @@ export class InsightProviderCatalog {
     ) => discoverPathOnlyExecutable(name),
   ) {
     this.sources = {
-      pi: piModelSource(pi),
       "codex-cli-account": codexModelSource(
         codexClientFactory,
         executableResolver,
@@ -139,6 +132,11 @@ export class InsightProviderCatalog {
   ): Promise<
     Result<InsightProviderCatalogSnapshot, InsightProviderCatalogFailure>
   > {
+    if (!isAccountInsightProvider(provider))
+      return err({
+        _tag: "InsightProviderCatalogUnavailable",
+        reason: "runtime_unavailable",
+      });
     const activated = await this.sources[provider].activate();
     if (activated._tag === "err") return activated;
     return ok({
@@ -151,6 +149,8 @@ export class InsightProviderCatalog {
   async validate(
     selection: InsightSelection,
   ): Promise<Result<void, "model_unavailable" | "catalog_unavailable">> {
+    if (!isAccountInsightProvider(selection.provider))
+      return err("model_unavailable");
     const activated = await this.sources[selection.provider].activate();
     if (activated._tag === "err") return err("catalog_unavailable");
     return activated.value.models.some(
@@ -161,49 +161,6 @@ export class InsightProviderCatalog {
       ? ok(undefined)
       : err("model_unavailable");
   }
-}
-
-const PI_GUIDANCE =
-  "Export a provider key such as ANTHROPIC_API_KEY in your shell profile, then relaunch Patchdesk.";
-
-/** Pi lists from the local runtime catalog, so listing never starts anything. */
-function piModelSource(pi: PiRuntimeModelCatalog): ProviderModelSource {
-  const survey = async (): Promise<ProviderSurvey> => {
-    const result = await pi.get();
-    return {
-      status: {
-        id: "pi",
-        supportedTypes: supportedInsightTypes("pi"),
-        label: "API key",
-        available: result._tag === "ok",
-        guidance: PI_GUIDANCE,
-      },
-      models:
-        result._tag === "ok"
-          ? result.value.models.map((model) => ({
-              provider: "pi" as const,
-              id: model.id,
-              label: model.label,
-              reasoning: ["low", "medium", "high"] as const,
-              defaultReasoning: "medium" as const,
-              ...definedProps({ cost: model.cost }),
-            }))
-          : [],
-    };
-  };
-  return {
-    survey,
-    // Pi has no runtime to activate: the passive listing is already the live one.
-    async activate() {
-      const surveyed = await survey();
-      return surveyed.status.available
-        ? ok(surveyed)
-        : err({
-            _tag: "InsightProviderCatalogUnavailable",
-            reason: "runtime_unavailable",
-          });
-    },
-  };
 }
 
 /** Codex lists only from a started app server, so surveying stops at PATH discovery. */

@@ -1,6 +1,8 @@
 import {
   CodexExplanationDiagnostics,
   type CodexDiagnostic,
+  type CodexCleanupFailureStep,
+  type CodexStopFailureCause,
 } from "./codex-explanation-diagnostics";
 import {
   codexExplanationFailure as failed,
@@ -10,22 +12,17 @@ import {
   type CodexExplanationInput,
   type CodexExplanationTurnNotification,
 } from "./codex-explanation-protocol";
-import { CODEX_EXPLANATION_SUPPORTED_VERSIONS } from "#src/domain/codex-explanation-version";
 import { createCodexActivityEmitter } from "./codex-activity";
 import { InsightProcessCleanupError } from "#src/adapters/process/insight-process-cleanup";
 import { createHash } from "node:crypto";
 import { RpcChild, type CodexProcessFactory } from "./codex-app-server-rpc";
 import {
   discoverCodexInsightSession,
-  validateCodexInsightSession,
   type CodexInsightHomeFactory,
   type CodexInsightHome,
 } from "./codex-insight-home";
-import {
-  codexInsightIsolationArgs,
-  parseCodexInsightThread,
-} from "./codex-insight-policy";
-import { paginateModelList } from "./codex-model-catalog";
+import { codexInsightIsolationArgs } from "./codex-insight-policy";
+import { prepareCodexExplanationThread } from "./codex-explanation-thread";
 import {
   CodexExplanationTools,
   codexExplanationDeclarations,
@@ -40,6 +37,9 @@ export async function runCodexExplanation(
   homeFactory: CodexInsightHomeFactory,
   input: CodexExplanationInput,
 ): Promise<ExplanationProducerOutcome> {
+  const attempt = input.run.attempt;
+  if (attempt === undefined)
+    return failed(true, "native_attempt_storage_refused");
   const diagnostics = new CodexExplanationDiagnostics(
     input.binding.kind,
     input.identity.connection,
@@ -49,6 +49,13 @@ export async function runCodexExplanation(
     event: CodexDiagnostic,
     outcome: ExplanationProducerOutcome,
   ): ExplanationProducerOutcome => {
+    if (outcome._tag === "failed")
+      attempt.fail(
+        event[0] === "preflight_refused" ? "preflight" : "execution",
+        event[0] === "preflight_refused"
+          ? "native_preflight"
+          : "native_execution",
+      );
     diagnostics.observe(event);
     return outcome;
   };
@@ -74,6 +81,8 @@ export async function runCodexExplanation(
   let admitted = false;
   let toolEffectUnknown = false;
   let cessation = false;
+  let cleanupFailureStep: CodexCleanupFailureStep | undefined;
+  let cleanupFailureCause: CodexStopFailureCause | undefined;
   let homeCleanup: "not_attempted" | "succeeded" | "failed" = "not_attempted";
   let discoveryCleanupUnknown = false;
   let tools: CodexExplanationTools | undefined;
@@ -91,6 +100,7 @@ export async function runCodexExplanation(
   });
   const observe = async (event: NativeTurnEvent): Promise<void> => {
     if ((await input.lifecycle.observe(event))._tag === "err") {
+      attempt.fail("execution", "native_observation");
       diagnostics.observe(
         diagnostics.phase === "cleanup"
           ? ["cleanup", "observation_failed"]
@@ -114,6 +124,7 @@ export async function runCodexExplanation(
       turnId !== undefined
     ) {
       interruptSent = true;
+      attempt.record.cleanup.abort = "pending";
       // request writes synchronously and owns an ID; its acknowledgment never gates the finish reply.
       diagnostics.observe(["cleanup", "interrupt_attempted"]);
       interruptTask = child.request("turn/interrupt", { threadId, turnId });
@@ -186,13 +197,16 @@ export async function runCodexExplanation(
           failed(true, prepared.error),
         );
       home = prepared.value;
+      if (!(await attempt.bindCodexHome(home.directory))) {
+        attempt.fail("prepare", "storage");
+        return failed(true, "native_attempt_storage_refused");
+      }
       const expected = await discoverCodexInsightSession(
         () => createConnection().connection,
         executable,
         input.run.worktreePath,
         home,
         input.signal,
-        CODEX_EXPLANATION_SUPPORTED_VERSIONS,
       );
       if (expected._tag === "err")
         return recorded(
@@ -202,6 +216,7 @@ export async function runCodexExplanation(
       const created = createConnection();
       child = created.connection;
       tools = created.connectionTools;
+      attempt.record.cleanup.process = "pending";
       const opened = await child.start(
         executable,
         input.run.worktreePath,
@@ -214,68 +229,23 @@ export async function runCodexExplanation(
           ["preflight_refused", "connection_start"],
           failed(true, opened.error.phase),
         );
-      const nativeVersion = child.nativeVersion;
-      if (
-        nativeVersion === undefined ||
-        !CODEX_EXPLANATION_SUPPORTED_VERSIONS.some(
-          (version) => version === nativeVersion,
-        )
-      )
-        return recorded(
-          ["preflight_refused", "version"],
-          failed(true, "unsupported_codex_version"),
-        );
-      const valid = await validateCodexInsightSession(
+      const preparedThread = await prepareCodexExplanationThread(
         child,
-        input.run.worktreePath,
         home,
         expected.value,
-        input.signal,
+        input,
+        tools,
+        declarations,
+        attempt,
       );
-      if (valid._tag === "err")
+      if (preparedThread._tag === "err")
         return recorded(
-          ["preflight_refused", "policy"],
-          failed(true, valid.error.phase),
+          ["preflight_refused", preparedThread.error.code],
+          failed(true, preparedThread.error.detail),
         );
-      const models = await paginateModelList(child, input.signal);
-      if (
-        models._tag === "err" ||
-        !models.value.some(
-          (model) =>
-            model.id === input.run.model &&
-            model.reasoning.includes(input.run.reasoning),
-        )
-      )
-        return recorded(
-          ["preflight_refused", "models"],
-          failed(true, "model_list"),
-        );
-      const thread = await child.request(
-        "thread/start",
-        {
-          model: input.run.model,
-          cwd: input.run.worktreePath,
-          sandbox: "workspace-write",
-          approvalPolicy: "on-request",
-          approvalsReviewer: "auto_review",
-          config: { model_reasoning_effort: input.run.reasoning },
-          developerInstructions: "",
-          ephemeral: true,
-          dynamicTools: declarations,
-        },
-        input.signal,
-      );
-      if (thread._tag === "err")
-        return recorded(
-          ["preflight_refused", "thread_start"],
-          failed(true, "thread_start"),
-        );
-      threadId = parseCodexInsightThread(thread.value, input.run);
-      if (threadId === undefined || !tools.bindThread(threadId))
-        return recorded(
-          ["preflight_refused", "thread_binding"],
-          failed(true, "native_policy_unsupported"),
-        );
+      const { nativeVersion, threadId: preparedThreadId } =
+        preparedThread.value;
+      threadId = preparedThreadId;
       if (!(await home.unchanged(remaining())))
         return recorded(
           ["preflight_refused", "home_changed"],
@@ -314,6 +284,8 @@ export async function runCodexExplanation(
           failed(start.error === "refused", "native_start_" + start.error),
         );
       admitted = true;
+      attempt.record.nativeStart = start.value;
+      await attempt.save();
       diagnostics.phase = "running";
       await observe({ kind: "accepted_start" });
       const activity = createCodexActivityEmitter(
@@ -406,6 +378,7 @@ export async function runCodexExplanation(
             turnId: parsed.turnId,
           });
           if (input.signal.aborted) onAbort();
+          else if (input.lifecycle.finishSignal.aborted) onFinish();
           else if (early.some((candidate) => candidate.ended)) {
             resolveEnd(failed(true, "native_turn_ended", "execution_failed"));
           } else tools.bindTurn(turnId);
@@ -415,6 +388,10 @@ export async function runCodexExplanation(
       return result;
     })();
   } catch (cause) {
+    attempt.fail(
+      admitted ? "execution" : "preflight",
+      admitted ? "native_execution" : "native_preflight",
+    );
     diagnostics.observe(["execution_unknown", "execution_threw"]);
     discoveryCleanupUnknown = cause instanceof InsightProcessCleanupError;
     result = failed(
@@ -422,6 +399,8 @@ export async function runCodexExplanation(
       "native_execution_unknown",
     );
   } finally {
+    if (result._tag === "failed") attempt.fail("execution", "native_execution");
+    if (!admitted) attempt.record.cleanup.hostWork = "not_applicable";
     diagnostics.phase = "cleanup";
     if (timer !== undefined) clearTimeout(timer);
     input.signal.removeEventListener("abort", onAbort);
@@ -433,6 +412,9 @@ export async function runCodexExplanation(
         await interrupt();
         if (!input.lifecycle.finishSignal.aborted) await child?.stop();
         await tools?.join();
+        attempt.record.cleanup.hostWork = toolEffectUnknown
+          ? "unknown"
+          : "drained";
         if (toolEffectUnknown) {
           diagnostics.observe(["cleanup", "tool_effect_unknown"]);
           result = failed(false, "native_tool_effect_unknown");
@@ -445,13 +427,23 @@ export async function runCodexExplanation(
               : "unknown",
         });
       } catch {
+        attempt.record.cleanup.hostWork = "unknown";
+        attempt.fail("cleanup", "host_work_unknown");
         diagnostics.observe(["cleanup", "observation_failed"]);
         result = failed(false, "native_observation_unknown");
       }
     }
+    let cleanupStep: CodexCleanupFailureStep = "process_stop";
     try {
       await child?.stop();
-      await interruptTask;
+      attempt.record.cleanup.process =
+        child === undefined ? "not_started" : "succeeded";
+      cleanupStep = "interrupt_settlement";
+      const interrupted = await interruptTask;
+      if (interruptTask !== undefined)
+        attempt.record.cleanup.abort =
+          interrupted?._tag === "ok" ? "acknowledged" : "unknown";
+      cleanupStep = "cessation_observation";
       cessation = !discoveryCleanupUnknown;
       if (admitted && cessation)
         await observe({
@@ -462,23 +454,47 @@ export async function runCodexExplanation(
               : "unknown",
         });
     } catch {
+      attempt.fail("cleanup", "native_stop");
+      if (cleanupStep === "process_stop")
+        attempt.record.cleanup.process = "unknown";
+      cleanupFailureStep = cleanupStep;
+      if (cleanupStep === "process_stop")
+        cleanupFailureCause = child?.stopFailureCause ?? "unknown";
       diagnostics.observe(["cleanup", "process_stop_failed"]);
       cessation = false;
       result = failed(false, "native_cleanup_unknown");
       if (admitted)
-        await input.lifecycle.observe({ kind: "cessation_unknown" });
+        await input.lifecycle
+          .observe({ kind: "cessation_unknown" })
+          .catch(() => undefined);
     }
     if (cessation && home !== undefined) {
+      await attempt.archiveCodexHistory();
       try {
         await home.cleanup();
         homeCleanup = "succeeded";
+        attempt.record.cleanup.credentialHome = "succeeded";
       } catch {
+        attempt.record.cleanup.credentialHome = "failed";
+        attempt.fail("cleanup", "credential_cleanup");
         homeCleanup = "failed";
         diagnostics.observe(["cleanup", "home_cleanup_failed"]);
         result = failed(false, "native_home_cleanup_failed");
       }
-    }
+    } else
+      attempt.record.cleanup.credentialHome =
+        home === undefined ? "not_applicable" : "protected";
+    await attempt.save();
   }
-  diagnostics.finish(result, cessation, homeCleanup);
+  diagnostics.finish(
+    result,
+    cessation,
+    homeCleanup,
+    cleanupFailureStep,
+    cleanupFailureCause,
+    cleanupFailureStep === "process_stop"
+      ? child?.stopFailureErrorCode
+      : undefined,
+  );
   return result;
 }

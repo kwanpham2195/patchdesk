@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isAccountInsightProvider } from "#src/domain/insight-provider";
 import * as v from "valibot";
 
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
@@ -101,6 +102,11 @@ export class InsightSlotAdmission {
   async admit<E = never>(
     input: InsightAdmissionInput<E>,
   ): Promise<Result<InsightAdmittedRun, InsightSlotFailure | E>> {
+    if (
+      input.selection?.provider === undefined ||
+      !isAccountInsightProvider(input.selection.provider)
+    )
+      return err("not_active");
     const seen = await this.slots.readCurrent(
       input.profileId,
       input.reviewId,

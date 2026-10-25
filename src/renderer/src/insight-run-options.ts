@@ -53,11 +53,7 @@ export function seedInsightRunOptions(
   preference: InsightRunPreference | undefined,
   catalog: InsightProviderCatalog | undefined,
 ): InsightRunOptions {
-  const saved =
-    preference !== undefined &&
-    supportsInsightProvider(type, preference.provider)
-      ? preference
-      : undefined;
+  const saved = preference;
   const provider =
     saved?.provider ??
     catalog?.providers.find(
@@ -89,18 +85,21 @@ export function insightRunOptionsForProvider(
   catalog: InsightProviderCatalog | undefined,
 ): Pick<InsightRunOptions, "provider" | "models" | "model" | "reasoning"> {
   const models = providerModels(type, catalog, provider);
+  const model =
+    preference?.provider === provider &&
+    models.some((candidate) => candidate.id === preference.model)
+      ? preference.model
+      : (models[0]?.id ?? null);
   return {
     provider,
     models,
-    model:
-      preference?.provider === provider &&
-      models.some((candidate) => candidate.id === preference.model)
-        ? preference.model
-        : (models[0]?.id ?? null),
-    reasoning:
+    ...insightRunOptionsForModel(
+      models,
+      model,
       preference?.provider === provider
         ? preference.reasoning
         : firstModelReasoning(models),
+    ),
   };
 }
 

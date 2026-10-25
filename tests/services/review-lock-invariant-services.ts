@@ -391,7 +391,6 @@ export function insightRunCoordinator(
     } as never,
     // Paths are read only by the cross-profile `recoverAll` sweep, which no row calls.
     {} as never,
-    { get: track.stub("catalog.get", err({ reason: "unavailable" })) } as never,
     // No row reaches a provider invocation.
     {} as never,
     coordinator,

@@ -4,40 +4,6 @@ import * as v from "valibot";
 
 import { INSIGHT_PROVIDERS } from "#src/domain/insight-provider";
 
-const modelCatalogEntrySchema = v.strictObject({
-  id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  label: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-});
-
-const providerStatusSchema = v.strictObject({
-  id: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
-  label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
-  configured: v.boolean(),
-  source: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(64))),
-  guidance: v.pipe(v.string(), v.minLength(1), v.maxLength(240)),
-});
-
-const modelCatalogSchema = v.strictObject({
-  // The backend advertises the complete universal non-OAuth catalog. It may be
-  // empty when no eligible provider is configured and can exceed any small
-  // arbitrary count; each entry remains individually bounded above.
-  models: v.array(modelCatalogEntrySchema),
-  providers: v.optional(v.pipe(v.array(providerStatusSchema), v.maxLength(64))),
-  defaultModel: v.optional(
-    v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
-  ),
-  defaultReasoning: v.optional(v.picklist(["low", "medium", "high"])),
-  reasoning: v.optional(v.array(v.picklist(["low", "medium", "high"]))),
-});
-
-export type ModelCatalog = v.InferOutput<typeof modelCatalogSchema>;
-
-/** Reject malformed Pi model catalog responses; renderer keeps the strict shape only. */
-export function parseModelCatalog(input: unknown): ModelCatalog | undefined {
-  const parsed = v.safeParse(modelCatalogSchema, input);
-  return parsed.success ? parsed.output : undefined;
-}
-
 export const insightProviderModelSchema = v.strictObject({
   provider: v.picklist(INSIGHT_PROVIDERS),
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),

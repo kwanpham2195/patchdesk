@@ -1,15 +1,18 @@
 import type { InsightType } from "./insight-record";
-import { INSIGHT_PROVIDERS, type InsightProvider } from "./insight-provider";
+import {
+  ACCOUNT_INSIGHT_PROVIDERS,
+  type InsightProvider,
+} from "./insight-provider";
 
 /** Implementation support only; executable discovery and model readiness are separate checks. */
 const INSIGHT_PROVIDER_SUPPORT = {
-  brief: { pi: true, "codex-cli-account": true, "pi-cli-account": true },
-  analysis: { pi: true, "codex-cli-account": true, "pi-cli-account": true },
-  guide: { pi: true, "codex-cli-account": false, "pi-cli-account": false },
+  brief: { pi: false, "codex-cli-account": true, "pi-cli-account": true },
+  analysis: { pi: false, "codex-cli-account": true, "pi-cli-account": true },
+  guide: { pi: false, "codex-cli-account": true, "pi-cli-account": true },
   walkthrough: {
-    pi: true,
-    "codex-cli-account": false,
-    "pi-cli-account": false,
+    pi: false,
+    "codex-cli-account": true,
+    "pi-cli-account": true,
   },
 } as const satisfies Record<InsightType, Record<InsightProvider, boolean>>;
 
@@ -25,7 +28,7 @@ export function supportsInsightProvider(
 export function supportedInsightProviders(
   type: InsightType,
 ): ReadonlyArray<InsightProvider> {
-  return INSIGHT_PROVIDERS.filter((provider) =>
+  return ACCOUNT_INSIGHT_PROVIDERS.filter((provider) =>
     supportsInsightProvider(type, provider),
   );
 }

@@ -1,4 +1,6 @@
 import { readdir } from "node:fs/promises";
+import { readNativeSessionAttempts } from "#src/adapters/storage/native-session-attempt-store";
+import { parseInsightRunId } from "#src/domain/ids";
 import type * as v from "valibot";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
@@ -102,12 +104,14 @@ export class WalkthroughResultReader {
   async summarySource(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    nativeAttemptCursor?: string,
   ): Promise<
     Result<
       {
         readonly view: WalkthroughResultView | undefined;
         readonly run: GuideRunStatus;
         readonly failure: WalkthroughSummary["failure"];
+        readonly nativeAttempts: WalkthroughSummary["nativeAttempts"];
       },
       WalkthroughReadFailure
     >
@@ -125,7 +129,24 @@ export class WalkthroughResultReader {
     if (failure._tag === "err") return failure;
     if (failure.value !== null && failure.value.runId === view.value?.runId)
       return err("invalid_result");
-    return ok({ view: view.value, run: run.value, failure: failure.value });
+    const selected =
+      run.value?.runId ?? failure.value?.runId ?? view.value?.runId;
+    const parsed =
+      selected === undefined ? undefined : parseInsightRunId(selected);
+    const nativeAttempts =
+      parsed?._tag === "ok"
+        ? await readNativeSessionAttempts(
+            this.paths,
+            { profileId, reviewId, type: "walkthrough", runId: parsed.value },
+            nativeAttemptCursor,
+          )
+        : undefined;
+    return ok({
+      view: view.value,
+      run: run.value,
+      failure: failure.value,
+      nativeAttempts,
+    });
   }
 
   private async published(

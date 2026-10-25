@@ -32,7 +32,6 @@ flowchart TB
     end
     subgraph External["External"]
         GitHub["GitHub<br/>REST and GraphQL over HTTPS"]
-        Insight["Pi agent one-shot child<br/>one per Insight run"]
         Codex["Local Codex CLI account<br/>app server"]
         PiCli["Local pi CLI account<br/>RPC mode"]
         Files["Local files<br/>JSON stores, worktree, logs"]
@@ -45,7 +44,6 @@ flowchart TB
     Services -- "artifact and checkout I/O" --> Files
     Adapters -- "read and write" --> GitHub
     Adapters --> Files
-    Services -- "bounded stdin, strict result" --> Insight
     Services --> Codex
     Services --> PiCli
 ```
@@ -113,7 +111,7 @@ It is the only place that knows about Electron.
 - `desktop-review-window.ts` is the window port of MCP `show_review`: it sends a Review down the notification-click channel without raising the window, and answers `held` while the renderer reports a leave guard.
 - `external-navigation.ts` opens external links only over HTTPS, with no credentials and no custom port. A link the user clicked in a rendered body may go to any host (`isUserActivatedExternalUrl`), because comment bodies link off GitHub constantly; a navigation the page starts on its own is still confined to the allowlisted hosts (`isAllowedExternalUrl`).
 - `desktop-notifier.ts` posts the macOS notifications of ADR 0044. `decideDesktopNotification` is the pure silence rule, and `createDesktopNotifier` owns the settings read, Electron's `Notification`, and the click hand-off.
-- `insight-runtime.ts`, `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, `window-appearance.ts`, and `desktop-menu.ts` hold small desktop concerns. The five `desktop-*-channel.ts` modules each keep both halves of one main-to-renderer channel — menu action, full screen, appearance, notification click, watched pull request change — in one module, so the channel name is written once.
+- `electron-paths.ts`, `window-state.ts`, `window-chrome.ts`, `window-appearance.ts`, and `desktop-menu.ts` hold small desktop concerns. The five `desktop-*-channel.ts` modules each keep both halves of one main-to-renderer channel — menu action, full screen, appearance, notification click, watched pull request change — in one module, so the channel name is written once.
 
 - `mcp/` is the app side of the coding-agent MCP server (ADR 0052). `mcp-socket-listener.ts` listens on a Unix socket (`PatchdeskPaths.mcpSocketFile()`, or `PATCHDESK_MCP_SOCKET`) in a `0700` directory, removes a stale socket file at start, answers one JSON line per connection, bounds requests (256 KiB), replies (4 MiB), and time (30 s), and logs each call under topic `mcp`. `mcp-tool-dispatcher.ts` is the table from tool name to a thin adapter, keyed by the names in `src/mcp/tool-manifest.ts`, and re-validates each call with the manifest's schema; it also records refused calls in the Review diagnostics. `mcp-review-tools.ts` holds the adapters for the Review tools: each resolves the active profile at call time (`no_profile`, `profile_changed`), calls the service the matching route calls, and maps the service's reasons to tool errors. No MCP SDK runs in the app.
 
@@ -166,7 +164,7 @@ They implement the flows: open, refresh, analyze, walk through, comment, publish
 - `review-write-gate.ts` holds the write preconditions: `requireFresh` for review-content writes — comment, publish, merge — and `requireCurrentSession` for pull-request metadata writes. Label, assignee, reviewer, base-branch, and draft-state writes need only a current, non-stale, non-terminal session (ADR 0025). `requireFreshLocal` is the local branch of freshness (ADR 0050): it recomputes the source from the checkout immediately before the write and records `RevisionChanged` when the head/base pair moved.
 - `insight-run-coordinator.ts` is the sole durable owner of Insight runs: lifecycle, recovery, revision checks, validation, supersession, and retained results. It delegates the parts it owns: `insight-run-executor.ts` runs one invocation to its terminal state under the Review lock, `insight-recovery.ts` fails the runs a crash left marked active, `insight-result-validation.ts` validates the result a child submitted, and `insight-provider-catalog.ts` owns provider status, explicit Codex and pi CLI model discovery, and the provider, model, and effort revalidation immediately before a run.
 - `insight-activity-buffer.ts` keeps one running Insight's bounded activity trace in memory — the phase, the last reasoning line, at most 200 command rows, and the approval counts — which the run poll answers from and nothing ever persists (ADR 0043).
-- `pi-insight-child-invoker.ts` and `account-insight-invoker.ts` start model children; the account invoker serves both the Codex and pi CLI account providers.
+- `account-insight-invoker.ts` serves Brief and Analysis through Codex and pi CLI accounts. `account-explanation-producer.ts` and `pi-cli-explanation-producer.ts` connect Guide and Walkthrough to those same native integrations, with host validation of submitted operations and publication.
 - `brief-reach-service.ts` counts the Brief's Reach block in the main process. The child proposes symbol names only; the main process verifies each name against the patch and counts it with one `git grep` per symbol name — over the proposed names and over the removed symbols it derives from the patch — in a represented-review worktree it first confirms with `git rev-parse HEAD`, so the model never supplies the counts (ADR 0036).
 - `merge-write-controller.ts`, `pending-review-service.ts`, `direct-summary-review-service.ts`, `published-feedback-service.ts`, and `inline-conversation-service.ts` implement the GitHub write flows. `merge-service.ts` performs the merge itself behind the merge controller, and `review-write-recovery-service.ts` reconciles a write whose outcome Patchdesk could not confirm, through complete GitHub reads only.
 - `label-service.ts`, `assignee-service.ts`, `reviewer-service.ts`, `base-branch-service.ts`, and `draft-state-service.ts` implement the conversation rail's pull-request metadata writes (ADR 0029). The shared plumbing is `pull-request-metadata-write.ts`: `resolvePullRequestWritePermission` reads the account's repository permission, and `runGuardedMetadataWrite` runs all five through the same admission, durable intent, mutation, and confirmation sequence.
@@ -196,7 +194,7 @@ Services use these adapters and also perform filesystem operations for artifacts
 - `github/github-adapter.ts` is the GitHub boundary. It issues bounded REST and GraphQL queries and maps every outcome to a typed result. `FakeGitHubAdapter` provides the same surface for tests.
 - `github/github-http-client.ts` is the transport every one of those requests goes over: HTTPS from the main process, with the profile account's token as a bearer header (ADR 0046, issue #276). There is no second transport and no fallback; a failure is classified from the response status. `gh` keeps only `auth token`, `auth status`, `--version`, and the git credential helper.
 - `github/gh-request-runner.ts` is the layer every GitHub module sits on. `GhRequestRunner` sends each REST or GraphQL request over a `GitHubServedTransport` as the profile's own account and classifies what comes back into a typed `GitHubReadFailure` per named read operation. It holds the one piece of state that outlives a call: the last rate limit observed per host, so a later refusal on that host can name its resume time.
-- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its remaining callers are `git`, `gh auth`, the `gh --version` probe in `github-environment-probe.ts`, and the Insight runtime child, which `pi-insight-child-invoker.ts` spawns as this process's own executable running the staged runner.
+- `github/command-runner.ts` executes explicitly formed `argv` commands with timeouts. Nothing goes through a shell. Its callers include `git`, `gh auth`, and the `gh --version` probe in `github-environment-probe.ts`. Native Insight clients own their process transports separately.
 - `github/github-credentials.ts` resolves the credential of the GitHub account a workspace profile is configured with, so every request runs as that account instead of the machine-wide active one (ADR "Authenticate GitHub as the profile account"). Tokens stay in memory and are never logged or persisted.
 - `storage/json-file.ts` reads and writes one JSON value per file with atomic replacement and a sensitive-value guard.
 - `storage/` contains one store per aggregate: `review-store.ts`, `review-session-store.ts`, `insight-store.ts`, `review-remote-store.ts`, `review-observation-journal-store.ts`, `merge-operation-store.ts`, `local-apply-operation-store.ts` (the one Apply operation of a local Review), `viewed-files-store.ts` (per-session Diff viewed marks), and others.
@@ -206,9 +204,8 @@ Services use these adapters and also perform filesystem operations for artifacts
 - `process/app-update-helper.ts` decides from fixed paths who manages `/Applications/Patchdesk.app` and starts the in-app update helper (#800): a detached `/bin/sh` running a fixed script whose only inputs are positional arguments (the app's PID, the log path, and fixed executable paths). It waits for the app to exit, then updates and reopens `/Applications/Patchdesk.app`. A Homebrew cask install runs `brew update` and `brew upgrade --cask patchdesk` and clears quarantine. Any other install runs a temporary copy of the release installer bundled in the app with `--update`, and only when the user can write the app and `/Applications`, because the helper cannot answer a `sudo` prompt. The helper runs with only HOME, USER, LANG, and a system PATH, so no provider key reaches it. No release data chooses an executable or enters the script text; the installer validates the release tag and SHA-256 digest itself. Update now is offered only to the copy running from `/Applications`.
 - `github/github-latest-release.ts` reads the latest Patchdesk release without a token over the same `GitHubFetch` transport as every other GitHub call.
 - `process/executable-discovery.ts` finds executable files on PATH and macOS desktop paths as process I/O.
-- `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports two things from it: PATH, and the Pi provider credential names (ADR "Import provider credentials and PATH from the login shell"). It never overwrites a variable this process already has, and a failure or timeout imports nothing. This is the only place the main process's own environment is written.
-- `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what every reader — a child spawn, the Pi child invoker, the provider catalog, Codex and pi discovery — waits on instead of starting a second import.
-- `pi/` holds the model catalogs — the generated catalog and the runtime catalog the main process consults — and `pi-provider-catalog.ts`, which reports each built-in provider's credential name and whether this launch has it. The catalog waits on the login-shell import above before it answers, because that import is where the credential names come from.
+- `process/login-shell-environment.ts` runs the maintainer's login shell once at startup and imports PATH and allowlisted provider environment names from `provider-credential-environment.ts`. Existing credential values are not overwritten; PATH is adopted only when the login-shell list adds directories without losing any current entry. A failure or timeout imports nothing. This is the only place the main process's own environment is written. The allowlist does not restore the retired API executor or catalog.
+- `process/login-shell-import.ts` holds that import as the launch's single awaited barrier. `startLoginShellEnvironmentImport` runs it exactly once, and `whenLoginShellEnvironmentImported` is what native executable discovery and child spawns wait on instead of starting a second import.
 - `codex/` talks to the maintainer's local Codex CLI account through a verified private home ([ADR 0055](adr/0055-read-captured-insight-evidence-on-demand.md)). `codex-app-server-client.ts` owns the app-server connection and validates native automatic approval review and isolation before generation. `codex-insight-home.ts` handles the supported file-backed account material, source fingerprints, and guarded cleanup. `codex-brief-prompt.ts` composes the Brief turn, and `codex-activity.ts` maps notifications to bounded activity events (ADR 0043).
 - `pi-cli/` drives the maintainer's local `pi` coding agent in RPC mode (ADRs 0054 and 0055) without reading its login. `pi-rpc-channel.ts` owns JSONL framing and cancels extension dialogs; `pi-rpc-client.ts` checks the installed version, lists models, and runs one prompt with native inspection tools including Bash, with inherited resources disabled. Bash is not an enforced read-only shell.
 
@@ -234,24 +231,17 @@ The React view layer.
 It requests actions and renders confirmed results; it never decides writes.
 It re-validates every projection: a 200 response from the API does not mean the workbench will open.
 
-### `runtime/insight/`
+### Native Insight execution
 
-The isolated model runtime (ADR 0041, superseding the runtime choice in ADR 0018).
-Each Analysis, Walkthrough, Brief, or Guide runs in one dedicated one-shot child that builds a single `@earendil-works/pi-agent-core` agent and drives its loop once.
-All four Insight types start with captured revision identity and an evidence entry.
-The parent captures and publishes the evidence under the Review lock through `InsightEvidenceService`.
-The child receives the complete parent index and digests without source or page text, then validates and reads the captured bundle.
-Its `read_evidence_page` and `search_evidence` tools return bounded encoded responses.
-Analysis also has its supplementary inspectors and an explicit incomplete-outcome tool.
+Brief, Analysis, Guide, and Walkthrough run through the installed Codex or Pi CLI account. [ADR 0056](adr/0056-run-insights-through-native-cli-accounts.md) supersedes the bundled API runtime. Historical `pi` provenance retains its API-key identity; it cannot start or resume execution. A saved retired selection requires an explicit native provider and model, and only an accepted start saves that choice.
 
-The parent sends one bounded, strictly parsed invocation through stdin.
-The child inspects without an application call-count or turn ceiling, then submits one strict result or an incomplete Analysis outcome and exits. Existing timeouts, cancellation, and retry bounds still apply.
-The parent validates the result again before it can affect retained content or GitHub state.
-Moving the exact `@earendil-works` version this runtime pins is its own procedure: see [Upgrading Pi](upgrading-pi.md).
+`InsightEvidenceService` captures revision-bound evidence under the Review lock. Native inspection reads that captured bundle rather than a newer checkout. Guide and Walkthrough submit operations to the host, which validates their ordering, evidence bindings, and complete result before publication. Reading a retained result invokes no provider.
 
-**Architecture Invariant:** the child mounts no sandbox, no MCP connection, no declared subagent, no generic filesystem or shell capability, and no GitHub writer.
-The agent loop mounts no tool of its own and the runtime installs no MCP client, so no code path here can create one.
-The shipped child is an exact locked package, staged at package time and validated by package smoke.
+`native-session-attempt-store.ts` retains private metadata and native history per Review, Insight, run, and unique attempt. Metadata records requested and observed settings, the first host failure, capture availability, and independent cleanup outcomes. The renderer receives a bounded safe projection, not private filenames or conversation bodies. The in-memory activity trace is supplementary and starts collapsed in the UI.
+
+Generation starts fresh native sessions; model discovery remains nonpersistent. Codex archives only allowlisted history from its temporary credential home after confirmed cessation, then attempts credential cleanup independently of archive success. Uncertain cessation protects the home. Pi retains history in its attempt directory; its abort, drained host work, and owned-process observations do not prove detached Bash descendants stopped.
+
+Readable history has unknown completeness and does not prove publication, cleanup, spend, or replay authority. Review retention can protect it indefinitely through retained Insights, slots, or journals. No transcript database or history viewer is added. The Analysis failed-read parser remains until a separate equivalence investigation establishes sufficient replacement evidence.
 
 ### `src/mcp/`
 
@@ -268,16 +258,11 @@ The dev app listens on `patchdesk-dev/mcp/patchdesk.sock` under its own data roo
 
 **Architecture Invariant:** the shim holds no state and no authority. Every call connects afresh to the running app, which validates it again; an unreachable app is the tool error `app_not_running`, and the shim never starts the app.
 
-### `src/skills/`
-
-`patchdesk-code-review` is the only skill a model sees: its instructions are concatenated into the Analysis system prompt, and no agent can activate any other.
-It is analysis guidance, never permission: no shell commands, no GitHub writes, no credential exposure, and only evidence-backed findings.
-
 ### `docs/adr/`
 
 The architecture decision records, one file per decision, numbered in the order they were made.
 They document why the system looks the way it does:
-the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, one-shot Insight children driving Pi directly, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys, `codex`, and `pi`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
+the pull-request lifecycle, GitHub pending reviews as the one authoritative draft, bounded and non-authoritative model runs, the local Codex CLI account, the local pi CLI account, fresh native Insight sessions, GitHub calls authenticated as the profile's account, the narrow login-shell import that makes a Dock launch find the maintainer's keys, `codex`, and `pi`, the visited pull requests listed from local Review records alone, the bounded activity trace a running Codex Insight projects, the desktop notifications posted outside the window, and the poll that covers only the pull requests the maintainer explicitly watches.
 
 ### `tests/`
 
@@ -301,7 +286,7 @@ The design concentrates authority in the main process and removes it from everyw
 - If Patchdesk cannot confirm a write outcome, it locks further writes for explicit GitHub reconciliation. It never retries automatically.
 - A coding agent's MCP tools write only Patchdesk's own state: the Local snapshot's git objects, a `refs/patchdesk/local/` ref, a cache worktree, and the Review record. They never Apply, edit Local drafts, or start an Insight run; a run an agent asks for starts only from the maintainer's Run.
 - The one write to the maintainer's checkout is Apply on a shared local Review: `git apply` without `--index`, gated by `requireFreshLocal`, with file pre- and post-image hashes recorded before the write.
-- The API Insight child has no generic shell or GitHub tool. Native account tool permissions follow ADR 0055; Pi Bash is not an enforced filesystem or network boundary. Neither generated content nor a model's tool use authorizes a GitHub write through Patchdesk.
+- Native account tool permissions follow ADR 0055 and ADR 0056; Pi Bash is not an enforced filesystem or network boundary. Neither generated content nor a model's tool use authorizes a GitHub write through Patchdesk.
 
 **Architecture Invariant:** the app must never start with the renderer holding authority.
 Startup fails closed when the local API cannot prove its own health.
@@ -364,8 +349,8 @@ An Insight run is cancelled when the user asks, when the represented revision ch
 Cancellation is owned at both boundaries:
 
 - The coordinator holds an `AbortController` per run. The renderer holds none: it POSTs the cancel route and guards the reply with a generation counter and `cancellingRef` (`use-insight-run.ts`).
-- The coordinator signals the child, and the child aborts its running Pi agent before it exits.
-- The parent retains owned process-group termination as the hard backstop.
+- The coordinator signals the native client and waits for its abort and host work to settle.
+- Native cleanup records owned process-group cessation separately from abort, archive, and credential cleanup outcomes. Pi detached Bash descendants remain unproven.
 
 `InsightRunCoordinator` remains the sole durable owner of lifecycle, recovery, and retained results.
 Cancelling only a local wait is never sufficient.
@@ -402,7 +387,7 @@ Patchdesk is a desktop process; understanding what happens inside it matters for
 
 ### Testing
 
-Two Vitest projects and one Playwright project run everything.
+The root Vitest suite and Playwright browser suites cover the application.
 
 `vitest.config.ts` includes every `tests/**/*.test.ts` and `.test.tsx` file, so the boundaries are directories inside one project rather than separately configured suites.
 `tests/domain/` exercises pure parsers and state transitions; it is fast and fully deterministic.
@@ -412,15 +397,13 @@ Two Vitest projects and one Playwright project run everything.
 `tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 `tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
 
-`runtime/insight` is the second project, configured inside its own package because it has its own dependencies and lockfile.
-`pnpm test:root` runs the root project, `pnpm test:insight` runs the runtime's, and `pnpm test:all` runs both, which is what `pnpm check` calls.
-Running only `pnpm test` proves nothing about the runtime.
+`pnpm test:root` and `pnpm test:all` run the root suite. `pnpm check:package root` selects the only application package for final verification; `pnpm check` runs the full repository gate once through pre-commit. The retired API runtime has no separate suite.
 
 The outermost boundary is the built app.
 Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.
 `local-api-workbench.spec.ts` and `protected-loopback-workflow.spec.ts` point that bridge at a real main-process local API started over `FakeGitHubAdapter`.
 There is no accessibility suite; ADR 0034 rules out assistive-technology tests.
-Package smoke runs the packaged app with a fixed faux provider before UI checks.
+Package smoke checks packaged startup and launchers without invoking a paid native provider. Live generation requires separate runtime evidence.
 
 **Architecture Invariant:** tests are reproducible and local-only.
 They do not depend on external resources, GitHub accounts, or network access.
@@ -429,9 +412,7 @@ They do not depend on external resources, GitHub accounts, or network access.
 
 Some files are generated and committed:
 
-- The Pi AI model catalog (`src/adapters/pi/pi-ai-catalog.generated.ts`) and the insight runtime manifest (`runtime/insight/runtime-manifest.json`), both written by `runtime/insight`'s own build.
 - The Pierre theme catalog (`src/renderer/src/pierre-theme-catalog.generated.ts`), checked by `pnpm test:bundle`.
 
 **Architecture Invariant:** generated code is committed.
-The root `prepare` script runs that build on every `pnpm install`, so the catalog and the manifest are rewritten from the installed Pi packages each time.
-`pnpm stage:insight-runtime` runs it once more at packaging time and refuses to stage when the manifest's `catalogDigest` does not match the digest in the committed catalog.
+Native account model lists come from explicit discovery against the installed CLI; no generated API-key model catalog is bundled.

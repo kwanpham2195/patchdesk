@@ -70,6 +70,7 @@ async function localRunFixture(invoker: InsightInvoker) {
     notifier: { notify: (event) => events.push(event) },
   });
   const runInput = {
+    provider: "codex-cli-account" as const,
     profileId,
     reviewId: value.review.id,
     type: "analysis" as const,

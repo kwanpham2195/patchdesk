@@ -1,4 +1,5 @@
 import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
+import { nativeSessionAttemptPageSchema } from "#src/domain/native-session-attempt";
 import { walkthroughSummarySchema } from "#src/domain/walkthrough-progress";
 import { guideInsightSchema } from "./guide-contracts";
 import * as v from "valibot";
@@ -912,6 +913,7 @@ const insightRunResponseSchema = v.strictObject({
   ),
   failureCategory: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
   activity: v.optional(insightRunActivitySchema),
+  nativeAttempts: v.exactOptional(nativeSessionAttemptPageSchema),
 });
 export type InsightRunResponse = v.InferOutput<typeof insightRunResponseSchema>;
 export function parseInsightRunResponse(

@@ -32,6 +32,7 @@ import {
   type CodexInsightHomeFactory,
 } from "./codex-insight-home";
 import type { JsonSchema } from "@valibot/to-json-schema";
+import type { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
 
 import { err, ok, type Result } from "#src/domain/result";
 import type { InsightReasoning } from "#src/domain/insight-provider";
@@ -40,11 +41,16 @@ import type { InsightFailureCategory } from "#src/domain/insight-record";
 
 import { createCodexActivityEmitter } from "./codex-activity";
 import type { InsightActivitySink } from "./codex-activity";
+import {
+  createCodexAnalysisCommandDiagnostic,
+  type CodexAnalysisCommandDiagnostic,
+} from "./codex-analysis-command-diagnostic";
 
 import {
   NATIVE_INSIGHT_PROMPT_BYTES,
   codexInsightIsolationArgs,
   parseCodexInsightThread,
+  parseCodexInsightSelection,
 } from "./codex-insight-policy";
 
 const MAX_STREAM_BYTES = 8 * 1024 * 1024;
@@ -81,6 +87,7 @@ export type CodexAppServerFailure = InsightFailureDiagnostic & {
 
 /** An app-owned immutable worktree and sanitized prompt bound to one run. */
 export type CodexRunInput = {
+  readonly attempt?: NativeSessionAttemptStore;
   readonly worktreePath: RepresentedReviewWorktree;
   readonly expectedHeadSha: string;
   readonly model: string;
@@ -89,6 +96,10 @@ export type CodexRunInput = {
   readonly outputSchema?: JsonSchema;
   readonly maxPromptBytes?: number;
   readonly runTimeoutMs?: number;
+  /** Opt-in observer for strict Analysis only; never projected into renderer activity. */
+  readonly analysisCommandDiagnostic?:
+    | CodexAnalysisCommandDiagnostic
+    | undefined;
 };
 
 const turnStartResultSchema = v.looseObject({
@@ -164,6 +175,31 @@ export class CodexAppServerClient {
     );
   }
 
+  private retainedHomeFactory(
+    attempt: NativeSessionAttemptStore,
+  ): CodexInsightHomeFactory {
+    return async (requiredMs) => {
+      const prepared = await this.homeFactory(requiredMs);
+      if (prepared._tag === "err") return prepared;
+      const home = prepared.value;
+      return ok({
+        ...home,
+        cleanup: async () => {
+          try {
+            await home.cleanup();
+            attempt.record.cleanup.credentialHome = "succeeded";
+          } catch (cause) {
+            attempt.record.cleanup.credentialHome = "failed";
+            attempt.fail("cleanup", "credential_cleanup");
+            throw cause;
+          } finally {
+            await attempt.save();
+          }
+        },
+      });
+    };
+  }
+
   /** Lists the complete bounded live Codex model catalog using a throwaway child. */
   async listModels(
     options: { readonly signal?: AbortSignal } = {},
@@ -190,6 +226,9 @@ export class CodexAppServerClient {
       readonly onActivity?: InsightActivitySink | undefined;
     } = {},
   ): Promise<Result<unknown, CodexAppServerFailure>> {
+    const attempt = input.attempt;
+    if (attempt === undefined)
+      return err({ reason: "runtime_unavailable", phase: "initialize" });
     const maxPromptBytes = Math.min(
       input.maxPromptBytes ?? MAX_PROMPT_BYTES,
       NATIVE_INSIGHT_PROMPT_BYTES,
@@ -199,11 +238,26 @@ export class CodexAppServerClient {
     if (options.signal?.aborted)
       return err({ reason: "cancelled", phase: "initialize" });
     const result = await withCodexInsightHome(
-      this.homeFactory,
+      this.retainedHomeFactory(attempt),
       input.runTimeoutMs ?? this.runTimeoutMs,
-      (home) => this.runWithHome(input, options, home),
+      async (home) => {
+        if (!(await attempt.bindCodexHome(home.directory))) {
+          attempt.fail("prepare", "storage");
+          return err({ reason: "runtime_unavailable", phase: "initialize" });
+        }
+        const result = await this.runWithHome(input, options, home);
+        if (result._tag === "err")
+          attempt.fail("execution", "native_execution");
+        await attempt.archiveCodexHistory();
+        return result;
+      },
       options.signal,
     );
+    if (result._tag === "err") attempt.fail("execution", "native_execution");
+    if (attempt.record.cleanup.credentialHome === "pending")
+      attempt.record.cleanup.credentialHome =
+        attempt.record.locator === undefined ? "not_applicable" : "protected";
+    await attempt.save();
     return result._tag === "err"
       ? err({
           ...result.error,
@@ -234,6 +288,8 @@ export class CodexAppServerClient {
     );
     if (isolation._tag === "err") return isolation;
     const child = new RpcChild(this.processFactory);
+    if (input.attempt !== undefined)
+      input.attempt.record.cleanup.process = "pending";
     const started = await child.start(
       this.executablePath,
       input.worktreePath,
@@ -241,7 +297,17 @@ export class CodexAppServerClient {
       [...codexInsightIsolationArgs(), ...isolation.value.args],
       home.directory,
     );
-    if (started._tag === "err") return started;
+    if (started._tag === "err") {
+      if (input.attempt !== undefined)
+        input.attempt.record.cleanup.process = "succeeded";
+      return started;
+    }
+    if (input.attempt !== undefined) {
+      input.attempt.record.cleanup.process = "pending";
+      if (child.nativeVersion !== undefined)
+        input.attempt.record.observed.version = child.nativeVersion;
+      await input.attempt.save();
+    }
     let resolveTimeout: (
       value: Result<unknown, CodexAppServerFailure>,
     ) => void = () => undefined;
@@ -255,21 +321,39 @@ export class CodexAppServerClient {
       resolveTimeout(err({ reason: "timed_out", phase: "turn" }));
     }, input.runTimeoutMs ?? this.runTimeoutMs);
     return await withCodexInsightProcessCleanup(
-      () =>
-        Promise.race([
-          timeout,
-          this.runTurn(
-            child,
-            input,
-            home,
-            isolation.value,
-            options.signal,
-            options.onActivity,
-          ),
-        ]),
-      () => {
+      async () => {
+        try {
+          const result = await Promise.race([
+            timeout,
+            this.runTurn(
+              child,
+              input,
+              home,
+              isolation.value,
+              options.signal,
+              options.onActivity,
+            ),
+          ]);
+          if (result._tag === "err")
+            input.attempt?.fail("execution", "native_execution");
+          return result;
+        } catch (cause) {
+          input.attempt?.fail("execution", "native_execution");
+          throw cause;
+        }
+      },
+      async () => {
         clearTimeout(timer);
-        return child.stop();
+        try {
+          await child.stop();
+          if (input.attempt !== undefined)
+            input.attempt.record.cleanup.process = "succeeded";
+        } catch (cause) {
+          if (input.attempt !== undefined)
+            input.attempt.record.cleanup.process = "unknown";
+          input.attempt?.fail("cleanup", "native_stop");
+          throw cause;
+        }
       },
     );
   }
@@ -309,7 +393,7 @@ export class CodexAppServerClient {
         approvalsReviewer: "auto_review",
         config: { model_reasoning_effort: input.reasoning },
         developerInstructions: "",
-        ephemeral: true,
+        ephemeral: false,
       },
       signal,
     );
@@ -318,7 +402,23 @@ export class CodexAppServerClient {
         reason: classifyRpcFailure(thread.error),
         phase: "thread_start",
       });
-    const threadId = parseCodexInsightThread(thread.value, input);
+    const observed = parseCodexInsightSelection(thread.value);
+    if (input.attempt !== undefined && observed !== undefined) {
+      input.attempt.record.observed = {
+        ...input.attempt.record.observed,
+        ...observed,
+      };
+      input.attempt.record.capture = {
+        status: "pending",
+        completeness: "unknown",
+      };
+      await input.attempt.save();
+    }
+    const threadId = parseCodexInsightThread(
+      thread.value,
+      input,
+      expected.provider,
+    );
     if (threadId === undefined)
       return err({
         reason: "runtime_unavailable",
@@ -338,6 +438,7 @@ export class CodexAppServerClient {
       input.outputSchema,
       signal,
       onActivity,
+      input.analysisCommandDiagnostic,
     );
   }
 }
@@ -368,8 +469,13 @@ async function strictCodexTurn(
   outputSchema: JsonSchema | undefined,
   signal?: AbortSignal,
   onActivity?: InsightActivitySink,
+  analysisCommandDiagnostic?: CodexAnalysisCommandDiagnostic,
 ): Promise<Result<unknown, CodexAppServerFailure>> {
   child.bindTurn(threadId);
+  const observeCommand =
+    analysisCommandDiagnostic === undefined
+      ? undefined
+      : createCodexAnalysisCommandDiagnostic(analysisCommandDiagnostic);
   const activity = createCodexActivityEmitter(onActivity, worktreePath);
   child.activity = activity;
   let text = "";
@@ -384,6 +490,7 @@ async function strictCodexTurn(
   const onMessage = (message: CodexRpcMessage): void => {
     const { method, params } = message;
     if (method === undefined || !v.is(plainObjectSchema, params)) return;
+    observeCommand?.(message);
     activity.notification(message);
     if (method === "item/agentMessage/delta") {
       const deltaParsed = v.safeParse(agentMessageDeltaParamsSchema, params);

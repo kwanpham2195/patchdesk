@@ -1,5 +1,7 @@
 # Read captured Insight evidence on demand
 
+> Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
+
 > Status: Accepted for #821. Supersedes the input, inspection-count, and native permission boundaries in ADRs [0016](0016-use-the-local-codex-cli-account.md), [0041](0041-drive-pi-directly-without-flue.md), and [0054](0054-use-the-local-pi-cli-account.md). Their lifecycle and result authority remain. Brief keeps the structure and citation rules in ADRs 0036 and 0040.
 
 A large represented patch previously entered the first model request. Brief, Walkthrough, Analysis, and Guide now start with captured revision identity and an evidence entry. The parent captures each run under the Review lock and retains the complete expected file set and digests. A writable manifest, current HEAD, or a fresh pull request lookup cannot replace that authority.

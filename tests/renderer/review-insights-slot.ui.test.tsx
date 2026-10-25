@@ -464,7 +464,7 @@ describe("InsightsSlot on a merged Review", () => {
 
     expect(
       await screen.findByText(
-        "No model available. Export a provider API key in your shell profile, or put the Codex or pi CLI on the PATH Patchdesk launches with, then relaunch Patchdesk.",
+        "No native integration available. Install Codex or Pi CLI on the app launch PATH and log in externally.",
       ),
     ).toBeTruthy();
   });
@@ -719,12 +719,10 @@ describe("InsightsSlot run requests", () => {
         )
         ?.getAttribute("data-slot"),
     ).toBe("inline-error");
-    expect(
-      screen.getByRole("button", { name: "Cancel Analysis" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeTruthy();
   });
 
-  it("uses an icon-only cancelling state and preserves the active run after failure", async () => {
+  it("shows cancelling status and preserves the active run after failure", async () => {
     const cancellation = deferred<DesktopResponse>();
     desktop = installDesktopDouble({
       "/v1/reviews/insights/guide/summary": () =>
@@ -755,26 +753,27 @@ describe("InsightsSlot run requests", () => {
     );
 
     const cancel = await screen.findByRole("button", {
-      name: "Cancel Analysis",
+      name: "Cancel run",
     });
-    expect(cancel.textContent).toBe("");
     await user.click(cancel);
-    const cancelling = screen.getByRole("button", {
-      name: "Cancelling Analysis…",
-    });
-    expect(cancelling.getAttribute("disabled")).not.toBeNull();
-    expect(cancelling.querySelector("svg")).toBeTruthy();
+    const running = screen.getByRole("region", { name: "Analysis run" });
+    expect(within(running).getByRole("status").textContent).toContain(
+      "Cancelling",
+    );
+    expect(
+      within(running).queryByRole("button", { name: "Cancel run" }),
+    ).toBeNull();
 
     cancellation.resolve(failure({ message: "cancel unavailable" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Cancel Analysis" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("button", { name: "Cancel run" })).toBeTruthy(),
     );
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Analysis cancel failed");
     expect(alert.getAttribute("data-slot")).toBe("inline-error");
-    expect(screen.getByText("Analysis is running")).toBeTruthy();
+    expect(within(running).getByRole("status").textContent).toContain(
+      "Running",
+    );
   });
 });
 
@@ -920,7 +919,7 @@ describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
       "/v1/reviews/insights/runs/run-a": () => new Promise(() => undefined),
     });
     saveInsightRunPreference("profile", "analysis", {
-      provider: "pi",
+      provider: "codex-cli-account",
       model: "fixture-model",
       reasoning: "medium",
       language: "vi",

@@ -18,8 +18,9 @@ keeps its files.
 Patchdesk never stores a GitHub token. It runs `gh auth token` each time it
 needs one.
 
-You do not need Node.js installed. The part of Patchdesk that runs Insights
-ships inside the app and runs on Electron's own Node.
+The packaged app does not need a separate Node.js installation. Optional
+Insights require an installed Codex CLI or Pi CLI and that CLI's own runtime
+and login.
 
 ## Install
 
@@ -120,98 +121,32 @@ clear those selections.
 
 ## Insights
 
-An Insight is optional. It helps you understand or evaluate a change, but it
-never replaces a Review. Patchdesk offers three: Analysis, Walkthrough, and
-Brief. A fourth, the Scope gauge, needs no model at all — it buckets changed
-files by path and is always on wherever it is shown.
+An Insight is optional. It can help you understand or evaluate a change, but
+it never replaces a Review. Patchdesk offers four: Brief, Guide, Walkthrough,
+and Analysis. The Scope gauge also groups changed files by path without a model.
 
-Each run opens a dialog where you choose the Insight provider, the model,
-and the reasoning level. Patchdesk asks every time; it does not remember a
-choice for you.
+Each run opens a dialog where you choose a native provider, model, reasoning
+level, and language. The dialog starts with that Insight's saved choices.
+Opening or cancelling it changes no saved preference. Only an accepted start
+saves the selected options.
 
-There are three Insight providers.
+Run Insights starts several selected Insights independently. Shared controls
+show mixed values when their options differ. Change a shared control to apply
+it to selected editable rows, or open a row's overrides to choose separately.
+A row that is already running cannot be edited or started again. A refused
+start does not erase successful starts in the same batch.
 
-### API keys
+### Retired API-key integration
 
-This provider talks to a model API directly, and you supply the key through
-an environment variable. There is nothing to install, and there is no key
-field in the app.
+New runs use Codex CLI account or pi CLI account. Patchdesk no longer bundles
+a separate API-key runtime or model catalog. Configure models and authentication
+through the native CLI you choose.
 
-Patchdesk supports 32 providers. Thirty of them read a key from an
-environment variable:
-
-- Ant Ling — `ANT_LING_API_KEY`
-- Anthropic — `ANTHROPIC_API_KEY`
-- Azure OpenAI — `AZURE_OPENAI_API_KEY`
-- Cerebras — `CEREBRAS_API_KEY`
-- Cloudflare AI Gateway — `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, and
-  `CLOUDFLARE_GATEWAY_ID`; all three are required
-- DeepSeek — `DEEPSEEK_API_KEY`
-- Fireworks — `FIREWORKS_API_KEY`
-- Google — `GEMINI_API_KEY`
-- Groq — `GROQ_API_KEY`
-- Hugging Face — `HF_TOKEN`
-- Kimi Coding — `KIMI_API_KEY`
-- MiniMax — `MINIMAX_API_KEY`
-- MiniMax China — `MINIMAX_CN_API_KEY`
-- Mistral — `MISTRAL_API_KEY`
-- Moonshot — `MOONSHOT_API_KEY`
-- Moonshot China — `MOONSHOT_API_KEY`
-- NVIDIA — `NVIDIA_API_KEY`
-- OpenAI — `OPENAI_API_KEY`
-- OpenCode — `OPENCODE_API_KEY`
-- OpenCode Go — `OPENCODE_API_KEY`
-- OpenRouter — `OPENROUTER_API_KEY`
-- Together — `TOGETHER_API_KEY`
-- Vercel AI Gateway — `AI_GATEWAY_API_KEY`
-- xAI — `XAI_API_KEY`
-- Xiaomi — `XIAOMI_API_KEY`
-- Xiaomi Token Plan (AMS) — `XIAOMI_TOKEN_PLAN_AMS_API_KEY`
-- Xiaomi Token Plan (China) — `XIAOMI_TOKEN_PLAN_CN_API_KEY`
-- Xiaomi Token Plan (Singapore) — `XIAOMI_TOKEN_PLAN_SGP_API_KEY`
-- ZAI — `ZAI_API_KEY`
-- ZAI Coding China — `ZAI_CODING_CN_API_KEY`
-
-Moonshot and Moonshot China read the same variable, and so do OpenCode and
-OpenCode Go.
-
-The other two providers use credentials instead of a key:
-
-- Amazon Bedrock — your normal AWS credentials
-- Google Vertex — your normal GCP credentials, or `GOOGLE_CLOUD_API_KEY`
-
-The list in `src/adapters/pi/pi-provider-catalog.ts` is the authoritative one.
-
-Providers that sign in through OAuth or a login flow, such as GitHub Copilot
-or a Codex subscription, are left out of the API key provider on purpose;
-the Codex CLI account and pi CLI account providers below cover those logins.
-
-Export the variable in your shell profile (`~/.zshrc`), then restart
-Patchdesk:
-
-```bash
-export ANTHROPIC_API_KEY="sk-..."
-```
-
-Patchdesk runs your login shell once at startup and reads back the provider
-keys and your PATH, so a Dock or Finder launch sees the same key a terminal
-does. It reads nothing else from your shell, and it never overwrites a
-variable Patchdesk already has. A key you add later needs a restart.
-
-If Patchdesk cannot read your shell's startup files, set the variable for the
-whole login session instead:
-
-```bash
-launchctl setenv ANTHROPIC_API_KEY "sk-..."
-```
-
-That lasts until you log out.
-
-Only the variables the selected provider needs reach the model process, and
-only that process sees them — keys never reach the app's UI. The model list
-you see is Patchdesk's model catalog, filtered to providers you have a key
-for. That catalog is refreshed with each Patchdesk release; there is nothing
-to update on your side.
+A saved API-key choice stays visibly retired until you explicitly choose a
+native provider and model. Patchdesk does not reuse the API model or silently
+switch to another paid account. Earlier results keep their original API key
+provenance. An interrupted API run cannot start a new generation through a
+replacement provider; a native run needs its own confirmation.
 
 ### Codex CLI account
 
@@ -227,26 +162,39 @@ and expose codex on the app launch PATH, then log in externally."
 
 ### pi CLI account
 
-This provider runs the `pi` coding agent you have installed, with any login
-you made in `pi`, for example a Claude or ChatGPT subscription. Install
-`pi` 0.80.4 or later and run `/login` in `pi` yourself; Patchdesk never
-reads or refreshes that login and never starts one for you.
+This provider runs the `pi` coding agent you have installed, using its own
+login, such as a Claude or ChatGPT subscription. Authenticate in Pi yourself;
+Patchdesk never starts or refreshes that login.
 
-Patchdesk finds `pi` on your PATH the same way it finds `codex`. Choose
-pi CLI account in the run dialog, then press **Load pi models**; the list
-shows every model with reasoning support that your `pi` login can run, named `provider/model`, such as
-`anthropic/claude-sonnet-5`. If the list cannot load, the dialog says "pi
-models unavailable. Check the pi login.", or names the `pi` version to
-install when yours is older than 0.80.4.
+Patchdesk finds `pi` on the inherited login-shell PATH. Choose pi CLI account
+in the run dialog, then Load pi models or Refresh models. The list names models
+as `provider/model` and includes reasoning support reported by the native CLI.
+The dialog explains a missing executable, unavailable login, or unsupported
+version.
 
-Each run starts a fresh `pi` with only its read-only tools (`read`,
-`grep`, `find`, and `ls`), with your `pi` extensions off, and with the
-reviewed checkout's own `pi` configuration ignored. Your skills and
-`AGENTS.md` context files still load, as they do for Codex. API keys you
-export in your shell do not reach `pi`; use the API key provider for those.
+Generating work uses a fresh session and the represented Review worktree.
+Inherited extensions, MCP, skills, templates, themes, and context files are
+disabled. Pi can use Bash for inspection and the bounded Guide or Walkthrough
+bridge. Bash is not an enforced read-only shell. Exported provider-key variables
+are excluded from the Pi process environment; use Pi's own supported login.
 
-With any provider, the model never touches GitHub, your checkout, or the
-network beyond the model API itself.
+### While an Insight runs
+
+Preparing, Running and Cancelling remain distinct. Previous results stay
+readable during a replacement, and failed or cancelled work does not replace
+them. Activity expands the available bounded trace. Failure Details show safe
+run and cleanup metadata, without native conversation bodies or private paths.
+
+A paused Guide or Walkthrough does not retry uncertain requests automatically.
+Start new generation opens a repeat-spend acknowledgment before sending
+anything. It starts fresh work and does not recover missing responses. If
+cleanup or recovery evidence is insufficient, the action stays disabled and
+explains why. Dismissing the confirmation sends nothing.
+
+Native history is retained privately for debugging. It can include prompts,
+source and tool output; completeness stays unknown. It does not establish
+publication or safe cleanup. See [local storage and privacy](product-description/cross-cutting/local-storage-and-privacy.md#while-the-action-runs)
+for permission, credential-home, retention and recovery limits.
 
 ## Use Patchdesk from a coding agent (MCP)
 

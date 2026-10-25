@@ -1,4 +1,5 @@
 import type { WorkspaceProfileId, ReviewId } from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
 import { parseWorkspaceProfileId, parseReviewId } from "#src/domain/ids";
 import type {
   WalkthroughPage,
@@ -47,11 +48,25 @@ export class WalkthroughPageService {
   async summary(
     profileId: WorkspaceProfileId,
     reviewId: ReviewId,
+    nativeAttemptCursor?: string,
   ): Promise<Result<WalkthroughSummary, WalkthroughReadFailure>> {
-    const source = await this.reader.summarySource(profileId, reviewId);
+    const source = await this.reader.summarySource(
+      profileId,
+      reviewId,
+      nativeAttemptCursor,
+    );
     if (source._tag === "err") return source;
-    const { view, run, failure } = source.value;
-    if (view === undefined) return ok({ _tag: "none", run, failure });
+    const { view, run, failure, nativeAttempts } = source.value;
+    if (view === undefined) {
+      const summary: WalkthroughSummary = {
+        _tag: "none",
+        run,
+        failure,
+        ...definedProps({ nativeAttempts }),
+      };
+      if (replyBytes(summary) > 32768) delete summary.nativeAttempts;
+      return ok(summary);
+    }
     const title = await view.store.readText(view.root.title, 800);
     if (title._tag === "err") return err(walkthroughReadFailure(title.error));
     const focus = await view.store.readText(view.root.focus, 1280);
@@ -69,6 +84,7 @@ export class WalkthroughPageService {
       return err("invalid_result");
     const summary: WalkthroughSummary = {
       _tag: "ready",
+      ...definedProps({ nativeAttempts }),
       run,
       failure,
       digest: view.digest,
@@ -86,6 +102,7 @@ export class WalkthroughPageService {
       currentSectionId: progress.value.currentSectionId,
       reviewedCount: progress.value.reviewedCount,
     };
+    if (replyBytes(summary) > 32768) delete summary.nativeAttempts;
     return replyBytes(summary) <= 32768 ? ok(summary) : err("invalid_result");
   }
 

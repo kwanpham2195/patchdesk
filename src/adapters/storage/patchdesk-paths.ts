@@ -335,6 +335,21 @@ export class PatchdeskPaths {
     return join(this.reviewDirectory(profileId, reviewId), "review.json");
   }
 
+  /** Private native history follows its owning Review's retention lifetime. */
+  nativeSessionsDirectory(
+    profileId: WorkspaceProfileId,
+    reviewId: ReviewId,
+    type: InsightType,
+    runId: InsightRunId,
+  ): string {
+    return join(
+      this.reviewDirectory(profileId, reviewId),
+      "native-sessions",
+      type,
+      runId,
+    );
+  }
+
   insightDirectory(profileId: WorkspaceProfileId, reviewId: ReviewId): string {
     return join(this.reviewDirectory(profileId, reviewId), "insights");
   }

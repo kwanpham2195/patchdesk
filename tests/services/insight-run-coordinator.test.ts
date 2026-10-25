@@ -58,6 +58,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
         },
       );
       const started = await value.coordinator.start({
+        provider: "codex-cli-account" as const,
         profileId,
         reviewId: value.review.id,
         type,
@@ -73,23 +74,10 @@ describe("InsightRunCoordinator current lifecycle", () => {
         value.insights,
         value.paths,
         {
-          async get() {
-            return ok({ models: [{ id: "model", label: "Model" }] });
-          },
-        },
-        {
           analysis: { invoke: async () => ok(analysisResult) },
-          walkthrough: {
-            async invoke() {
-              return ok(analysisResult);
-            },
-          },
+          walkthrough: { invoke: async () => ok(analysisResult) },
           guide: { invoke: async () => ok(analysisResult) },
-          brief: {
-            async invoke() {
-              return ok(analysisResult);
-            },
-          },
+          brief: { invoke: async () => ok(analysisResult) },
         },
         value.operations,
         contextPackFixture(value.paths).service,
@@ -143,6 +131,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
     let completed = false;
     const started = value.coordinator
       .start({
+        provider: "codex-cli-account" as const,
         profileId,
         reviewId: value.review.id,
         type: "analysis",
@@ -182,6 +171,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       });
       const started = await value.coordinator.start(
         {
+          provider: "codex-cli-account" as const,
           profileId,
           reviewId: value.review.id,
           type: "analysis",
@@ -253,6 +243,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "brief",
@@ -332,6 +323,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     );
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "brief",
@@ -393,6 +385,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -431,7 +424,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       release = resolve;
     });
     const codexCatalog = new InsightProviderCatalog(
-      { get: async () => ok({ models: [] }) },
       () => ({
         listModels: async () =>
           ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
@@ -494,7 +486,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       release = resolve;
     });
     const piCliCatalog = new InsightProviderCatalog(
-      { get: async () => ok({ models: [] }) },
       () => {
         throw new Error("Codex must not start for a pi run");
       },
@@ -543,7 +534,6 @@ describe("InsightRunCoordinator current lifecycle", () => {
       release = resolve;
     });
     const codexCatalog = new InsightProviderCatalog(
-      { get: async () => ok({ models: [] }) },
       () => ({
         listModels: async () =>
           ok([{ id: "model", label: "Model", reasoning: ["medium"] }]),
@@ -622,6 +612,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -664,6 +655,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -697,6 +689,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -734,6 +727,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
       },
     });
     const first = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -744,6 +738,7 @@ describe("InsightRunCoordinator current lifecycle", () => {
     if (first._tag === "err") throw new Error("expected first run");
     await settled(value.coordinator, value.review.id, first.value.runId);
     const second = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",
@@ -778,6 +773,7 @@ describe("InsightRunCoordinator desktop notifications", () => {
       notifier: { notify: (event) => events.push(event) },
     });
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",

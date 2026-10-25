@@ -17,7 +17,6 @@
     "out-electron",
     "release",
     "node_modules",
-    "runtime/insight/dist",
     ".agents/**",
     ".codex/**",
     ".pi/**",
@@ -147,7 +146,7 @@
       }
     },
     {
-      "files": ["scripts/**/*.mjs", "runtime/insight/scripts/**/*.mjs"],
+      "files": ["scripts/**/*.mjs"],
       "env": {
         "node": true
       }
@@ -226,7 +225,6 @@
         "src/adapters/storage/review-artifact-storage.ts",
         "src/adapters/storage/review-observation-journal-store.ts",
         "src/adapters/storage/review-store.ts",
-        "src/services/pi-insight-child-invoker.ts",
         "src/services/model-review-runner.ts",
         "src/services/read-object-field.ts",
         "src/services/review-context-service.ts",

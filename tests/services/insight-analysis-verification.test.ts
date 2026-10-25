@@ -24,6 +24,7 @@ async function completedAnalysis(
   reviewId: Parameters<InsightRunCoordinator["start"]>[0]["reviewId"],
 ) {
   const started = await coordinator.start({
+    provider: "codex-cli-account" as const,
     profileId,
     reviewId,
     type: "analysis",

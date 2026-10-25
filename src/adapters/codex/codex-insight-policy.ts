@@ -1,5 +1,9 @@
 import { isAbsolute } from "node:path";
 import * as v from "valibot";
+import {
+  nativeSessionAttemptDetailsSchema,
+  type NativeSessionAttempt,
+} from "#src/domain/native-session-attempt";
 
 import { err, ok, type Result } from "#src/domain/result";
 import type { CodexRunInput, JsonObject } from "./codex-app-server-client";
@@ -126,6 +130,7 @@ export function codexInsightIsolationConfirmed(
 const nativeThreadSchema = v.looseObject({
   thread: v.looseObject({ id: v.string() }),
   model: v.string(),
+  modelProvider: v.string(),
   reasoningEffort: v.string(),
   approvalPolicy: v.literal("on-request"),
   approvalsReviewer: v.literal("auto_review"),
@@ -133,14 +138,33 @@ const nativeThreadSchema = v.looseObject({
   instructionSources: v.array(v.string()),
 });
 
+export function parseCodexInsightSelection(
+  value: JsonObject,
+): NativeSessionAttempt["observed"] | undefined {
+  const parsed = v.safeParse(nativeThreadSchema, value);
+  if (!parsed.success) return undefined;
+  const selection = v.safeParse(
+    nativeSessionAttemptDetailsSchema.entries.observed,
+    {
+      model: parsed.output.model,
+      nativeProvider: parsed.output.modelProvider,
+      reasoning: parsed.output.reasoningEffort,
+      nativeSessionId: parsed.output.thread.id,
+    },
+  );
+  return selection.success ? selection.output : undefined;
+}
+
 /** A managed refusal or effective-policy mismatch never proceeds to turn/start. */
 export function parseCodexInsightThread(
   value: JsonObject,
   input: CodexRunInput,
+  provider: string,
 ): string | undefined {
   const parsed = v.safeParse(nativeThreadSchema, value);
   return parsed.success &&
     parsed.output.model === input.model &&
+    parsed.output.modelProvider === provider &&
     parsed.output.reasoningEffort === input.reasoning &&
     parsed.output.instructionSources.length === 0
     ? parsed.output.thread.id

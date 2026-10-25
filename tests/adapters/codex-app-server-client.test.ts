@@ -1,11 +1,13 @@
 import { codexRpcMessageSchema } from "#src/adapters/codex/codex-app-server-rpc";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
+import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import * as v from "valibot";
 
 import {
@@ -34,7 +36,7 @@ class CodexAppServerClient extends ProductionCodexClient {
       homeFactory: async () =>
         ok({
           original: "/fixture/source-home",
-          directory: "/fixture/private-home",
+          directory: credentialHome,
           login: {
             type: "chatgptAuthTokens",
             accessToken: "fixture",
@@ -57,6 +59,7 @@ async function worktreeFixture(): Promise<string> {
 
 function runInput(root: string): CodexRunInput {
   return {
+    attempt,
     worktreePath: representedWorktree(root),
     expectedHeadSha: "a".repeat(40),
     model: "fixture-codex",
@@ -170,8 +173,9 @@ class FakeCodexProcess extends EventEmitter {
       return this.write({
         id: message.id,
         result: {
-          thread: { id: "thread-fixture" },
+          thread: { id: "11111111-1111-4111-8111-111111111111" },
           model: "fixture-codex",
+          modelProvider: "openai",
           reasoningEffort: "low",
           approvalPolicy: "on-request",
           approvalsReviewer: "auto_review",
@@ -252,6 +256,41 @@ function asChildProcess(fake: FakeCodexProcess): ChildProcess {
 }
 
 const roots: string[] = [];
+let attempt: NativeSessionAttemptStore;
+let credentialHome: string;
+beforeEach(async () => {
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "patchdesk-codex-attempt-")),
+  );
+  roots.push(root);
+  credentialHome = join(root, "private-home");
+  await mkdir(credentialHome, { mode: 0o700 });
+  const created = await NativeSessionAttemptStore.create(
+    PatchdeskPaths.fromEnvironment({
+      PATCHDESK_CONFIG_DIRECTORY: join(root, "config"),
+      PATCHDESK_DATA_DIRECTORY: join(root, "data"),
+      PATCHDESK_CACHE_DIRECTORY: join(root, "cache"),
+    }),
+    {
+      identity: {
+        profileId: "profile",
+        reviewId: "review-fixture",
+        sessionId:
+          "github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__abcdef123456",
+        runId: "insight-brief-1-aaaaaaaaaaaa-fixture",
+        type: "brief",
+      },
+      bundleId: "a".repeat(64),
+    } as never,
+    undefined,
+    "fixture-codex",
+    "low",
+    "codex-cli-account",
+  );
+  if (created._tag === "err")
+    throw new Error("Could not create native attempt fixture");
+  attempt = created.value;
+});
 
 function representedWorktree(path: string): RepresentedReviewWorktree {
   // SAFETY: every caller creates the fixture root and passes it to the fake Codex process as its app-owned worktree.
@@ -320,6 +359,7 @@ describe("CodexAppServerClient", () => {
     });
     await expect(
       client.run({
+        attempt,
         worktreePath: representedWorktree(root),
         expectedHeadSha: "a".repeat(40),
         model: "fixture-codex",
@@ -348,6 +388,7 @@ describe("CodexAppServerClient", () => {
     });
     await expect(
       client.run({
+        attempt,
         worktreePath: representedWorktree(root),
         expectedHeadSha: "a".repeat(40),
         model: "fixture-codex",
@@ -375,6 +416,7 @@ describe("CodexAppServerClient", () => {
     });
     await expect(
       client.run({
+        attempt,
         worktreePath: representedWorktree(root),
         expectedHeadSha: "a".repeat(40),
         model: "fixture-codex",
@@ -619,6 +661,7 @@ describe("CodexAppServerClient approval requests", () => {
     await expect(
       client.run(
         {
+          attempt,
           worktreePath: representedWorktree(root),
           expectedHeadSha: "a".repeat(40),
           model: "fixture-codex",
@@ -631,7 +674,7 @@ describe("CodexAppServerClient approval requests", () => {
     return child;
   }
 
-  it("starts an ephemeral thread with the native automatic reviewer", async () => {
+  it("starts a retained thread with the native automatic reviewer", async () => {
     const child = await runWithRequests([]);
     expect(
       child.received.find((message) => message.method === "thread/start")
@@ -640,7 +683,7 @@ describe("CodexAppServerClient approval requests", () => {
       sandbox: "workspace-write",
       approvalPolicy: "on-request",
       approvalsReviewer: "auto_review",
-      ephemeral: true,
+      ephemeral: false,
     });
   });
 

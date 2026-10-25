@@ -125,8 +125,6 @@ export async function runFullCheck(cwd, signal, run = runCheckCommand) {
       ["typecheck:scripts"],
       ["check:error-ui"],
       ["check:imports"],
-      ["--dir", "runtime/insight", "typecheck"],
-      ["exec", "oxlint", "--deny-warnings", "runtime/insight"],
       ["test:all"],
       ["lint:staged"],
       ["lint:changed", "--", "origin/main"],

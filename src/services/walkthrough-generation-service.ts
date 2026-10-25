@@ -106,9 +106,7 @@ export class WalkthroughGenerationService {
   > {
     if (
       request.selection.reasoning !== request.reasoning ||
-      !hasExplanationProducer(this.producers, request.selection.provider) ||
-      (request.selection.provider === "pi" &&
-        !["low", "medium", "high"].includes(request.selection.reasoning))
+      !hasExplanationProducer(this.producers, request.selection.provider)
     )
       return err("invalid_source");
     const operation = this.preparation.begin(request, "walkthrough");
@@ -138,6 +136,7 @@ export class WalkthroughGenerationService {
   ): Promise<
     Result<{ readonly completion: Promise<void> }, GuideResumeFailure>
   > {
+    if (!("transport" in request)) return err("invalid");
     const recovered = await this.recover({
       profileId: request.profileId,
       reviewId: request.reviewId,
@@ -426,10 +425,6 @@ export class WalkthroughGenerationService {
       permit.value.release();
     }
     if (this.stopping.has(run.runId)) return;
-    if (generated.expired && pass.request.selection.provider === "pi") {
-      await this.settle(run, "resource_exhausted", "generation");
-      return;
-    }
     await this.conclude(
       pass,
       generated.outcome,
@@ -459,9 +454,7 @@ export class WalkthroughGenerationService {
       state.status === "paused"
     )
       return;
-    let nativeKnown =
-      pass.request.selection.provider === "pi" ||
-      (outcome._tag === "failed" && outcome.effectKnown);
+    let nativeKnown = outcome._tag === "failed" && outcome.effectKnown;
     if (
       state.nativeExecution !== undefined &&
       state.nativeExecution.starts.count > 0
@@ -526,12 +519,10 @@ export class WalkthroughGenerationService {
       );
       if (preflight._tag === "err") return;
       if (
-        (!nativeKnown ||
-          (state.nativeExecution === undefined &&
-            outcome._tag === "failed" &&
-            !outcome.effectKnown)) &&
-        (explanationStartCount(state) > 0 ||
-          pass.request.selection.provider !== "pi")
+        !nativeKnown ||
+        (state.nativeExecution === undefined &&
+          outcome._tag === "failed" &&
+          !outcome.effectKnown)
       ) {
         await this.authority.explanation.produce(
           run,

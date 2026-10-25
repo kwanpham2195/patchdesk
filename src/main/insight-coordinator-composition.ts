@@ -1,10 +1,12 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PiCliExplanationProducer } from "#src/services/pi-cli-explanation-producer";
 import { AccountExplanationProducer } from "#src/services/account-explanation-producer";
 import { app } from "electron";
 
 import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
 import { CommandRunner } from "#src/adapters/github/command-runner";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
-import type { LocalPiRuntimeModelCatalog } from "#src/adapters/pi/pi-runtime-model-catalog";
 import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
 import { discoverPathOnlyExecutable } from "#src/adapters/process/executable-discovery";
 import { InsightStore } from "#src/adapters/storage/insight-store";
@@ -13,9 +15,9 @@ import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import { ReviewStore } from "#src/adapters/storage/review-store";
 import { parseGitSha } from "#src/domain/ids";
-import type {
-  AccountInsightProvider,
-  InsightProvider,
+import {
+  isAccountInsightProvider,
+  type AccountInsightProvider,
 } from "#src/domain/insight-provider";
 import { err } from "#src/domain/result";
 import {
@@ -37,15 +39,10 @@ import type { ExplanationProducers } from "#src/services/explanation-producer";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { InsightSlotAuthority } from "#src/services/insight-slot-authority";
-import {
-  PiInsightChildInvoker,
-  unavailablePiInsightInvoker,
-} from "#src/services/pi-insight-child-invoker";
 import { ReviewContextPackService } from "#src/services/review-context-pack-service";
 import { ReviewContextService } from "#src/services/review-context-service";
 import type { ReviewDiagnosticService } from "#src/services/review-diagnostic-service";
 import type { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
-import { resolveInsightRuntime } from "./insight-runtime";
 import { createReadOnlyGitExecutor } from "./local-api-stores";
 
 /** The process-wide objects electron-main.ts owns and the coordinator's construction reads. */
@@ -87,27 +84,11 @@ export function insightCoordinatorFactory({
     logUnclassifiedCommandFailure,
   });
   return (
-    modelCatalog: LocalPiRuntimeModelCatalog,
     providerCatalog: InsightProviderCatalog,
     operations: ReviewOperationCoordinator,
     github: GitHubReader,
     resources: InsightResourceBundle,
   ): InsightRunCoordinator => {
-    const runtime = resolveInsightRuntime(
-      app.getAppPath(),
-      process.cwd(),
-      app.isPackaged,
-    );
-    logs.write({
-      process: "main",
-      level: runtime === undefined ? "warn" : "info",
-      topic: "insight-runtime",
-      message:
-        runtime === undefined
-          ? "no verified Insight runtime resolved"
-          : `Insight runtime resolved from the ${runtime.kind} build`,
-      meta: runtime === undefined ? {} : { runnerPath: runtime.runnerPath },
-    });
     const readHead = async (
       worktreePath: string,
     ): Promise<string | undefined> => {
@@ -147,17 +128,6 @@ export function insightCoordinatorFactory({
       },
     });
     const providerInvokers = {
-      pi:
-        runtime === undefined
-          ? unavailablePiInsightInvoker
-          : new PiInsightChildInvoker(
-              new CommandRunner(undefined, logUnclassifiedCommandFailure),
-              runtime.root,
-              process.execPath,
-              runtime.runnerPath,
-              undefined,
-              paths.rootsEnvironment(),
-            ),
       "codex-cli-account": accountInvoker(
         "codex-cli-account",
         "codex",
@@ -168,7 +138,7 @@ export function insightCoordinatorFactory({
         "pi",
         (path) => new PiRpcClient(path),
       ),
-    } satisfies Readonly<Record<InsightProvider, InsightInvoker>>;
+    } satisfies Readonly<Record<AccountInsightProvider, InsightInvoker>>;
     /**
      * The one place a provider is chosen. Each run carries the provider it was
      * started with, so the same dispatch serves every Insight type instead of
@@ -176,6 +146,8 @@ export function insightCoordinatorFactory({
      */
     const invoker: InsightInvoker = {
       async invoke(input, options) {
+        if (!isAccountInsightProvider(input.provider))
+          return err({ reason: "runtime_unavailable" as const });
         return providerInvokers[input.provider].invoke(input, options);
       },
     };
@@ -189,18 +161,6 @@ export function insightCoordinatorFactory({
       now,
     );
     const pack = contextPack(github);
-    // The Pi route alone is cut over to tool-driven Guide generation; without a verified runtime it stays unavailable.
-    const guideInvoker =
-      runtime === undefined
-        ? undefined
-        : new PiInsightChildInvoker(
-            new CommandRunner(undefined, logUnclassifiedCommandFailure),
-            runtime.root,
-            process.execPath,
-            runtime.runnerPath,
-            undefined,
-            paths.rootsEnvironment(),
-          );
     const codexProducer = new AccountExplanationProducer(
       paths,
       () => discoverPathOnlyExecutable("codex"),
@@ -208,36 +168,44 @@ export function insightCoordinatorFactory({
       undefined,
       (entry) => logs.write(entry),
     );
-    const explanationProducers: ExplanationProducers =
-      guideInvoker === undefined
-        ? { "codex-cli-account": codexProducer }
-        : { pi: guideInvoker, "codex-cli-account": codexProducer };
-    const hasProducer = Object.values(explanationProducers).length > 0;
-    const guide = !hasProducer
-      ? undefined
-      : new GuideGenerationService(
-          paths,
-          new ExplanationPreparationService(
-            paths,
-            paths,
-            resources,
-            operations,
-            pack,
-            now,
-            slots,
+    const piCliProducer = new PiCliExplanationProducer(
+      paths,
+      () => discoverPathOnlyExecutable("pi"),
+      readHead,
+      process.execPath,
+      app.isPackaged
+        ? join(process.resourcesPath, "pi-explanation", "index.mjs")
+        : join(
+            dirname(fileURLToPath(import.meta.url)),
+            "pi-explanation-helper.mjs",
           ),
-          slots,
-          resources,
-          explanationProducers,
-          now,
-          (run, event) => coordinator.recordExplanationActivity(run, event),
-        );
+    );
+    const explanationProducers: ExplanationProducers = {
+      "codex-cli-account": codexProducer,
+      "pi-cli-account": piCliProducer,
+    };
+    const guide = new GuideGenerationService(
+      paths,
+      new ExplanationPreparationService(
+        paths,
+        paths,
+        resources,
+        operations,
+        pack,
+        now,
+        slots,
+      ),
+      slots,
+      resources,
+      explanationProducers,
+      now,
+      (run, event) => coordinator.recordExplanationActivity(run, event),
+    );
     const coordinator = new InsightRunCoordinator(
       new ReviewStore(paths),
       new ReviewSessionStore(paths),
       store,
       paths,
-      modelCatalog,
       {
         analysis: invoker,
         walkthrough: invoker,
@@ -257,25 +225,23 @@ export function insightCoordinatorFactory({
       { notifier: desktopNotifier, profiles: new ProfileStore(paths) },
       resources.ownership.forScope(paths.dataDirectory()),
       guide,
-      !hasProducer
-        ? undefined
-        : new WalkthroughGenerationService(
-            paths,
-            new ExplanationPreparationService(
-              paths,
-              paths,
-              resources,
-              operations,
-              pack,
-              now,
-              slots,
-            ),
-            slots,
-            resources,
-            explanationProducers,
-            now,
-            (run, event) => coordinator.recordExplanationActivity(run, event),
-          ),
+      new WalkthroughGenerationService(
+        paths,
+        new ExplanationPreparationService(
+          paths,
+          paths,
+          resources,
+          operations,
+          pack,
+          now,
+          slots,
+        ),
+        slots,
+        resources,
+        explanationProducers,
+        now,
+        (run, event) => coordinator.recordExplanationActivity(run, event),
+      ),
     );
     return coordinator;
   };

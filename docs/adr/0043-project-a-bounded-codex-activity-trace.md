@@ -1,5 +1,7 @@
 # Project a bounded Codex activity trace
 
+> Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
+
 > **Status: Accepted.** Issue #243. Amends the "raw provider events are not
 > projected" boundary in the Brief and Analysis product descriptions. The
 > authority boundary of ADR 0013 is unchanged.

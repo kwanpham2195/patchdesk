@@ -2,7 +2,6 @@ import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
 import type { InsightRunRef } from "./insight-slot-records";
 import { randomBytes } from "node:crypto";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
-import type { WalkthroughAppOutcome } from "#src/domain/walkthrough-protocol";
 import type { IsoTimestamp } from "#src/domain/ids";
 import type {
   ExplanationProducers,
@@ -11,7 +10,6 @@ import type {
 import { NativeExplanationTurns } from "./native-explanation-turns";
 import { selectExplanationProducer } from "./explanation-producer";
 import type { InsightSlotAuthority } from "./insight-slot-authority";
-import { ExplanationRequestDispatch } from "./explanation-request-dispatch";
 import { WalkthroughRunOperations } from "./walkthrough-generation-operations";
 import type { WalkthroughPass } from "./walkthrough-generation-resume";
 
@@ -62,12 +60,6 @@ export class WalkthroughProducerPass {
       generation: pass.generation,
       cancelEpoch: pass.cancelEpoch,
     };
-    const dispatch = new ExplanationRequestDispatch(
-      this.authority.explanation,
-      this.artifacts,
-      this.now,
-      "walkthrough",
-    );
     let outcome: ExplanationProducerOutcome;
     try {
       if (remaining <= 0) {
@@ -109,30 +101,6 @@ export class WalkthroughProducerPass {
             reason: "runtime_unavailable",
             effectKnown: true,
           };
-        else if (producer.transport === "api")
-          outcome = await producer.invokeWalkthroughSession({
-            ...input,
-            handler: async (frame) => {
-              if (unknown) return { status: "unknown" };
-              let answer: WalkthroughAppOutcome;
-              switch (frame.kind) {
-                case "tool":
-                  answer = await this.operations.handle(context, frame.call);
-                  break;
-                case "request_open":
-                  answer = dispatch.open(frame.totalBytes);
-                  break;
-                case "request_chunk":
-                  answer = dispatch.chunk(frame);
-                  break;
-                case "request_commit":
-                  answer = await dispatch.commit(context, frame);
-                  break;
-              }
-              if (answer.status === "unknown") unknown = true;
-              return answer;
-            },
-          });
         else {
           const lifecycle = new NativeExplanationTurns(
             this.authority.explanation,

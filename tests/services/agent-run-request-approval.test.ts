@@ -85,6 +85,7 @@ async function approvalFixture(
     stored,
     requests: service(reviews?.(value.reviews)),
     runInput: (type: AgentInsightType) => ({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type,
@@ -279,7 +280,7 @@ describe("the Insight run route with a requestId", () => {
 
     const answered = await post("/v1/reviews/insights/analysis/run", {
       ...value.runInput("analysis"),
-      provider: "pi",
+      provider: "codex-cli-account",
       requestId,
     });
 

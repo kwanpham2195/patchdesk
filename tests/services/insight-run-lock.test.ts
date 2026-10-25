@@ -49,6 +49,7 @@ describe("Insight terminal persistence lock", () => {
       { operations },
     );
     const started = await value.coordinator.start({
+      provider: "codex-cli-account" as const,
       profileId,
       reviewId: value.review.id,
       type: "analysis",

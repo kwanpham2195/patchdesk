@@ -176,17 +176,23 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 **Insight.** A revision-bound aid that helps a maintainer understand or evaluate a represented change. Brief, Guide, Walkthrough, and Analysis are Insight types on both pull request and local Reviews; none can publish to GitHub on completion.
 
-**Insight provider.** The execution source selected for an Insight run: API key (`pi` internally), Codex CLI account, or pi CLI account. New Guide and Walkthrough generation currently accepts API keys only. See [Brief](review-workbench/brief.md#begin-an-action) for the shared run controls.
+**Insight provider.** The execution source selected for a new Insight run: Codex CLI account or pi CLI account. The retired API key identity (`pi` internally) remains valid historical provenance and cannot execute a new run. See [Brief](review-workbench/brief.md#begin-an-action) for the shared run controls.
 
-**Codex CLI account provider.** The Insight provider that uses the maintainer's local Codex CLI account without Patchdesk storing its credentials. It inspects only the represented-review worktree with bounded read-only tools.
+**Codex CLI account provider.** The Insight provider that uses the maintainer's installed Codex CLI and local login under the native permission policy. Its private temporary account home and cleanup follow the [privacy contract](cross-cutting/local-storage-and-privacy.md#while-the-action-runs).
 
-**pi CLI account provider.** The Insight provider that runs the maintainer's installed `pi` agent with its own login, read-only built-in tools, and project trust and extensions disabled. Its internal id is `pi-cli-account`.
+**pi CLI account provider.** The Insight provider that runs the maintainer's installed `pi` agent with its own login. It uses a fresh session and disables inherited project configuration and extensions. Its Bash tool is not an enforced read-only shell. Its internal id is `pi-cli-account`.
 
 **Insight run.** One queued, running, completed, failed, cancelled, or superseded attempt to produce an Insight for a represented revision.
 
-**Insight run dialog.** The dialog that Generate, Regenerate, Try again, and Run for latest revision open before any Insight run starts. It has Provider, Model, and Reasoning controls, a confirmation line naming what will receive the prepared pull-request artifacts, and Start run.
+**Insight run dialog.** The dialog that Generate, Regenerate, Try again, and Run for latest revision open before any Insight run starts. It has Provider, Model, Reasoning, and Language controls, a confirmation line naming what will receive the prepared pull-request artifacts, and Start run.
 
-**Run Insights dialog.** The dialog that Run Insights… beside the Insight tab strip opens. It has one row per Insight, each with a checkbox and its own Provider, Model, Reasoning, and Language, and Start runs starts every checked row as its own run.
+**Run Insights dialog.** The dialog that Run Insights… beside the Insight tab strip opens. It has one row per Insight and shared Provider, Model, Reasoning, and Language controls for selected editable rows. Differing row values appear as mixed; optional overrides expose each row's choices. Start runs starts each checked row independently, and only accepted starts save preferences.
+
+**Native session history.** Private conversation and tool data captured for one native attempt. Retained means readable bytes were captured; completeness stays unknown. History does not establish publication, cleanup, spend, or authority to replay. See [local storage and privacy](cross-cutting/local-storage-and-privacy.md#while-the-action-runs).
+
+**Native attempt.** One fresh native execution within an Insight run or generation. Private metadata identifies its Review, run and unique attempt and records observed runtime settings, the first host failure, history availability and separate cleanup outcomes.
+
+**Start new generation.** The explicit action for an eligible paused Guide or Walkthrough. It opens an acknowledgment of missing responses and possible repeat spend before sending anything. It starts fresh native work under existing recovery and cessation checks; it never replays an old conversation.
 
 **Brief.** The latest successful view of a represented change's structure. It presents Signals, optional Moves, Flow, Shape, and Blast radius, with Scope and Provenance beside them. It gives no review verdict or Findings. See [Brief](review-workbench/brief.md).
 

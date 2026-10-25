@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,8 +18,6 @@ import {
   workbenchWindowChrome,
 } from "#src/main/window-chrome";
 import { clampWindowBounds } from "#src/main/window-state";
-import { generatedPiAiCatalog } from "#src/adapters/pi/pi-ai-catalog.generated";
-import { resolveInsightRuntime } from "#src/main/insight-runtime";
 
 describe("desktop hardening", () => {
   it("allows clean close, confirms dirty drafts, and blocks pending writes", async () => {
@@ -362,135 +358,5 @@ describe("desktop hardening", () => {
     expect(workbenchWindowChrome.trafficLightPosition.y * 2 + light).toBe(
       workbenchTitlebarHeight,
     );
-  });
-
-  it("prefers a packaged one-shot runtime with an exact manifest and lock digest", () => {
-    const packagedRoot =
-      "/Applications/Patchdesk.app/Contents/Resources/insight-runtime";
-    const lock = "lockfileVersion: '6.0'\n";
-    // SAFETY: pi-ai-catalog.generated.ts's literal always carries a top-level
-    // `digest: string` field (see the file's last property), even though its
-    // export is deliberately typed `unknown`; this narrows just that field.
-    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
-      .digest;
-    const files = new Map<string, string>([
-      [`${packagedRoot}/patchdesk-insight-runner.js`, ""],
-      [`${packagedRoot}/pnpm-lock.yaml`, lock],
-      [
-        `${packagedRoot}/runtime-manifest.json`,
-        JSON.stringify({
-          piVersion: "0.99.2",
-          catalogDigest,
-          nodeFloor: ">=22.19.0",
-          lockDigest: createHash("sha256").update(lock).digest("hex"),
-        }),
-      ],
-    ]);
-
-    expect(
-      resolveInsightRuntime(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/workspace/patchdesk",
-        true,
-        (path) => files.has(path),
-        (path) => files.get(path) ?? "",
-      ),
-    ).toEqual({
-      kind: "packaged",
-      root: packagedRoot,
-      runnerPath: `${packagedRoot}/patchdesk-insight-runner.js`,
-      manifestPath: `${packagedRoot}/runtime-manifest.json`,
-    });
-
-    files.set(
-      `${packagedRoot}/runtime-manifest.json`,
-      JSON.stringify({
-        piVersion: "0.84.3",
-        catalogDigest,
-        nodeFloor: ">=22.19.0",
-        lockDigest: createHash("sha256").update(lock).digest("hex"),
-      }),
-    );
-    expect(
-      resolveInsightRuntime(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/workspace/patchdesk",
-        true,
-        (path) => files.has(path),
-        (path) => files.get(path) ?? "",
-      ),
-    ).toBeUndefined();
-
-    // The version check catches every real older manifest first, so only a
-    // matching one with a dropped field left on it proves strictness.
-    files.set(
-      `${packagedRoot}/runtime-manifest.json`,
-      JSON.stringify({
-        piVersion: "0.99.2",
-        flueVersion: "0.9.1",
-        catalogDigest,
-        nodeFloor: ">=22.19.0",
-        lockDigest: createHash("sha256").update(lock).digest("hex"),
-      }),
-    );
-    expect(
-      resolveInsightRuntime(
-        "/Applications/Patchdesk.app/Contents/Resources/app.asar",
-        "/workspace/patchdesk",
-        true,
-        (path) => files.has(path),
-        (path) => files.get(path) ?? "",
-      ),
-    ).toBeUndefined();
-  });
-
-  it("prefers the development build over a staged one only when unpackaged", () => {
-    const cwd = "/workspace/patchdesk";
-    const stagedRoot = `${cwd}/out/workflow-runtime`;
-    const developmentRoot = `${cwd}/runtime/insight`;
-    const lock = "lockfileVersion: '6.0'\n";
-    // SAFETY: as above -- the generated catalog literal always carries `digest`.
-    const catalogDigest = (generatedPiAiCatalog as { readonly digest: string })
-      .digest;
-    // Both roots pass every manifest check: the manifest pins the Pi version,
-    // the catalog digest, the node floor and the lock digest, so a staging
-    // built before a request type existed is indistinguishable from a fresh
-    // one. Only the resolution order keeps the stale runner out of a
-    // `pnpm dev` run, which rebuilds `runtime/insight/dist` on every start.
-    const manifest = JSON.stringify({
-      piVersion: "0.99.2",
-      catalogDigest,
-      nodeFloor: ">=22.19.0",
-      lockDigest: createHash("sha256").update(lock).digest("hex"),
-    });
-    const files = new Map<string, string>([
-      [`${stagedRoot}/patchdesk-insight-runner.js`, ""],
-      [`${stagedRoot}/pnpm-lock.yaml`, lock],
-      [`${stagedRoot}/runtime-manifest.json`, manifest],
-      [`${developmentRoot}/dist/patchdesk-insight-runner.js`, ""],
-      [`${developmentRoot}/pnpm-lock.yaml`, lock],
-      [`${developmentRoot}/runtime-manifest.json`, manifest],
-    ]);
-    const resolve = (isPackaged: boolean) =>
-      resolveInsightRuntime(
-        `${cwd}/out/main/index.js`,
-        cwd,
-        isPackaged,
-        (path) => files.has(path),
-        (path) => files.get(path) ?? "",
-      );
-
-    expect(resolve(false)).toEqual({
-      kind: "development",
-      root: developmentRoot,
-      runnerPath: `${developmentRoot}/dist/patchdesk-insight-runner.js`,
-      manifestPath: `${developmentRoot}/runtime-manifest.json`,
-    });
-    expect(resolve(true)).toEqual({
-      kind: "staged",
-      root: stagedRoot,
-      runnerPath: `${stagedRoot}/patchdesk-insight-runner.js`,
-      manifestPath: `${stagedRoot}/runtime-manifest.json`,
-    });
   });
 });

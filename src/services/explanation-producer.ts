@@ -26,6 +26,7 @@ import {
   insightProvenanceCodec,
 } from "#src/domain/insight-run-binding-contract";
 import { ok } from "#src/domain/result";
+import { isAccountInsightProvider } from "#src/domain/insight-provider";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuidePass } from "./guide-result-publication";
 
@@ -83,24 +84,10 @@ type ProducerInput = {
   readonly onActivity?: InsightActivitySink | undefined;
 };
 
-/** API execution alone receives the exact-request FD3 channel. */
-export type ApiExplanationProducer = {
-  readonly transport: "api";
-  invokeGuide(
-    input: ProducerInput & {
-      readonly handler: (frame: GuideChildFrame) => Promise<GuideAppOutcome>;
-    },
-  ): Promise<ExplanationProducerOutcome>;
-  invokeWalkthroughSession(
-    input: ProducerInput & {
-      readonly handler: (
-        frame: WalkthroughChildFrame,
-      ) => Promise<WalkthroughAppOutcome>;
-    },
-  ): Promise<ExplanationProducerOutcome>;
-};
-
-/** The native adapter must commit before sending and confirm owned descendant cessation before returning success. */
+/**
+ * Commit before native send; confirm the provider's accepted cleanup scope before success.
+ * Pi requires abort acknowledgment, drained host work and owned-group cessation; arbitrary detached Bash descendants remain unproven.
+ */
 export type NativeExplanationLifecycle = {
   start(input: {
     readonly version: string;
@@ -133,9 +120,8 @@ export type NativeExplanationProducer = {
   ): Promise<ExplanationProducerOutcome>;
 };
 
-/** Frozen provenance selects an injected transport, independently of API runtime availability. */
+/** Frozen provenance selects the native producer without changing historical identities. */
 export type ExplanationProducers = {
-  readonly pi?: ApiExplanationProducer;
   readonly "codex-cli-account"?: NativeExplanationProducer;
   readonly "pi-cli-account"?: NativeExplanationProducer;
 };
@@ -145,7 +131,9 @@ export function hasExplanationProducer(
   producers: ExplanationProducers,
   provider: InsightProvider,
 ): boolean {
-  return producers[provider] !== undefined;
+  return (
+    isAccountInsightProvider(provider) && producers[provider] !== undefined
+  );
 }
 
 /** Uses the durable Authorization, and refuses a pass whose in-memory selection disagrees. */
@@ -154,7 +142,7 @@ export async function selectExplanationProducer(
   artifacts: InsightArtifactStore,
   authority: Pick<ExplanationRunTransactions, "produce">,
   pass: GuidePass,
-): Promise<ApiExplanationProducer | NativeExplanationProducer | undefined> {
+): Promise<NativeExplanationProducer | undefined> {
   const read = await authority.produce(pass.run, async () => ok(undefined));
   if (
     read._tag === "err" ||
@@ -189,5 +177,7 @@ export async function selectExplanationProducer(
     selection.value.reasoning !== pass.request.reasoning
   )
     return undefined;
-  return producers[selection.value.provider];
+  return isAccountInsightProvider(selection.value.provider)
+    ? producers[selection.value.provider]
+    : undefined;
 }

@@ -47,11 +47,13 @@ https://github.com/user-attachments/assets/861a56f9-c76d-4b77-8254-43762a924251
   local checkout. Comment on diff lines, resolve conversations, build a pending
   review, submit your decision, and merge.
   [More](#review-the-whole-pull-request-in-one-place)
-- **Insights.** Three optional AI reads of a change, each kept with the
+- **Insights.** Four optional AI reads of a change, each kept with the
   revision it analyzed:
   - [Brief](#brief-finds-the-reading-path) shows which calls, states, or
     exported contracts changed, which code outside the patch mentions them,
     and where to start reading.
+  - Guide groups changed files by review task and keeps reviewed groups and
+    reading position with the result.
   - [Walkthrough](#walkthrough-explains-the-implementation) explains the
     change in chapters, each beside its cited diff hunks, and tracks which
     chapters you reviewed.
@@ -59,11 +61,10 @@ https://github.com/user-attachments/assets/861a56f9-c76d-4b77-8254-43762a924251
     description and lists Findings with file and line evidence. You add a
     Finding to your review, sometimes as a GitHub suggested change, or dismiss
     it.
-- **Your provider and model.** Run Insights with an API key for providers such
-  as Anthropic, OpenAI, or Google, or with your Codex CLI login. Pick the
-  model, reasoning level, and output language (English or Vietnamese) per run.
-  New Walkthrough generation currently requires an API key; account-provider
-  support for its paged format is pending.
+- **Your provider and model.** Run all four Insights with your Codex CLI or
+  Pi CLI account. Pick the model, reasoning level, and output language
+  (English or Vietnamese) per run. Pi supplies models through its configured
+  native login; Patchdesk no longer runs a separate API-key integration.
   [More](#bring-your-preferred-model)
 - **Local Reviews.** Review your branch against its base branch, committed
   and uncommitted changes together, or one commit, before it reaches GitHub.
@@ -200,8 +201,8 @@ to review and give it this task:
 
 ## Understand the change before you approve it
 
-Patchdesk gives you three AI tools for different stages of a review. Run one or
-all three with the provider, model, and reasoning level you choose.
+Patchdesk gives you four AI tools for different stages of a review. Run one or
+several with the provider, model, and reasoning level you choose.
 
 ### Brief finds the reading path
 
@@ -232,13 +233,16 @@ to your review, or dismiss it.
 ## Bring your preferred model
 
 Choose the provider, model, reasoning level, and language for every run.
-Patchdesk works with supported API-key providers and your existing Codex CLI
-login, so you can use the models and account you already have.
-Walkthrough currently accepts API keys only, not Codex or pi CLI accounts.
+Patchdesk uses your installed Codex CLI or Pi CLI for Brief, Guide, Walkthrough
+and Analysis. Refresh models in the run dialog after updating or signing in
+to the CLI. A saved API-key choice stays retired until you explicitly choose
+a native provider and model; opening a dialog does not change that preference.
 
-Each Insight stays attached to the Review revision it analyzed. Brief,
-Walkthrough, and Analysis remain separate results, ready to revisit throughout
-the review.
+Each Insight stays attached to the Review revision it analyzed. The four results
+remain separate and readable while a replacement runs. Historical results keep
+their original provider identity. Native history is retained locally for
+debugging, with unknown completeness; host records still govern publication
+and recovery.
 
 ![Choosing a provider, model, reasoning level, and language for an Insight](docs/assets/insight-run-dialog.png)
 
