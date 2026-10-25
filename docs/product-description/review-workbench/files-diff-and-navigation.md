@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Diff view is the main code-reading surface for a Review. It combines the represented full patch, a navigator with Browse, Commits, and Threads tabs (Notes in place of Threads on a local Review), optional single-commit diffs, a diff toolbar, inline annotations, and keyboard movement. The maintainer reaches it by opening a Review, choosing Diff, or following a Finding from Analysis. Local checkout preparation expands the experience, but a metadata-only Review can still show the GitHub snapshot with reduced local features.
+The Diff view is the main place to read a Review's code. It shows the represented patch, a navigator with Browse, Commits, and Threads tabs (Notes replaces Threads on a local Review), optional single-commit diffs, a diff toolbar, inline annotations, and keyboard navigation. Open a Review and choose Diff, or follow a Finding from Analysis, to reach it. When local checkout preparation succeeds, the view includes local files. A metadata-only Review still shows the GitHub snapshot with fewer local controls.
 
 ## The simple case
 

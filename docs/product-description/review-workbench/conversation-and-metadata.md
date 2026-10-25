@@ -2,7 +2,7 @@
 
 ## Summary
 
-The Conversation view presents the pull request description, issue comments, review summaries, general review threads, and the pull request's labels, assignees, and requested reviewers. The maintainer reaches it from the Conversation tab of an open Review. Reading remains available for represented terminal Reviews and during write recovery; GitHub controls appear only when the current Review and the exact action are writable. The pull request's own author additionally finds a draft toggle in the PR overview's Merge readiness row, and any maintainer on an open Review finds **Change base branch** there.
+The Conversation view shows the pull request description, issue comments, review summaries, general review threads, labels, assignees, and requested reviewers. Open a Review and choose the Conversation tab to see it. Reading remains available for represented terminal Reviews and during write recovery. GitHub controls appear only when the Review and the action are writable. The pull request author can also find a draft toggle in the PR overview's Merge readiness row. Any maintainer on an open Review can change the base branch there.
 
 ## The simple case
 
@@ -93,7 +93,7 @@ If Patchdesk cannot tell whether GitHub applied the write, all GitHub writes pau
 
 **Workspace profile and identity.** The active profile supplies host, repository scope, and viewer identity. Viewer-authored comments receive Edit and Delete controls only when the projection confirms ownership. Image requests carry the profile's GitHub token only to its GitHub host.
 
-**Review revision and freshness.** Reading belongs to the represented revision. Direct thread and comment writes additionally require a Fresh revision and a known patch hash; pull-request metadata writes require an open Review and recovery clearance.
+**Review revision and freshness.** Reading belongs to the represented revision. Direct thread and comment writes require a Fresh revision and a known patch hash. Pull-request metadata writes require an open Review and recovery clearance.
 
 **Local persistence and recovery.** Confirmed writes enter a recent-write journal so a slower GitHub read cannot temporarily erase them. Unknown outcomes persist as a durable recovery operation. Downloaded images are cached per workspace and are not part of the stored Review snapshot.
 

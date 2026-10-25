@@ -111,8 +111,7 @@ shows one repository's list at a time; GitHub decides what is in it, the
 order, and the count.
 
 From a pull request you can read the diff, leave comments, resolve
-conversations, submit a Review, and merge. This is the core flow, and it
-needs no model.
+conversations, submit a Review, and merge without using a model.
 
 Use More filters to filter by Review state or Check status. Active selections
 appear as chips and persist with the active profile across reloads. Clear a
@@ -229,16 +228,16 @@ it has no direct access to Node.js or your filesystem. The `patchdesk mcp`
 command reaches the app through a socket in
 `~/.local/share/patchdesk/mcp/`, a folder only your macOS user can open.
 
-A GitHub write only happens from an action you name explicitly, like Add to
-review. Finishing an Insight never triggers one on its own. If Patchdesk
-cannot confirm that a write went through, it locks further writes until you
-check GitHub again — it never retries a write on its own.
+A GitHub write only happens from an action you choose, like Add to review.
+Finishing an Insight never triggers one. If Patchdesk cannot confirm a write,
+it locks further writes until you check GitHub. Patchdesk never retries a write
+on its own.
 
 ## Known limits
 
-- GitHub rate limits and blocked reads (an IP allow list, SAML, a missing
-  scope) show up as what they are, with no retry button — retrying cannot
-  fix either one.
+- GitHub rate limits and blocked reads (an IP allow list, SAML, or a missing
+  scope) show their cause. There is no retry button because retrying cannot fix
+  either one.
 - Patchdesk is built for a sighted person using a keyboard and mouse. It has
   no screen reader support.
 - The Pull requests screen only refreshes when you ask: opening the screen,
