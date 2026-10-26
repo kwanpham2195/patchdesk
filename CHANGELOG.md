@@ -18,6 +18,8 @@
 
 - Clarified incomplete Analysis and missing-finish failures, and instructed native Insights to request 10000 output tokens for each captured-page read.
 
+- Fixed native Insight cancellation on macOS treating a brief process-exit permission error as failed cleanup and remaining stuck on Cancelling.
+
 - Compacted Guide to one toolbar and one file header, with docked group explanations beside continuously scrolling code. Kept file context and cancelled-run diagnostics on request, and shortened paused recovery panels while preserving spend warnings and required acknowledgments. #831
 
 - Changed all four Insights to run through Codex CLI account or pi CLI account and removed the bundled API-key runtime and model catalog. Saved API choices require an explicit native provider and model; historical results keep their API key provenance. #821
