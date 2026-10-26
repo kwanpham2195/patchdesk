@@ -50,6 +50,13 @@ export async function stopInsightProcess(
     } catch (cause) {
       if (v.is(v.looseObject({ code: v.literal("ESRCH") }), cause))
         return false;
+      // macOS can report EPERM while an exiting group is still being reaped; only ESRCH confirms cessation.
+      if (
+        signal === 0 &&
+        process.platform === "darwin" &&
+        v.is(v.looseObject({ code: v.literal("EPERM") }), cause)
+      )
+        return true;
       throw new InsightProcessCleanupError(
         signal === 0
           ? "group_probe_threw"
