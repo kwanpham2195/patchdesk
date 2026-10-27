@@ -49,12 +49,7 @@ export async function validateInsightEvidenceTree(
     )
       return false;
     const stat = await lstat(path);
-    if (
-      !stat.isDirectory() ||
-      stat.isSymbolicLink() ||
-      (stat.mode & 0o777) !== 0o555
-    )
-      return false;
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
     for (const name of await readdir(path)) {
       const child = relative === "" ? name : `${relative}/${name}`;
       const childPath = join(bundle.directory, child);

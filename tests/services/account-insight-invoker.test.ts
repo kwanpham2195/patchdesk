@@ -1,4 +1,3 @@
-import { removeInsightFixtureRoot } from "./insight-evidence-fixture-cleanup";
 import { buildInsightEvidenceTree } from "#src/services/insight-evidence-tree-builder";
 import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -23,7 +22,9 @@ const EXPECTED_ANALYSIS_TIMEOUT_MS = 20 * 60_000;
 
 const roots: string[] = [];
 afterEach(async () =>
-  Promise.all(roots.splice(0).map(removeInsightFixtureRoot)),
+  Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  ),
 );
 
 async function fixture(

@@ -14,7 +14,6 @@ import {
   type EvidenceSearchResult,
 } from "#src/domain/insight-evidence";
 import { err, ok, type Result } from "#src/domain/result";
-import { makeInsightEvidenceTreeRemovable } from "./insight-evidence-tree-removal";
 import { validateInsightEvidenceTree } from "./insight-evidence-tree-validation";
 import { isPathContained } from "./path-containment";
 import { writeAtomicFile } from "./json-file";
@@ -84,17 +83,11 @@ export class InsightEvidenceStore {
           _tag: "InsightEvidenceFailure",
           reason: "evidence_mismatch",
         });
-      if (bundle.tree !== undefined) {
+      // Directories stay writable so ordinary removal works; post-invocation validation rejects any added or changed entry.
+      if (bundle.tree !== undefined)
         await Promise.all(
           files(bundle).map((file) => chmod(join(directory, file.name), 0o444)),
         );
-        // Directory modes keep the execute bit, so the order of these chmods does not matter.
-        await Promise.all(
-          [...bundle.tree.directories, ""].map((relative) =>
-            chmod(join(directory, relative), 0o555),
-          ),
-        );
-      }
       await rename(temporary, bundle.directory);
       temporary = undefined;
       return await this.validate(bundle, options);
@@ -105,17 +98,8 @@ export class InsightEvidenceStore {
       if (
         temporary !== undefined &&
         (await evidencePathIsOwned(this.paths.dataDirectory(), temporary))
-      ) {
-        const removable =
-          bundle.tree === undefined
-            ? ok(undefined)
-            : await makeInsightEvidenceTreeRemovable(
-                this.paths.dataDirectory(),
-                temporary,
-              );
-        if (removable._tag === "ok")
-          await rm(temporary, { recursive: true, force: true });
-      }
+      )
+        await rm(temporary, { recursive: true, force: true });
     }
   }
 

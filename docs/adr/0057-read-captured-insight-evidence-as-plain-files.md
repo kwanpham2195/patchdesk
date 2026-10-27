@@ -44,7 +44,7 @@ Brief and Walkthrough cite hunk IDs; Guide cites file IDs. Analysis continues to
 
 The host builds the tree and retains its manifest authority separately from the model-readable manifest.json. It installs the tree by atomic rename under the Review lock. Before invocation, after invocation and before retaining output, it recursively checks the exact file and directory set, rejects symlinks, checks containment through `isPathContained`, and verifies regular-file byte counts and sha256 digests through `O_NOFOLLOW` reads.
 
-Files have mode 0444 and directories have mode 0555. Codex's workspace-write sandbox does not cover the evidence root, and Pi has no filesystem sandbox. Post-invocation validation enforces integrity. Any change fails the run and preserves the previous result.
+Files have mode 0444. Directories stay owner-writable so ordinary retention removal works without changing modes first. Codex's workspace-write sandbox does not cover the evidence root, and Pi has no filesystem sandbox. Post-invocation validation enforces integrity. Any change fails the run and preserves the previous result.
 
 ### Migration
 
