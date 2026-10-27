@@ -549,17 +549,21 @@ export class WalkthroughGenerationService {
                 })
               : ok(undefined),
         );
-      } else
-        await this.settle(
-          run,
+      } else {
+        const code =
           diagnostic === "unsupported_codex_version"
             ? "capability_unavailable"
             : expired
               ? "resource_exhausted"
-              : "unresolved_work",
+              : "unresolved_work";
+        // settleRun refuses a diagnostic whose code it does not pair with, which would leave the slot held.
+        await this.settle(
+          run,
+          code,
           "generation",
-          diagnostic,
+          code === "resource_exhausted" ? undefined : diagnostic,
         );
+      }
       return;
     }
     let validatedRoot = state.walkthroughRuntime;
