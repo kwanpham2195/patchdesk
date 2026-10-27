@@ -1,6 +1,6 @@
 # Read captured Insight evidence as plain files
 
-Status: Accepted, 2026-10-27. Analysis moves first; Brief, Guide and Walkthrough retain pages until their migration.
+Status: Accepted, 2026-10-27. All four Insights read the plain-file tree.
 
 This decision supersedes the evidence page format and native read rules in [ADR 0055](0055-read-captured-insight-evidence-on-demand.md). Its capture authority, validation timing, Walkthrough operations and result authority stay unchanged. [ADR 0056](0056-run-insights-through-native-cli-accounts.md) leaves Codex CLI and Pi CLI as the Insight providers; both have native file-reading tools.
 
@@ -48,12 +48,14 @@ Files have mode 0444. Directories stay owner-writable so ordinary retention remo
 
 ### Migration
 
-Analysis moves first on both native providers. Brief, Guide and Walkthrough keep the page path until their migration; the page builder, references, continuation traversal and store page/search methods are removed after those consumers move. Analysis no longer uses the page-reading prompt or narrow cat diagnostic grammar.
+Analysis moved first on both native providers. Brief, Guide and Walkthrough now use the same tree and native reading instructions. The page builder, page references, continuation traversal and store page/search methods remain pending deletion in a separate follow-up. Result and reader pagination are separate from the captured evidence format.
 
-The page format postdates the latest release, so no compatibility path is required. An unsettled Analysis preparation in the page format fails closed and requires re-preparation. Retained results keep their semantic citations and remain readable.
+The page format postdates the latest release, so no compatibility path is required. An unsettled preparation in the page format fails closed and requires re-preparation. Retained results keep their semantic citations and remain readable.
 
 ## Consequences
 
 Models can inspect the complete diff without reading every full head snapshot. The tree avoids repeated fragment coordinates and continuation records. Capture and validation costs still grow with the captured content.
 
-Guide and Walkthrough gain head snapshots when they migrate, increasing their captures within the existing run limit. This decision does not establish better result quality, Pi's compliance with mode bits, or completion within a generation deadline. Live native runs must establish those outcomes separately.
+All four Insights now read the tree. Guide and Walkthrough capture head snapshots within the existing limits; Brief still captures neither snapshots nor review context. The host-held recursive index remains the integrity authority, independently of the model-readable manifest.
+
+The page format code remains until the deletion follow-up. Its presence does not authorize a page fallback for a new run. This decision does not establish better result quality, Pi's compliance with mode bits, or completion within a generation deadline. Live native runs must establish those outcomes separately. Guide coverage remains a separate follow-up in #830.

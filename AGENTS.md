@@ -124,7 +124,7 @@ Dev app and live checks:
 
 Main process and GitHub:
 
-- Brief, Guide and Walkthrough paging evidence must measure the encoded API text-content response after JSON escaping, not only raw NDJSON bytes. Reconstruct the original captured sources and citation coordinates through all continuation pages. A first-request capture must observe the receiving invoker or provider callback; a prebuilt prompt does not prove production wiring.
+- Insight evidence validity comes from the host-held recursive tree index; concatenating `diff/` files in `files.json` order must reproduce the captured patch hash.
 
 - Anything in the main process that reads `process.env` (PATH, provider keys) must await the login-shell import (ADR 0038); a default-parameter read of `process.env.PATH` raced ahead of it once already.
 - IPC channel names live in one shared module both `preload.ts` and the main side import (`src/main/*-channel.ts`); main and preload are separate entry points, so a mismatched literal breaks the feature with every test green.

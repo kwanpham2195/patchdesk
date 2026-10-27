@@ -7,7 +7,7 @@ import {
 } from "./unified-patch";
 
 /** Exact captured hunk text and coordinates, in the canonical alias order. */
-export type NarrativePatchHunk = {
+type NarrativePatchHunk = {
   readonly id: string;
   readonly path: RepoRelativePath;
   readonly header: string;

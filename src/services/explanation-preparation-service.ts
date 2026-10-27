@@ -109,7 +109,10 @@ export class ExplanationPreparationService {
     private readonly destination: PatchdeskPaths,
     private readonly resources: InsightResourceBundle,
     private readonly operations: ReviewOperationCoordinator,
-    private readonly pack: Pick<ReviewContextPackService, "captureRunContext">,
+    private readonly pack: Pick<
+      ReviewContextPackService,
+      "captureRunContext" | "captureChangedHeadFiles"
+    >,
     now: () => IsoTimestamp,
     /** The scope's one authority: sharing it keeps preparation, generation and cancel on the same journal locks. */
     authority?: InsightSlotAuthority,

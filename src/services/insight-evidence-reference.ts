@@ -113,7 +113,7 @@ const pageEvidenceReferenceSchema = v.strictObject({
   ),
   manifest: v.strictObject({ sha256: digest, bytes }),
 });
-const treeEvidenceReferenceSchema = v.strictObject({
+export const treeEvidenceReferenceSchema = v.strictObject({
   identity: identitySchema,
   bundleId: digest,
   directory: v.string(),
@@ -190,13 +190,12 @@ export async function loadInsightEvidenceReference(
   } as const;
   if ("tree" in reference) {
     if (
-      identity.type !== "analysis" ||
       reference.directory !==
-        paths.analysisEvidenceDirectory(
-          identity.profileId,
-          identity.sessionId,
-          identity.runId,
-        )
+      paths.analysisEvidenceDirectory(
+        identity.profileId,
+        identity.sessionId,
+        identity.runId,
+      )
     )
       return err(mismatch);
     const sources = [];

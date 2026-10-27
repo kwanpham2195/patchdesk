@@ -10,7 +10,6 @@ import type {
 } from "#src/domain/insight-evidence";
 import { err, ok, type Result } from "#src/domain/result";
 import { buildInsightEvidenceTree } from "./insight-evidence-tree-builder";
-import { buildInsightEvidenceBundle } from "./insight-evidence-builder";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
 
@@ -105,20 +104,14 @@ export class InsightEvidenceService {
               snapshotSkips[path] = reason;
             })
           : {};
-      const bundle = (
-        identity.type === "analysis"
-          ? buildInsightEvidenceTree
-          : buildInsightEvidenceBundle
-      )({
+      const bundle = buildInsightEvidenceTree({
         snapshotSkips,
         identity,
         patch,
         context: contextRead.value,
         reviewInput,
         snapshots,
-        directory: (identity.type === "analysis"
-          ? this.paths.analysisEvidenceDirectory.bind(this.paths)
-          : this.paths.insightEvidenceDirectory.bind(this.paths))(
+        directory: this.paths.analysisEvidenceDirectory(
           identity.profileId,
           identity.sessionId,
           identity.runId,

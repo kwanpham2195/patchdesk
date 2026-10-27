@@ -12,10 +12,6 @@ import type { InsightType } from "./insight-record";
 
 /** Bounds apply to final NDJSON encoding, including metadata and links. */
 export const EVIDENCE_PAGE_BYTES = 32_768;
-/** Physical NDJSON lines, not source citation lines. */
-export const EVIDENCE_PAGE_LINES = 256;
-/** Final serialized record bytes, including its newline. */
-export const EVIDENCE_RECORD_BYTES = 2_048;
 
 const pageIdSchema = v.pipe(
   v.string(),
@@ -51,7 +47,7 @@ export type InsightEvidenceFailure = {
     | "invalid_input";
 };
 /** Coordinates belong to the original source, never the page's physical lines. */
-export type EvidenceSite = {
+type EvidenceSite = {
   readonly fileId?: string;
   readonly hunkAlias?: string;
   readonly oldLine?: number;
@@ -59,7 +55,7 @@ export type EvidenceSite = {
   readonly sourceLine?: number;
 };
 /** Every text fragment retains byte offsets into its original captured artifact. */
-export type EvidenceFragment = EvidenceSite & {
+type EvidenceFragment = EvidenceSite & {
   readonly kind: "fragment";
   readonly sourceId: string;
   readonly byteStart: number;
@@ -82,7 +78,7 @@ type EvidenceLink = {
   readonly fileId?: string;
 };
 /** Evidence records are fragmented before pagination. */
-export type EvidenceRecord = EvidenceFragment | EvidenceLink;
+type EvidenceRecord = EvidenceFragment | EvidenceLink;
 /** Parent-held source bytes and digests remain authoritative after publication. */
 export type EvidenceSource = {
   readonly id: string;

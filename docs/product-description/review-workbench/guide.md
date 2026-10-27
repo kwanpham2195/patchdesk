@@ -53,9 +53,9 @@ A file row expands or collapses only that appearance. Text diffs show code witho
 
 ### While the action runs
 
-The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
+The run captures the represented revision before generation. The model reads captured diffs as plain files and can open captured head files for surrounding code. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
-Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#while-the-action-runs). The workbench stays usable during preparation. Empty or unindexable patches, captured patches over 64 MiB, and unavailable required evidence fail preparation without invoking a provider. The complete patch and inventory remain local; the model reads them in pages.
+Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#while-the-action-runs). The workbench stays usable during preparation. Empty or unindexable patches, captured patches over 64 MiB, and unavailable required evidence fail preparation without invoking a provider. Captured head text is limited to 512 KiB per file and 4 MiB per run. Skipped snapshots do not remove files from the complete patch and inventory. Change intent remains excluded.
 
 The model submits groups and supporting files in small batches. Patchdesk validates the complete submitted result before making it readable. There is no twelve-group cap; the model chooses how many groups to create. Others still contains files outside those groups, not a promise that their changes are unimportant.
 
@@ -113,7 +113,7 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 
 **GitHub permissions and write authority.** Guide uses the same [inline conversations](inline-conversations.md) and [pending review](pending-review-and-finish.md) as Diff. Typing, navigation, and generation do not publish. A successful action clears only the confirmed draft, not newer text.
 
-**Network, local tools, and Insight providers.** Generation uses the chosen provider and represented Review input. Invalid evidence or context and inventory beyond their supported limits is rejected rather than silently dropping changed files. Patch content reaches the model only through bounded captured pages.
+**Network, local tools, and Insight providers.** Generation uses the chosen provider and represented Review input. Invalid evidence or context and inventory beyond their supported limits is rejected rather than silently dropping changed files. The model reads the retained evidence files rather than the current checkout.
 
 **Concurrent operations and locking.** Progress saves are serialized and reject stale result identities or versions. Shared GitHub actions preserve the [write safety rules](../cross-cutting/write-safety-and-freshness.md).
 
@@ -137,6 +137,7 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 
 ## Open questions and verification
 
+- Captured-file generation and optional head snapshots follow the slice 2 source change after `5ac4d3c5`, under [ADR 0057](../../adr/0057-read-captured-insight-evidence-as-plain-files.md). On 2026-10-27, Codex CLI account runs published Guides grouping 53 of 53 files and 61 of 516 files. The latter regressed from 131 grouped files; coverage remains with #830. Result screenshots and Pi generation for this change remain unverified.
 - [Guide checklist](../verification/insights-and-cross-cutting.md#review-workbenchguidemd) records generation, retained evidence, navigation, restoration, and recovery checks.
 - Before API retirement, the paged API-key path generated a real Guide with DeepSeek on the 516-file PR #140. CDP checks confirmed its 12 groups and 258 Others, file expansion, Open in Diff selecting the same file, saved Reviewed and expansion marks, tab-return position restoration, and reopening after a full dev-app restart without another provider dispatch. The source context completeness notice was inspected after it loaded.
 - Native Guide generation and reopened readers were checked through both CLI accounts. A fresh Pi Guide also completed after removal of the API runtime. These checks establish the observed generation and reading paths; they do not establish every cancellation, interrupted recovery, or Review-source variant.

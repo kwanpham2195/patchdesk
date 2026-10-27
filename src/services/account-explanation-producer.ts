@@ -11,6 +11,7 @@ import type {
 import { loadInsightEvidenceReference } from "./insight-evidence-reference";
 import { composeNativeExplanationPrompt } from "./native-explanation-prompt";
 import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
+import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
 
 type GuideInput = Parameters<NativeExplanationProducer["invokeGuide"]>[0];
 type WalkthroughInput = Parameters<
@@ -104,7 +105,7 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       return failure("native_attempt_storage_refused");
     // SAFETY: the path is resolved from the app-owned session and its immutable captured head was checked above.
     const worktreePath = worktree as RepresentedReviewWorktree;
-    return this.clientFactory(executable).runExplanation({
+    const outcome = await this.clientFactory(executable).runExplanation({
       run: {
         attempt: attempt.value,
         worktreePath,
@@ -124,5 +125,19 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       onActivity: input.onActivity,
       diagnostic: this.diagnostic,
     });
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the post-invocation evidence check must observe the tree after the session ends.
+    const checked = await new InsightEvidenceStore(this.paths).validate(
+      bundle.value,
+    );
+    return checked._tag === "err"
+      ? {
+          _tag: "failed",
+          reason:
+            checked.error.reason === "invalid_input"
+              ? "evidence_mismatch"
+              : checked.error.reason,
+          effectKnown: true,
+        }
+      : outcome;
   }
 }

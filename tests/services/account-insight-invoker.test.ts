@@ -101,23 +101,37 @@ async function fixture(
     "/usr/bin/codex",
     async () => "a".repeat(40),
   );
-  const directory = paths.insightEvidenceDirectory(
-    profileId,
-    sessionId,
-    "insight-analysis-1-aaaaaaaaaaaa-review" as never,
-  );
-  const entryPageId = `${"d".repeat(64)}-p1`;
-  const entryText =
-    JSON.stringify({
-      kind: "page",
-      bundleId: "d".repeat(64),
-      pageId: entryPageId,
-    }) +
-    "\n" +
-    JSON.stringify({ kind: "continuation", pageId: null }) +
-    "\n";
-  await mkdir(directory, { recursive: true });
-  await writeFile(join(directory, `${entryPageId}.ndjson`), entryText);
+  const patchText = await readFile(patch, "utf8");
+  const tree = buildInsightEvidenceTree({
+    identity: {
+      profileId,
+      reviewId:
+        "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa" as never,
+      sessionId,
+      runId: "insight-analysis-1-aaaaaaaaaaaa-review" as never,
+      type: options.type ?? "analysis",
+      headSha: "a".repeat(40) as never,
+      baseSha: "b".repeat(40) as never,
+      patchHash: hashReviewArtifactContent(patchText) as never,
+      intentHash: null,
+    },
+    directory: paths.analysisEvidenceDirectory(
+      profileId,
+      sessionId,
+      "insight-analysis-1-aaaaaaaaaaaa-review" as never,
+    ),
+    patch: patchText,
+    context: options.type === "brief" ? "" : "{}",
+    reviewInput:
+      (options.type ?? "analysis") === "analysis" ? "PR: patchdesk#42" : "",
+    snapshots: {},
+    snapshotSkips: {},
+  });
+  if (tree._tag === "err") throw new Error("Invalid evidence tree fixture");
+  if (
+    (await new InsightEvidenceStore(paths).publish(tree.value))._tag === "err"
+  )
+    throw new Error("Could not publish evidence tree fixture");
   // SAFETY: AccountInsightInvoker.invoke only compares/forwards these fields (realpath checks and
   // string equality); it never calls their branded parsers, so plain strings exercise the same
   // code paths as real InsightInvocationInput values.
@@ -137,73 +151,14 @@ async function fixture(
     model: "codex",
     reasoning: "medium",
     language: options.language ?? "en",
-    evidence: {
-      identity: {
-        profileId,
-        reviewId: "github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa",
-        sessionId,
-        runId: "insight-analysis-1-aaaaaaaaaaaa-review",
-        type: options.type ?? "analysis",
-        headSha: "a".repeat(40),
-        baseSha: "b".repeat(40),
-        patchHash: "c".repeat(64),
-        intentHash: null,
-      },
-      bundleId: "d".repeat(64),
-      directory,
-      entryPageId,
-      pages: [
-        {
-          id: entryPageId,
-          sha256: hashReviewArtifactContent(entryText),
-          text: entryText,
-          records: [],
-        },
-      ],
-      sources: [],
-      manifestText: "{}",
-      patchPath: patch,
-    } as never,
+    evidence: tree.value,
   };
-  if (input.type === "analysis" && input.evidence !== undefined) {
-    const patchText = await readFile(patch, "utf8");
-    const tree = buildInsightEvidenceTree({
-      identity: {
-        ...input.evidence.identity,
-        patchHash: hashReviewArtifactContent(patchText) as never,
-      },
-      directory: paths.analysisEvidenceDirectory(
-        profileId,
-        sessionId,
-        input.runId,
-      ),
-      patch: patchText,
-      context: "{}",
-      reviewInput: "PR: patchdesk#42",
-      snapshots: {},
-      snapshotSkips: {},
-    });
-    if (tree._tag === "err") throw new Error("Invalid Analysis tree fixture");
-    if (
-      (await new InsightEvidenceStore(paths).publish(tree.value))._tag === "err"
-    )
-      throw new Error("Could not publish Analysis tree fixture");
-    return {
-      invoker,
-      input: { ...input, evidence: tree.value },
-      calls,
-      worktree,
-      reviewInput,
-      context,
-      patch,
-    };
-  }
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
 
 describe("AccountInsightInvoker", () => {
   it.each(["codex-cli-account", "pi-cli-account"] as const)(
-    "uses captured complete Guide evidence on %s without unavailable tools",
+    "refuses captured Guide trees on %s through the whole-result invoker",
     async (provider) => {
       const value = await fixture({ provider, type: "guide", language: "vi" });
       if (value.input.evidence === undefined)
@@ -216,33 +171,16 @@ describe("AccountInsightInvoker", () => {
       });
       if (prepared._tag === "err") throw new Error("Guide preparation failed");
       await writeFile(value.context, "Changed after capture");
-      await value.invoker.invoke(
-        { ...value.input, type: "guide", guide: prepared.value },
-        { signal: new AbortController().signal },
-      );
-      expect(value.calls).toHaveLength(1);
-      expect(value.calls[0]?.[0].prompt).toBe(
-        [
-          prepared.value.prompt,
-          "Inspect only the captured evidence for this Review. Do not modify files, access credentials, use network tools, or publish anything. Honor native permission decisions and report a denied required read without bypassing it.",
-          `Native evidence directory: ${JSON.stringify(value.input.evidence.directory)}`,
-          `Native evidence entry file: ${JSON.stringify(join(value.input.evidence.directory, `${value.input.evidence.entryPageId}.ndjson`))}`,
-          `Read the entry with this complete shell command, preserving both enclosing quotes: cat -- '${join(value.input.evidence.directory, `${value.input.evidence.entryPageId}.ndjson`).replaceAll("'", "'\\''")}'`,
-          "Use native inspection tools to read this NDJSON entry, then the referenced page IDs as files in the same directory with the .ndjson suffix. Read at most one captured page per native tool call. Each page is at most 32 KiB. If the tool accepts an output limit, such as `max_output_tokens`, request 10000 for every page read; a smaller value cuts the page off.",
-          "A shell syntax error is not a permission refusal. Correct mismatched quotes and reread the same captured page. A native permission refusal remains authoritative; do not bypass it.",
-          "If page output is truncated, reread that same page in consecutive physical NDJSON line ranges, starting at its first line with one bounded record per call, for example sed -n 'N,Np' <captured-page>. Emit plain ranges without line-number decoration. Track the next unread physical line and finish every intervening record, including the continuation record, before following the continuation.",
-          "If a record itself is truncated, read contiguous UTF-8-safe subranges of that same record. Subdivide further on actual truncation or omission warnings until every part is complete; never skip the middle. If complete delivery cannot be obtained, report incomplete evidence, not partial success. Fragment text and original source coordinates are the captured evidence; physical page line numbers are read cursors, not source citations.",
-        ].join("\n\n"),
-      );
-      expect(value.calls[0]?.[0].prompt).not.toContain(
-        "submit_patchdesk_result",
-      );
-      expect(value.calls[0]?.[0].prompt).not.toContain("Changed after capture");
-      expect(value.calls[0]?.[0].outputSchema).toMatchObject({
-        type: "object",
-        additionalProperties: false,
-        required: ["groups"],
+      await expect(
+        value.invoker.invoke(
+          { ...value.input, type: "guide", guide: prepared.value },
+          { signal: new AbortController().signal },
+        ),
+      ).resolves.toEqual({
+        _tag: "err",
+        error: { reason: "evidence_mismatch" },
       });
+      expect(value.calls).toHaveLength(0);
     },
   );
 

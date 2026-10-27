@@ -1,5 +1,3 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
 import * as v from "valibot";
 
 import type { GuidePreparedInput } from "#src/domain/guide-preparation";
@@ -14,12 +12,9 @@ import {
   insightDomainIdentityCodec,
 } from "#src/domain/insight-run-binding-contract";
 import { explanationEvidenceReference } from "#src/services/explanation-evidence-reference";
+import { loadInsightEvidenceReference } from "#src/services/insight-evidence-reference";
 import { InsightResultStore } from "./insight-result-store";
 import type { InsightArtifactStore } from "./insight-artifact-store";
-import {
-  evidencePathIsOwned,
-  validateEvidenceFile,
-} from "./insight-evidence-validation";
 import { verifyInsightStreamTextRoot } from "./insight-stream-root-reader";
 import type { PatchdeskPaths } from "./patchdesk-paths";
 
@@ -42,7 +37,6 @@ export async function validateExplanationPreparedEvidence(
     prepared.inventory,
     prepared.context,
     prepared.evidenceManifest,
-    prepared.entryPageId,
   ]) {
     const verified = await verifyInsightStreamTextRoot(
       (reference) => artifacts.readBlob(profileId, reviewId, reference),
@@ -93,18 +87,19 @@ export async function validateExplanationPreparedEvidence(
   const session = parseReviewSessionId(sessionText.value);
   const runId = v.safeParse(insightArtifactIdSchema, run.runId);
   if (session._tag === "err" || !runId.success) return false;
-  const [reference, entry] = await Promise.all([
-    explanationEvidenceReference(artifacts, paths, prepared, session.value, {
+  const reference = await explanationEvidenceReference(
+    artifacts,
+    paths,
+    prepared,
+    session.value,
+    {
       ...run,
       runId: runId.output,
-    }),
-    store.readText(prepared.entryPageId, 1_024),
-  ]);
+    },
+  );
   if (
     reference === undefined ||
-    entry._tag === "err" ||
     reference.bundleId !== prepared.evidenceBundleId ||
-    reference.entryPageId !== entry.value ||
     reference.identity.profileId !== profileId ||
     reference.identity.reviewId !== reviewId ||
     reference.identity.sessionId !== session.value ||
@@ -113,45 +108,18 @@ export async function validateExplanationPreparedEvidence(
     reference.identity.headSha !== binding.value.headSha ||
     reference.identity.baseSha !== binding.value.baseSha ||
     String(reference.identity.patchHash) !== binding.value.patchHash ||
-    reference.identity.intentHash !== null ||
-    !reference.pages.some((page) => page.id === reference.entryPageId) ||
-    reference.pages.some(
-      (page) => !page.id.startsWith(`${reference.bundleId}-p`),
-    ) ||
-    reference.sources[0]?.sha256 !== prepared.patch.data.sha256 ||
-    reference.sources[0].bytes !== prepared.patch.data.bytes ||
-    reference.sources[1]?.sha256 !== prepared.context.data.sha256 ||
-    reference.sources[1].bytes !== prepared.context.data.bytes
+    reference.identity.intentHash !== null
   )
     return false;
-  if (!(await evidencePathIsOwned(paths.dataDirectory(), reference.directory)))
-    return false;
-  const files = [
-    { name: "manifest.json", ...reference.manifest },
-    ...reference.pages.map((page) => ({
-      name: `${page.id}.ndjson`,
-      sha256: page.sha256,
-      bytes: page.bytes,
-    })),
-    ...reference.sources,
-  ];
-  const names = await readdir(reference.directory);
-  const expected = new Set(files.map((file) => file.name));
-  if (
-    expected.size !== files.length ||
-    names.length !== expected.size ||
-    names.some((name) => !expected.has(name))
-  )
-    return false;
-  for (const file of files) {
-    if (options.signal?.aborted) return false;
-    const checked = await validateEvidenceFile({
-      root: paths.dataDirectory(),
-      path: join(reference.directory, file.name),
-      sha256: file.sha256,
-      bytes: file.bytes,
-    });
-    if (checked._tag === "err") return false;
-  }
-  return !options.signal?.aborted;
+  if (options.signal?.aborted) return false;
+  const checked = await loadInsightEvidenceReference(reference, paths);
+  const context = reference.sources.find(
+    (source) => source.name === "context/review-context.json",
+  );
+  return (
+    checked._tag === "ok" &&
+    context?.sha256 === prepared.context.data.sha256 &&
+    context.bytes === prepared.context.data.bytes &&
+    !options.signal?.aborted
+  );
 }

@@ -154,9 +154,21 @@ export function buildInsightEvidenceTree(input: {
   );
   put("context/review-context.json", input.context);
   put("context/review-input.md", input.reviewInput);
+  const insightName = {
+    analysis: "Analysis",
+    brief: "Brief",
+    guide: "Guide",
+    walkthrough: "Walkthrough",
+  }[input.identity.type];
+  const citationGuidance =
+    input.identity.type === "analysis"
+      ? "Cite repository path, side and source line for Analysis findings."
+      : input.identity.type === "guide"
+        ? "Cite files as fN from files.json for Guide."
+        : `Cite hunks as hN from hunks.json for ${insightName}.`;
   put(
     "README.md",
-    "Captured Analysis evidence. Start with files.json, then read every diff/ file. Open head/ only for surrounding code; skipped snapshots and their reasons are in files.json. No base blobs are captured. Binary files, symlinks and submodules have metadata only, never head text. Context contains the captured review context and review input. Cite repository path, side and source line for Analysis findings. hunks.json maps canonical hN hunks to fN files. Physical diff-file lines are not citations. files.json records any path stored under _unrepresentable/fN. manifest.json is a reading aid; the host retains the authoritative file set and digests.\n",
+    `Captured ${insightName} evidence. Start with files.json, then read every diff/ file. Open head/ only for surrounding code; skipped snapshots and their reasons are in files.json. No base blobs are captured. Binary files, symlinks and submodules have metadata only, never head text. Context contains the captured review context and review input. ${citationGuidance} hunks.json maps canonical hN hunks to fN files. Physical diff-file lines are not citations. files.json records any path stored under _unrepresentable/fN. manifest.json is a reading aid; the host retains the authoritative file set and digests.\n`,
   );
   const treeFiles = sources.map(({ name, text, sha256 }) => ({
     name,
@@ -172,6 +184,8 @@ export function buildInsightEvidenceTree(input: {
     bundleId,
     directories: [...directories],
     files: treeFiles,
+    diffs,
+    snapshots,
   });
   put("manifest.json", manifestText);
   return ok({
