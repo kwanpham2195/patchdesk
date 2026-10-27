@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clarified that Analysis must read the whole change, keep short notes across compaction, and report incomplete only when captured evidence cannot be read, not because the change is large.
+
 - Changed Analysis to read captured diffs as plain files and open head snapshots only for surrounding code, with recursive integrity checks that preserve the previous result if evidence changes.
 
 - Clarified incomplete Analysis and missing-finish failures, and instructed native Insights to request 10000 output tokens for each captured-page read.

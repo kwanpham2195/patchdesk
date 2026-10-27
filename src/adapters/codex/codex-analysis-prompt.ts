@@ -35,7 +35,7 @@ export function buildCodexAnalysisPrompt(input: {
     NATIVE_INSIGHT_INSTRUCTIONS,
     "Return exactly one JSON object satisfying the result contract below. Do not wrap it in a Markdown code fence, and do not add any prose before or after it. Use no keys beyond those listed.",
     'The required root is {"outcome":"complete"|"incomplete","result":object|null,"incomplete":object|null}. For complete use the result contract below and null incomplete. For incomplete use null result and {"reason":"insufficient_evidence"|"unable_to_complete","detail":string} with nonblank detail at most 200 characters. All three root fields are required; use no extra fields.',
-    "If you cannot complete the review, report an explicit incomplete outcome. Do not submit a partial merge verdict or fabricate a Finding. Low confidence and missing page-read coverage alone do not establish incompleteness.",
+    "Read the whole change before deciding. Report an incomplete outcome only when captured evidence cannot be read, not because the change is large. Do not submit a partial merge verdict or fabricate a Finding.",
     ANALYSIS_RESULT_CONTRACT,
     // The severity and verdict rules are stated once, by the shared Analysis prompt both providers send.
     "Give each finding an id that matches ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ and is unique among the findings.",
