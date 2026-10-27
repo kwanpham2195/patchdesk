@@ -9,6 +9,7 @@ import type {
   InsightEvidenceIdentity,
 } from "#src/domain/insight-evidence";
 import { err, ok, type Result } from "#src/domain/result";
+import { buildInsightEvidenceTree } from "./insight-evidence-tree-builder";
 import { buildInsightEvidenceBundle } from "./insight-evidence-builder";
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { readBoundedArtifact } from "./walkthrough-artifact-reader";
@@ -31,6 +32,7 @@ export class InsightEvidenceService {
     ) => Promise<void>;
     readonly snapshots: (
       context: string,
+      onSkipped: (path: string, reason: string) => void,
     ) => Promise<Readonly<Record<string, string>>>;
   }): Promise<Result<InsightEvidenceBundle, InsightEvidenceFailure>> {
     const identity = input.identity;
@@ -96,17 +98,27 @@ export class InsightEvidenceService {
         identity.type === "analysis"
           ? await readFile(reviewInputPath, "utf8")
           : "";
+      const snapshotSkips: Record<string, string> = Object.create(null);
       const snapshots =
         identity.type === "analysis"
-          ? await input.snapshots(contextRead.value)
+          ? await input.snapshots(contextRead.value, (path, reason) => {
+              snapshotSkips[path] = reason;
+            })
           : {};
-      const bundle = buildInsightEvidenceBundle({
+      const bundle = (
+        identity.type === "analysis"
+          ? buildInsightEvidenceTree
+          : buildInsightEvidenceBundle
+      )({
+        snapshotSkips,
         identity,
         patch,
         context: contextRead.value,
         reviewInput,
         snapshots,
-        directory: this.paths.insightEvidenceDirectory(
+        directory: (identity.type === "analysis"
+          ? this.paths.analysisEvidenceDirectory.bind(this.paths)
+          : this.paths.insightEvidenceDirectory.bind(this.paths))(
           identity.profileId,
           identity.sessionId,
           identity.runId,

@@ -151,8 +151,12 @@ export class InsightRunPreparation {
       patchPath: input.session.patchPath,
       observe: (phase, durationMs, counts) =>
         this.record(input.identity, phase, durationMs, counts),
-      snapshots: (context) =>
-        this.contextPack.captureChangedHeadFiles(input.session, context),
+      snapshots: (context, onSkipped) =>
+        this.contextPack.captureChangedHeadFiles(
+          input.session,
+          context,
+          onSkipped,
+        ),
     });
     if (evidence._tag === "err")
       return err(insightEvidenceFailureCategory(evidence.error.reason));
@@ -191,7 +195,7 @@ export class InsightRunPreparation {
           detail:
             counts === undefined
               ? undefined
-              : `sources=${counts.sources}; pages=${counts.pages}`,
+              : `sources=${counts.sources}; ${identity.type === "analysis" ? "files" : "pages"}=${identity.type === "analysis" ? counts.sources : counts.pages}`,
         }),
       });
     } catch {

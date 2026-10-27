@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed Analysis to read captured diffs as plain files and open head snapshots only for surrounding code, with recursive integrity checks that preserve the previous result if evidence changes.
+
 - Clarified incomplete Analysis and missing-finish failures, and instructed native Insights to request 10000 output tokens for each captured-page read.
 
 - Compacted Guide to one toolbar and one file header, with docked group explanations beside continuously scrolling code. Kept file context and cancelled-run diagnostics on request, and shortened paused recovery panels while preserving spend warnings and required acknowledgments. #831

@@ -1,5 +1,7 @@
 # Read captured Insight evidence on demand
 
+> Superseded in part by [ADR 0057](0057-read-captured-insight-evidence-as-plain-files.md). Analysis reads a captured plain-file tree. Brief, Guide and Walkthrough retain pages until their migration; capture authority, validation timing and result authority remain.
+
 > Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
 
 > Status: Accepted for #821. Supersedes the input, inspection-count, and native permission boundaries in ADRs [0016](0016-use-the-local-codex-cli-account.md), [0041](0041-drive-pi-directly-without-flue.md), and [0054](0054-use-the-local-pi-cli-account.md). Their lifecycle and result authority remain. Brief keeps the structure and citation rules in ADRs 0036 and 0040.

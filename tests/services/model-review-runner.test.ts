@@ -9,13 +9,7 @@ import {
   prepareModelReview as prepareCapturedModelReview,
 } from "#src/services/model-review-runner";
 
-import { InsightEvidencePages } from "#src/domain/insight-evidence-pages";
-import type {
-  EvidenceFragment,
-  EvidenceRecord,
-  EvidenceSource,
-  InsightEvidenceBundle,
-} from "#src/domain/insight-evidence";
+import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
 import { insightEvidenceReferenceSchema } from "#src/services/insight-evidence-reference";
 import { hashReviewArtifactContent } from "#src/services/review-artifact-hash";
 import * as v from "valibot";
@@ -35,75 +29,13 @@ async function prepareModelReview(
   });
   const patch = await readFile(input.patchPath, "utf8");
   const bundleId = hashReviewArtifactContent(patch);
-  const pages = new InsightEvidencePages(bundleId);
-  const sources: EvidenceSource[] = [];
-  const addSource = (text: string) => {
-    const source = {
-      id: `s${sources.length + 1}`,
-      name: `source-${sources.length + 1}.txt`,
-      text,
-      sha256: hashReviewArtifactContent(text),
-    };
-    sources.push(source);
-    return source;
-  };
-  // These snapshot-unit fixtures keep captured bytes in memory, not thousands of published files.
-  const fragments = (source: EvidenceSource): EvidenceFragment[] => {
-    const records: EvidenceFragment[] = [];
-    let byteStart = 0;
-    for (let start = 0; start < source.text.length;) {
-      let end = Math.min(start + 256, source.text.length);
-      if (
-        end < source.text.length &&
-        /[\uD800-\uDBFF]/.test(source.text[end - 1] ?? "")
-      )
-        end--;
-      const text = source.text.slice(start, end);
-      const byteEnd = byteStart + Buffer.byteLength(text);
-      records.push({
-        kind: "fragment",
-        sourceId: source.id,
-        byteStart,
-        byteEnd,
-        fragmentIndex: records.length,
-        continued: end < source.text.length,
-        text,
-      });
-      start = end;
-      byteStart = byteEnd;
-    }
-    return records;
-  };
-  pages.add(fragments(addSource(patch)));
-  const contextPages = [
-    context,
-    await readFile(input.reviewInputPath, "utf8"),
-  ].map((text) => pages.add(fragments(addSource(text))));
-  const inventory: EvidenceRecord[] = [];
-  for (const [snapshotPath, text] of Object.entries(snapshots)) {
-    const snapshotPage = pages.add(fragments(addSource(text)));
-    const metadata = addSource(
-      JSON.stringify({
-        snapshotPath,
-        snapshot: "captured",
-        diff: "not_represented",
-      }),
-    );
-    inventory.push(...fragments(metadata), {
-      kind: "link",
-      relation: "snapshot",
-      pageId: snapshotPage,
-    });
-  }
-  const inventoryPage = pages.add(inventory);
-  const entryPageId = pages.add([
-    { kind: "link", relation: "inventory", pageId: inventoryPage },
-    ...contextPages.map((pageId) => ({
-      kind: "link" as const,
-      relation: "context" as const,
-      pageId,
-    })),
-  ]);
+  const sources = Object.entries(snapshots).map(([path, text], index) => ({
+    id: `s${index + 1}`,
+    name: `head/${path}`,
+    text,
+    sha256: hashReviewArtifactContent(text),
+  }));
+  const entryPageId = `${bundleId}-p1`;
   const identity = v.parse(insightEvidenceReferenceSchema, {
     identity: {
       profileId: "profile",
@@ -128,14 +60,23 @@ async function prepareModelReview(
     identity,
     bundleId,
     directory: input.worktreePath,
-    entryPageId,
     sources,
-    pages: pages.pages().map((page) => ({
-      ...page,
-      sha256: hashReviewArtifactContent(page.text),
-    })),
+    pages: [],
     manifestText: "{}",
-    patchPath: input.patchPath,
+    tree: {
+      format: "insight-evidence-tree/1",
+      directories: ["head"],
+      files: sources.map(({ name, text, sha256 }) => ({
+        name,
+        bytes: Buffer.byteLength(text),
+        sha256,
+      })),
+      diffs: [],
+      snapshots: Object.keys(snapshots).map((path) => ({
+        path,
+        name: `head/${path}`,
+      })),
+    },
   };
   return prepareCapturedModelReview({ ...input, evidence });
 }
@@ -221,7 +162,9 @@ describe("model review preparation", () => {
         }),
       });
 
-      expect(prepared.prompt).toContain("EVIDENCE ENTRY:");
+      expect(prepared.prompt).toContain(
+        "Start with README.md, then files.json.",
+      );
       expect(prepared.prompt).not.toContain("Source: Pull request #42");
       expect(prepared.prompt).toContain(
         "Review the complete represented change and decide whether it should merge.",

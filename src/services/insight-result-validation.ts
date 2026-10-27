@@ -1,3 +1,4 @@
+import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { retainGuide } from "#src/domain/guide";
 import { readFile } from "node:fs/promises";
 
@@ -51,8 +52,23 @@ export async function validateInsightResult(
     const guide = retainGuide(value, input.guide);
     return guide._tag === "ok" ? guide : err("invalid_result");
   }
-  const patch = await readFile(input.patchPath, "utf8").catch(() => undefined);
-  if (patch === undefined) return err("invalid_result");
+  const tree = input.evidence?.tree;
+  const diffTexts = tree?.diffs.map(
+    (name) =>
+      input.evidence?.sources.find((source) => source.name === name)?.text,
+  );
+  if (diffTexts?.some((text) => text === undefined))
+    return err("invalid_result");
+  const patch =
+    tree === undefined
+      ? await readFile(input.patchPath, "utf8").catch(() => undefined)
+      : diffTexts?.join("");
+  if (
+    patch === undefined ||
+    (tree !== undefined &&
+      hashReviewArtifactContent(patch) !== revision.patchHash)
+  )
+    return err("invalid_result");
   if (type === "analysis") {
     const model = parseModelReviewResult(value);
     if (model._tag === "err") return err("invalid_result");

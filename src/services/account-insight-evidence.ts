@@ -1,3 +1,5 @@
+import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
+import { analysisEvidencePrompt } from "./insight-evidence-reference";
 import { join } from "node:path";
 
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
@@ -16,6 +18,22 @@ export async function accountInsightEvidenceInstructions(
   bundle: InsightEvidenceBundle,
   paths: PatchdeskPaths,
 ): Promise<Result<string, InsightEvidenceFailure>> {
+  if (bundle.identity.type === "analysis") {
+    if (bundle.tree === undefined)
+      return err({
+        _tag: "InsightEvidenceFailure",
+        reason: "evidence_mismatch",
+      });
+    const checked = await new InsightEvidenceStore(paths).validate(bundle);
+    return checked._tag === "err"
+      ? checked
+      : ok(
+          [
+            NATIVE_INSIGHT_INSTRUCTIONS,
+            analysisEvidencePrompt(bundle.directory),
+          ].join("\n\n"),
+        );
+  }
   const entry = bundle.pages.find((page) => page.id === bundle.entryPageId);
   const identity = bundle.identity;
   if (

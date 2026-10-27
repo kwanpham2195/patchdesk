@@ -576,6 +576,19 @@ export class PatchdeskPaths {
     );
   }
 
+  /** Plain-file Analysis captures remain under their session's preparation lifetime. */
+  analysisEvidenceDirectory(
+    profileId: WorkspaceProfileId,
+    sessionId: ReviewSessionId,
+    runId: InsightRunId,
+  ): string {
+    return join(
+      this.preparedDirectory(profileId, sessionId),
+      "evidence",
+      runId,
+    );
+  }
+
   preparedContextFile(
     profileId: WorkspaceProfileId,
     sessionId: ReviewSessionId,

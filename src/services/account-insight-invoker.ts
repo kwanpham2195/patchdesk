@@ -197,6 +197,8 @@ export class AccountInsightInvoker implements InsightInvoker {
     // SAFETY: candidatePath is realpath-checked against this session's app-owned worktree and its immutable expected head above.
     const worktreePath = candidatePath as RepresentedReviewWorktree;
     if (input.type === "guide") {
+      if (input.evidence.tree !== undefined)
+        return err({ reason: "evidence_mismatch" as const });
       if (input.guide === undefined)
         return err({
           reason: "execution_failed" as const,
@@ -228,6 +230,8 @@ export class AccountInsightInvoker implements InsightInvoker {
           });
     }
     if (input.type === "brief") {
+      if (input.evidence.tree !== undefined)
+        return err({ reason: "evidence_mismatch" as const });
       const briefPatchPath = resolvedArtifacts[2];
       if (briefPatchPath === undefined)
         return err({ reason: "review_worktree_unavailable" as const });
@@ -285,10 +289,7 @@ export class AccountInsightInvoker implements InsightInvoker {
         this.provider === "codex-cli-account" &&
         options.onAnalysisCommandFailure !== undefined
           ? {
-              entryPath: join(
-                input.evidence.directory,
-                `${input.evidence.entryPageId}.ndjson`,
-              ),
+              entryPath: join(input.evidence.directory, "README.md"),
               onFirstFailure: options.onAnalysisCommandFailure,
             }
           : undefined,

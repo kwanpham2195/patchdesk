@@ -254,11 +254,13 @@ export class ReviewContextPackService {
   captureChangedHeadFiles(
     session: ReviewSession,
     context: string,
+    onSkipped?: (path: string, reason: string) => void,
   ): Promise<Readonly<Record<string, string>>> {
     return captureModelReviewSnapshots({
       worktreePath: session.worktree.path,
       headSha: session.key.headSha,
       context,
+      onSkipped,
       gitShow: async (argv) => {
         const result = await this.dependencies.git.run(argv);
         if (result._tag === "err")
