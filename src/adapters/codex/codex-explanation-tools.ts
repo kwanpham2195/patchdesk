@@ -398,7 +398,10 @@ export class CodexExplanationTools {
           ? { accepted: true, sequence: outcome.sequence, ...outcome.result }
           : outcome.status === "not_found"
             ? { found: false }
-            : { refused: outcome.reason },
+            : {
+                refused: outcome.reason,
+                ...("coverage" in outcome ? outcome.coverage : undefined),
+              },
       );
       const reply = {
         id: call.id,
