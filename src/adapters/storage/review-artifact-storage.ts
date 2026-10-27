@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 
-import { makeInsightEvidenceTreeRemovable } from "./insight-evidence-tree-removal";
 import { mapConcurrent } from "#src/domain/map-concurrent";
 import { err, ok, type Result } from "#src/domain/result";
 import { isPathContained } from "./path-containment";
@@ -312,11 +311,6 @@ export class ReviewArtifactStorage {
     ) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    const writable = await makeInsightEvidenceTreeRemovable(
-      this.paths.dataDirectory(),
-      join(sessionRoot, "prepared", "evidence"),
-    );
-    if (writable._tag === "err") return writable;
     const removedSession = await removePath(sessionRoot);
     if (removedSession._tag === "err") return removedSession;
     const removedWorktree = await removePath(worktreeRoot);
@@ -352,11 +346,6 @@ export class ReviewArtifactStorage {
     if (!(await this.isUnderRoot(worktreeRoot, quarantineWorktreeRoot))) {
       return err({ _tag: "StorageFailure", operation: "write", reason: "io" });
     }
-    const writable = await makeInsightEvidenceTreeRemovable(
-      this.paths.dataDirectory(),
-      join(sessionRoot, "prepared", "evidence"),
-    );
-    if (writable._tag === "err") return writable;
     const removedSession = await removePath(sessionRoot);
     if (removedSession._tag === "err") return removedSession;
     return removePath(worktreeRoot);

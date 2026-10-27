@@ -1,4 +1,3 @@
-import { removeInsightFixtureRoot } from "./insight-evidence-fixture-cleanup";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
@@ -10,7 +9,7 @@ import type {
 import { ExplanationPreparationService } from "#src/services/explanation-preparation-service";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -86,7 +85,9 @@ export const analysisResult = {
 /** Each importing suite registers this in its own `afterEach`. */
 export async function cleanupRoots(): Promise<void> {
   for (const stop of stopFixtures.splice(0)) await stop();
-  await Promise.all(roots.splice(0).map(removeInsightFixtureRoot));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 }
 
 /**
