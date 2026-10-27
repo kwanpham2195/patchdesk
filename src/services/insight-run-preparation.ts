@@ -180,7 +180,7 @@ export class InsightRunPreparation {
     identity: InsightEvidenceIdentity,
     phase: string,
     durationMs: number,
-    counts?: { readonly sources: number; readonly pages: number },
+    counts?: { readonly sources: number },
   ): Promise<void> {
     try {
       await this.diagnostics?.record({
@@ -192,10 +192,7 @@ export class InsightRunPreparation {
         retryable: false,
         durationMs: Math.round(durationMs),
         ...definedProps({
-          detail:
-            counts === undefined
-              ? undefined
-              : `sources=${counts.sources}; ${identity.type === "analysis" ? "files" : "pages"}=${identity.type === "analysis" ? counts.sources : counts.pages}`,
+          detail: counts === undefined ? undefined : `files=${counts.sources}`,
         }),
       });
     } catch {

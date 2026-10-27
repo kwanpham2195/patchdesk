@@ -27,7 +27,7 @@ export class InsightEvidenceService {
     readonly observe?: (
       phase: "evidence-build" | "evidence-publish",
       durationMs: number,
-      counts: { readonly sources: number; readonly pages: number },
+      counts: { readonly sources: number },
     ) => Promise<void>;
     readonly snapshots: (
       context: string,
@@ -120,7 +120,6 @@ export class InsightEvidenceService {
       if (bundle._tag === "err") return bundle;
       const counts = {
         sources: bundle.value.sources.length,
-        pages: bundle.value.pages.length,
       };
       await input.observe?.(
         "evidence-build",

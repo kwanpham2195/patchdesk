@@ -408,7 +408,7 @@ export class InsightRunExecutor {
       const validated = await validateInsightResult(
         type,
         payload.output,
-        { ...input, patchPath: input.evidence.patchPath ?? input.patchPath },
+        input,
         {
           sessionId: input.sessionId,
           headSha: latestSession.value.key.headSha,

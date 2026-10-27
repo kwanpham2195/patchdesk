@@ -38,7 +38,7 @@ async function artifacts(
         patchHash: "c".repeat(64),
       },
       bundleId: "d".repeat(64),
-      entryPageId: `${"d".repeat(64)}-p1`,
+      directory: "captured-evidence",
     } as never,
   };
 }
@@ -51,7 +51,7 @@ describe("complete Guide preparation", () => {
     expect(result.prompt).toContain('BCP 47 tag "vi"');
     expect(result.inventory[0]?.id).toBe("f1");
     expect(result.patchText).toContain("diff --git");
-    expect(result.prompt).toContain("EVIDENCE ENTRY:");
+    expect(result.prompt).toContain("Start with README.md, then files.json.");
     expect(result.prompt).not.toContain("Review evidence");
     expect(result.prompt).not.toContain("diff --git");
     expect(Buffer.byteLength(result.prompt)).toBeLessThanOrEqual(

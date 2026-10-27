@@ -29,7 +29,7 @@ export async function composeNativeExplanationPrompt(
   const reference = insightEvidenceReference(evidence);
   const initial =
     kind === "guide"
-      ? composeGuideSessionPrompt(reference, language, "native")
+      ? composeGuideSessionPrompt(reference, language)
       : composeWalkthroughSessionPrompt(reference, language);
   const prompt = [
     initial,

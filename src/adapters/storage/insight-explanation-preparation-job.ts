@@ -62,7 +62,7 @@ type Options = { readonly signal?: AbortSignal };
 
 /**
  * Worker operation: captures the stable patch snapshot, builds the complete inventory, the run-owned context and the
- * evidence pages in this thread, stores them in the destination scope, verifies everything it stored and returns only
+ * evidence tree in this thread, stores them in the destination scope, verifies everything it stored and returns only
  * the selected prepared root. It never publishes a result, calls a provider or touches the source Review.
  */
 export async function prepareExplanationInputs(
@@ -342,7 +342,6 @@ class StoredInputs {
         inventoryFiles: inventory.value.length,
         contextBytes: Buffer.byteLength(context.text),
         evidenceSources: bundle.value.sources.length,
-        evidencePages: bundle.value.pages.length,
       },
     });
   }

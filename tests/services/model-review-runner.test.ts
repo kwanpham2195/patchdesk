@@ -35,7 +35,6 @@ async function prepareModelReview(
     text,
     sha256: hashReviewArtifactContent(text),
   }));
-  const entryPageId = `${bundleId}-p1`;
   const identity = v.parse(insightEvidenceReferenceSchema, {
     identity: {
       profileId: "profile",
@@ -51,8 +50,13 @@ async function prepareModelReview(
     },
     bundleId,
     directory: input.worktreePath,
-    entryPageId,
-    pages: [],
+    tree: {
+      format: "insight-evidence-tree/1",
+      directories: [],
+      files: [],
+      diffs: [],
+      snapshots: [],
+    },
     sources: [],
     manifest: { sha256: bundleId, bytes: 0 },
   }).identity;
@@ -61,7 +65,6 @@ async function prepareModelReview(
     bundleId,
     directory: input.worktreePath,
     sources,
-    pages: [],
     manifestText: "{}",
     tree: {
       format: "insight-evidence-tree/1",

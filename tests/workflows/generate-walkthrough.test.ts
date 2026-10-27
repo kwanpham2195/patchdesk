@@ -31,7 +31,7 @@ afterEach(cleanupRoots);
 const reference = v.parse(
   insightEvidenceReferenceSchema,
   JSON.parse(
-    '{"identity":{"profileId":"profile","reviewId":"github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa","sessionId":"github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab","runId":"insight-walkthrough-1-aaaaaaaaaaaa-review","type":"walkthrough","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","patchHash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","intentHash":null},"bundleId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","directory":"/fixture","entryPageId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd-p1","pages":[],"sources":[],"manifest":{"sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","bytes":2}}',
+    '{"identity":{"profileId":"profile","reviewId":"github.com__octo-org__patchdesk__pr-42__review-aaaaaaaaaaaa","sessionId":"github.com__octo-org__patchdesk__pr-42__sha-aaaaaaaa__base-bbbbbbbb__0123456789ab","runId":"insight-walkthrough-1-aaaaaaaaaaaa-review","type":"walkthrough","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","patchHash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","intentHash":null},"bundleId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","directory":"/fixture","tree":{"format":"insight-evidence-tree/1","directories":[],"files":[],"diffs":[],"snapshots":[]},"sources":[],"manifest":{"sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","bytes":2}}',
   ),
 );
 const begin = {
@@ -284,7 +284,7 @@ describe("Walkthrough prompt and preparation", () => {
     expect(prompt).toContain(
       "State what the patch does, never why it was made",
     );
-    expect(prompt).toContain("EVIDENCE ENTRY:");
+    expect(prompt).toContain("Start with README.md, then files.json.");
     expect(prompt).toContain("Call finish");
     expect(prompt).not.toContain("submit_patchdesk_result");
     expect(prompt).not.toContain("at most 36");

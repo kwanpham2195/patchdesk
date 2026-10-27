@@ -1,6 +1,6 @@
 # Read captured Insight evidence on demand
 
-> Superseded in part by [ADR 0057](0057-read-captured-insight-evidence-as-plain-files.md). Analysis reads a captured plain-file tree. Brief, Guide and Walkthrough retain pages until their migration; capture authority, validation timing and result authority remain.
+> Superseded in part by [ADR 0057](0057-read-captured-insight-evidence-as-plain-files.md). All four Insights read a captured plain-file tree. The evidence page implementation has been deleted; capture authority, validation timing and result authority remain. The decisions below retain their historical context.
 
 > Superseded in part by [ADR 0056](0056-run-insights-through-native-cli-accounts.md). New Insights use native CLI accounts and retain native history separately from host diagnostics. Historical API provenance remains readable. The decisions below retain their historical context.
 
