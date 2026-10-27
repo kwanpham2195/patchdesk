@@ -366,7 +366,7 @@ export function evidenceReferencePrompt(
 /** Approved native Analysis evidence instructions shared by both account providers. */
 export function analysisEvidencePrompt(directory: string): string {
   return (
-    "Captured evidence for this run is the read-only directory below. Start with README.md, then files.json. Read every file under diff/. Open head/ files only where a hunk needs its surrounding code; an unread head file is not missing evidence. Use your read-only tools (rg, sed -n, cat, ls). Read large files in line ranges. Do not modify or create files in this directory. Cite hunks as hN and files as fN from files.json and hunks.json; line numbers inside a .diff file are not citations." +
+    "Captured evidence for this run is the read-only directory below. Start with README.md, then files.json. Read every file under diff/. This can take many tool calls; you have time for it. Keep short notes of what you find as you go, so earlier files survive if the session compacts. Open head/ files only where a hunk needs its surrounding code; an unread head file is not missing evidence. Use your read-only tools (rg, sed -n, cat, ls). Read large files in line ranges. Do not modify or create files in this directory. Cite hunks as hN and files as fN from files.json and hunks.json; line numbers inside a .diff file are not citations." +
     `\n${JSON.stringify(directory)}`
   );
 }
