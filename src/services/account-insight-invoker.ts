@@ -230,13 +230,11 @@ export class AccountInsightInvoker implements InsightInvoker {
           });
     }
     if (input.type === "brief") {
-      if (input.evidence.tree !== undefined)
-        return err({ reason: "evidence_mismatch" as const });
       const briefPatchPath = resolvedArtifacts[2];
       if (briefPatchPath === undefined)
         return err({ reason: "review_worktree_unavailable" as const });
       const briefPrompt = await prepareBriefPrompt({
-        patchPath: input.evidence.patchPath,
+        patchPath: briefPatchPath,
         language: input.language,
         evidence,
       });

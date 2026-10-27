@@ -39,7 +39,10 @@ import {
 export type InsightCaptureDiagnostics = {
   /** Supplies the app's context pack, built over its GitHub reader once that exists; Guide preparation is refused before. */
   connectContext(
-    pack: Pick<ReviewContextPackService, "captureRunContext">,
+    pack: Pick<
+      ReviewContextPackService,
+      "captureRunContext" | "captureChangedHeadFiles"
+    >,
   ): void;
   /** Binds the current window's main-frame identity and expected development renderer origin. */
   install(window: BrowserWindow, origin: string): void;
@@ -84,7 +87,10 @@ export function createInsightCaptureDiagnostics(
   let task: Promise<void> | undefined;
   let disposal: Promise<void> | undefined;
   let contextPack:
-    | Pick<ReviewContextPackService, "captureRunContext">
+    | Pick<
+        ReviewContextPackService,
+        "captureRunContext" | "captureChangedHeadFiles"
+      >
     | undefined;
   let recovery: Promise<void> | undefined;
   let operation: Operation | undefined;

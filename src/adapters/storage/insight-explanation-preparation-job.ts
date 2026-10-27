@@ -36,7 +36,7 @@ import {
   type InsightTextRootDescriptor,
 } from "#src/domain/insight-artifact-scalars";
 import { ok } from "#src/domain/result";
-import { buildInsightEvidenceBundle } from "#src/services/insight-evidence-builder";
+import { buildInsightEvidenceTree } from "#src/services/insight-evidence-tree-builder";
 import {
   changedPatchFiles,
   renderReviewContext,
@@ -260,19 +260,18 @@ class StoredInputs {
     const contextRoot = await this.textRoot(context.text);
     if (contextRoot._tag === "err") return contextRoot;
     if (this.options.signal?.aborted) return this.stopped("io");
-    const bundle = buildInsightEvidenceBundle({
+    const bundle = buildInsightEvidenceTree({
       identity,
       patch: patch.value,
       context: context.text,
       reviewInput: "",
-      snapshots: {},
-      directory: this.destination.insightEvidenceDirectory(
+      snapshots: staged.value.snapshots,
+      snapshotSkips: staged.value.snapshotSkips,
+      directory: this.destination.analysisEvidenceDirectory(
         identity.profileId,
         identity.sessionId,
         identity.runId,
       ),
-      inventory: inventory.value,
-      ...definedProps({ narrativeHunks: narrative?.value.hunks }),
     });
     if (bundle._tag === "err") return guidePreparationFailure("invalid_source");
     const evidence = new InsightEvidenceStore(this.destination);
@@ -281,10 +280,6 @@ class StoredInputs {
       return this.stopped("io");
     const manifestRoot = await this.textRoot(bundle.value.manifestText);
     if (manifestRoot._tag === "err") return manifestRoot;
-    if (bundle.value.tree !== undefined)
-      return guidePreparationFailure("invalid_source");
-    const entryRoot = await this.textRoot(bundle.value.entryPageId);
-    if (entryRoot._tag === "err") return entryRoot;
     const bundleId = v.safeParse(
       insightArtifactHashSchema,
       bundle.value.bundleId,
@@ -297,7 +292,6 @@ class StoredInputs {
       context: contextRoot.value,
       evidenceManifest: manifestRoot.value,
       evidenceBundleId: bundleId.output,
-      entryPageId: entryRoot.value,
       contextCompleteness: {
         knownOmittedChecks: context.truncated.checks,
         knownOmittedThreads: context.truncated.threads,
@@ -336,7 +330,6 @@ class StoredInputs {
       readBack.value.inventory,
       readBack.value.context,
       readBack.value.evidenceManifest,
-      readBack.value.entryPageId,
     ])
       if (!(await this.verifiedStructure(root))) return this.stopped("io");
     if ((await evidence.validate(bundle.value, this.options))._tag === "err")
@@ -476,6 +469,8 @@ class StoredInputs {
 
 function materialOf(context: GuideContextInput) {
   return {
+    snapshots: context.snapshots,
+    snapshotSkips: context.snapshotSkips,
     ...definedProps({ comments: context.comments, checks: context.checks }),
     pr: context.pr,
     criteria: context.criteria,

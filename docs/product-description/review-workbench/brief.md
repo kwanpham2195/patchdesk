@@ -62,7 +62,7 @@ Starting the run binds it to the current profile, Review session, represented he
 
 ### While the action runs
 
-The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
+The run captures the represented revision before generation. The model reads the captured diffs as plain files, without full-file snapshots or review context. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
 Start run changes to Starting…, and the dialog cannot be closed until the start request answers. If the start request fails, the dialog shows "Insight run did not start." with "Brief could not start. Check the run options and try again."
 
@@ -168,6 +168,8 @@ A failed run shows a concise explanation, its available recovery action, and whe
 - In the Run Insights dialog, a row left unchecked starts nothing and keeps its saved preference; only an accepted start saves a row's options.
 
 ## Open questions and verification
+
+Captured-file generation follows the slice 2 source change after `5ac4d3c5`, under [ADR 0057](../../adr/0057-read-captured-insight-evidence-as-plain-files.md). The 2026-10-27 Codex CLI account run on a 516-file Review retained a Brief whose cited hunks all matched the patch; its result screenshot was inspected. This does not establish complete model reading or Pi parity.
 
 Native-only execution and shared controls are revised from the uncommitted source following `a18b0753` on 2026-10-25, under [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Recorded lifecycle checks covered both native providers and all four Insights before API removal; a fresh Pi Guide also completed and reopened after removal. These checks do not establish content quality or every Review-source and recovery variant. Final desktop and narrow shared-control, Activity, Details, and acknowledgment checks remain pending. The dated evidence below describes earlier implementations; its no-history and API-only statements do not describe the current contract.
 

@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, unlink } from "node:fs/promises";
+import { open, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { definedProps } from "#src/domain/defined-props";
 import { err, ok, type Result } from "#src/domain/result";
 import type { ReviewSession } from "#src/domain/review-session";
 import type { ReviewContextPackService } from "./review-context-pack-service";
+import { changedPatchFiles } from "./review-context-service";
 
 /** A private, hash-bound context input in the run's destination scope; only its locator leaves the host. */
 export type StagedGuideContext = {
@@ -22,7 +23,10 @@ export type StagedGuideContext = {
  * in a new private file. The shared session context is never rewritten, so a concurrent Insight keeps its own.
  */
 export async function stageGuideContext(
-  pack: Pick<ReviewContextPackService, "captureRunContext">,
+  pack: Pick<
+    ReviewContextPackService,
+    "captureRunContext" | "captureChangedHeadFiles"
+  >,
   session: ReviewSession,
   destinationReview: string,
   runId: string,
@@ -42,6 +46,19 @@ export async function stageGuideContext(
     );
   if (signal?.aborted) return err("aborted");
   const { material, upstream } = captured.value;
+  const patch = await readFile(session.patchPath, "utf8").catch(
+    () => undefined,
+  );
+  if (patch === undefined) return err("io");
+  const snapshotSkips: Record<string, string> = Object.create(null);
+  const snapshots = await pack.captureChangedHeadFiles(
+    session,
+    JSON.stringify({ changedFiles: changedPatchFiles(patch) }),
+    (path, reason) => {
+      snapshotSkips[path] = reason;
+    },
+  );
+  if (signal?.aborted) return err("aborted");
   // The job parses this with `guideContextInputSchema` before using any field.
   const staged = {
     pr: material.pr,
@@ -50,6 +67,8 @@ export async function stageGuideContext(
     packageSummary: material.packageSummary,
     omitted: material.omitted,
     upstreamCompleteness: upstream,
+    snapshots,
+    snapshotSkips,
   };
   const bytes = Buffer.from(JSON.stringify(staged), "utf8");
   const path = join(destinationReview, `.guide-context-${runId}.json`);

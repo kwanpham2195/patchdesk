@@ -26,7 +26,6 @@ const guidePreparedInputSchema = v.strictObject({
   context: insightTextRootDescriptorSchema,
   evidenceManifest: insightTextRootDescriptorSchema,
   evidenceBundleId: insightArtifactHashSchema,
-  entryPageId: insightTextRootDescriptorSchema,
   contextCompleteness: guideContextCompletenessSchema,
 });
 
@@ -114,6 +113,8 @@ export const guideContextInputSchema = v.strictObject({
     threads: insightArtifactUnsignedSchema,
   }),
   upstreamCompleteness: v.picklist(["complete", "partial", "unknown"]),
+  snapshots: v.record(v.string(), v.string()),
+  snapshotSkips: v.record(v.string(), v.string()),
 });
 
 /** Parsed private context input for one Guide preparation. */

@@ -18,7 +18,7 @@ export type BriefPromptFailure =
   | { readonly reason: "patch_too_large" }
   | { readonly reason: "patch_unreadable" };
 
-/** Counts deterministic facts from the bounded canonical patch; model evidence stays in captured pages. */
+/** Counts deterministic facts from the bounded canonical patch. */
 export async function prepareBriefPrompt(input: {
   readonly patchPath: string;
   readonly language: InsightLanguage;
@@ -40,7 +40,7 @@ export async function prepareBriefPrompt(input: {
     [
       "Write a read-only Brief for the supplied immutable patch.",
       insightOutputGuidance("brief", input.language),
-      "Every citation in flow must be an h alias from the captured citation pages; a citation that does not resolve is discarded.",
+      "Every citation in flow must be an h alias from the captured hunks.json; a citation that does not resolve is discarded.",
       `List in reachSymbols up to ${MAX_REACH_SYMBOLS} exported functions, types, or constants whose signature or meaning this patch changes. Write the exact identifier names, as spelled in the patch, and nothing else: no counts, no paths, no prose. Prefer names that callers outside the changed files use -- a helper whose behavior changed and that other files call matters more than a new constant only the patch references. Patchdesk counts their callers itself.`,
       "PATCH FACTS, counted by Patchdesk:",
       renderBriefPatchFacts(

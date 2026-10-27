@@ -1,6 +1,7 @@
 import { realpath, lstat } from "node:fs/promises";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
+import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
 import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
 import { runPiExplanation } from "#src/adapters/pi-cli/pi-explanation-session";
 import { codexExplanationDeclarations } from "#src/adapters/codex/codex-explanation-tools";
@@ -117,7 +118,7 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
     if (attempt._tag === "err") return fail("pi_attempt_storage_refused");
     // SAFETY: this app-owned worktree's real path and captured immutable head were checked above.
     const worktreePath = worktree as RepresentedReviewWorktree;
-    return runPiExplanation({
+    const outcome = await runPiExplanation({
       request: input,
       binding:
         request.kind === "guide"
@@ -133,5 +134,19 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
       attempt: attempt.value,
       declarations,
     });
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the post-invocation evidence check must observe the tree after the session ends.
+    const checked = await new InsightEvidenceStore(this.paths).validate(
+      bundle.value,
+    );
+    return checked._tag === "err"
+      ? {
+          _tag: "failed",
+          reason:
+            checked.error.reason === "invalid_input"
+              ? "evidence_mismatch"
+              : checked.error.reason,
+          effectKnown: true,
+        }
+      : outcome;
   }
 }

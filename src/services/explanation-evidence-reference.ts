@@ -1,5 +1,3 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import * as v from "valibot";
 
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
@@ -12,9 +10,8 @@ import {
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import type { InsightTextRootDescriptor } from "#src/domain/insight-artifact-scalars";
-import { mapConcurrent } from "#src/domain/map-concurrent";
 import {
-  insightEvidenceReferenceSchema,
+  treeEvidenceReferenceSchema,
   type InsightEvidenceReference,
 } from "./insight-evidence-reference";
 
@@ -33,8 +30,7 @@ export async function explanationEvidenceReference(
     readonly runId: string;
   },
 ): Promise<
-  | Extract<InsightEvidenceReference, { readonly entryPageId: string }>
-  | undefined
+  Extract<InsightEvidenceReference, { readonly tree: object }> | undefined
 > {
   const manifest = await new InsightResultStore(
     artifacts,
@@ -48,50 +44,42 @@ export async function explanationEvidenceReference(
       v.looseObject({
         identity: v.unknown(),
         bundleId: v.string(),
-        entryPageId: v.string(),
-        pages: v.array(v.strictObject({ id: v.string(), sha256: v.string() })),
-        sources: v.array(
-          v.strictObject({
-            id: v.string(),
-            name: v.string(),
-            sha256: v.string(),
-          }),
-        ),
+        ...treeEvidenceReferenceSchema.entries.tree.entries,
       }),
       JSON.parse(manifest.value),
     );
-    const directory = destination.insightEvidenceDirectory(
+    const directory = destination.analysisEvidenceDirectory(
       run.profileId,
       sessionId,
       runId.value,
     );
-    const size = async (name: string): Promise<number> =>
-      (await stat(join(directory, name))).size;
-    const [pages, sources] = await Promise.all([
-      mapConcurrent(parsed.pages, 8, async (page) => ({
-        ...page,
-        bytes: await size(`${page.id}.ndjson`),
-      })),
-      mapConcurrent(parsed.sources, 8, async (source) => ({
-        ...source,
-        bytes: await size(source.name),
-      })),
-    ]);
-    const reference = v.safeParse(insightEvidenceReferenceSchema, {
+    const files = [
+      ...parsed.files,
+      {
+        name: "manifest.json",
+        sha256: prepared.evidenceManifest.data.sha256,
+        bytes: prepared.evidenceManifest.data.bytes,
+      },
+    ];
+    const reference = v.safeParse(treeEvidenceReferenceSchema, {
       identity: parsed.identity,
       bundleId: parsed.bundleId,
       directory,
-      entryPageId: parsed.entryPageId,
-      pages,
-      sources,
+      pages: [],
+      sources: files.map((file, index) => ({ ...file, id: `s${index + 1}` })),
+      tree: {
+        format: parsed.format,
+        directories: parsed.directories,
+        files,
+        diffs: parsed.diffs,
+        snapshots: parsed.snapshots,
+      },
       manifest: {
         sha256: prepared.evidenceManifest.data.sha256,
         bytes: prepared.evidenceManifest.data.bytes,
       },
     });
-    return reference.success && !("tree" in reference.output)
-      ? reference.output
-      : undefined;
+    return reference.success ? reference.output : undefined;
   } catch {
     return undefined;
   }

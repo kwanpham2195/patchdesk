@@ -63,7 +63,7 @@ Both dialogs and agent-request approval offer Codex CLI account and pi CLI accou
 
 ### While the action runs
 
-The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. Empty or unindexable patches and captured patches over 64 MiB fail preparation without a provider request. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for retained evidence and diagnostic detail.
+The run captures the represented revision before generation. The model reads captured diffs as plain files and can open captured head files for surrounding code. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. Empty or unindexable patches and captured patches over 64 MiB fail preparation without a provider request. Captured head text is limited to 512 KiB per file and 4 MiB per run; a skipped snapshot does not remove its diff. Change intent remains excluded. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for retained evidence and diagnostic detail.
 
 The reader loads one section at a time. Section movement updates the active prose and cited hunks together and selects the matching chapter window. Citations load in pages with Previous citations and More citations. Visible citation cards load their evidence; off-screen cards do not keep every diff mounted. Each card shows a single captured hunk with its original file header and line numbers. It uses natural height and lets the reader own scrolling. It respects unified or split layout, wrapping, app appearance, and diff theme. Each cited hunk starts from the saved View options of the Diff tab; a change made in the Walkthrough applies only to that hunk and is not saved.
 
@@ -149,6 +149,8 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - A reviewed marker stays on screen even when its save fails.
 
 ## Open questions and verification
+
+Captured-file generation and optional head snapshots follow the slice 2 source change after `5ac4d3c5`, under [ADR 0057](../../adr/0057-read-captured-insight-evidence-as-plain-files.md). On 2026-10-27, a Codex CLI account run on a 53-file Review published 2 chapters and 6 sections citing 31 of 127 hunks. Its result screenshot and Pi generation for this change remain unverified. Reader pagination is unchanged.
 
 Native-only behavior is revised from the uncommitted source following `a18b0753` on 2026-10-25, under [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md). Recorded lifecycle checks covered both native providers and all four Insights before API removal; a fresh Pi Guide also completed and reopened after removal. Final shared-control, Activity, Details, and acknowledgment acceptance remains pending. The dated API-only, disabled-account, and Resume evidence below describes earlier implementations, not the current contract. Content quality and full Review-source and recovery coverage remain separate from successful lifecycle checks.
 
