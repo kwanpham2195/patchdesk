@@ -1,3 +1,4 @@
+import type { ExplanationFailureDiagnostic } from "#src/domain/insight-failure-diagnostic";
 import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
 import { definedProps } from "#src/domain/defined-props";
 import { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
@@ -44,7 +45,7 @@ import {
 import { WalkthroughProducerPass } from "./walkthrough-producer-pass";
 import { WalkthroughPublisher } from "./walkthrough-result-publication";
 import { hasExplanationProducer } from "./explanation-producer";
-import { explanationVersionDiagnostic } from "./explanation-producer";
+import { explanationFailureDiagnostic } from "./explanation-producer";
 import { recoverNativeExplanationPass } from "./explanation-local-recovery";
 import type { InsightSlotKey } from "./insight-slot-records";
 
@@ -508,7 +509,7 @@ export class WalkthroughGenerationService {
       return;
     }
     if (runtime.value.frozen === null) {
-      const diagnostic = explanationVersionDiagnostic(
+      const diagnostic = explanationFailureDiagnostic(
         outcome,
         pass.request.selection.provider,
       );
@@ -551,7 +552,7 @@ export class WalkthroughGenerationService {
       } else
         await this.settle(
           run,
-          diagnostic !== undefined
+          diagnostic === "unsupported_codex_version"
             ? "capability_unavailable"
             : expired
               ? "resource_exhausted"
@@ -665,7 +666,7 @@ export class WalkthroughGenerationService {
     run: InsightRunRef,
     code: InsightFailureRecord["code"],
     phase: InsightFailureRecord["phase"],
-    diagnostic?: "unsupported_codex_version",
+    diagnostic?: ExplanationFailureDiagnostic,
   ): Promise<void> {
     await this.authority.settleRun({ ...run, code, phase, diagnostic });
   }

@@ -71,6 +71,7 @@ export type InsightProjection<T> = {
     /** Run identity doubles as the safe, user-visible correlation ID. */
     readonly runId?: InsightRunId;
     readonly category?: InsightFailureCategory;
+    readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
     readonly model: string;
     readonly reasoning: InsightReasoning;
     readonly retryable: boolean;
@@ -161,6 +162,9 @@ export function projectStoredInsight<T>(
         runId: record.replacementFailure.runId,
         ...(record.replacementFailure.category !== undefined && {
           category: record.replacementFailure.category,
+        }),
+        ...(record.replacementFailure.incompleteReason !== undefined && {
+          incompleteReason: record.replacementFailure.incompleteReason,
         }),
         model: record.replacementFailure.model,
         reasoning: record.replacementFailure.reasoning,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
+import { EXPLANATION_FAILURE_DETAILS } from "#src/domain/insight-failure-diagnostic";
 
 import { History, Pause, Play } from "lucide-react";
 
@@ -416,7 +417,11 @@ export function InsightFailed({
   const retainedHead = retainedHeadSha ?? projection.retained?.headSha;
   const [repreparing, setRepreparing] = useState(false);
   const [reprepareFailed, setReprepareFailed] = useState(false);
-  const message = failureMessage(category, guideFailure?.diagnostic);
+  const message = failureMessage(
+    category,
+    guideFailure?.diagnostic,
+    projection.replacementFailure?.incompleteReason,
+  );
   const needsReprepare =
     category === "review_worktree_unavailable" ||
     category === "evidence_unavailable" ||
@@ -500,9 +505,12 @@ export function InsightFailed({
 function failureMessage(
   category: InsightFailureCategory | null | undefined,
   diagnostic?: NonNullable<GuideSummary["failure"]>["diagnostic"],
+  incompleteReason?: "insufficient_evidence" | "unable_to_complete",
 ): string {
   if (diagnostic === "unsupported_codex_version")
     return CODEX_EXPLANATION_VERSION_MESSAGE;
+  if (diagnostic === "provider_completed_without_finish")
+    return EXPLANATION_FAILURE_DETAILS.provider_completed_without_finish;
   switch (category) {
     case "authentication_required":
       return "The provider needs authentication.";
@@ -525,7 +533,11 @@ function failureMessage(
     case "invalid_result":
       return "The provider answered with a result this app could not read.";
     case "analysis_incomplete":
-      return "The provider could not complete this Analysis.";
+      return incompleteReason === "insufficient_evidence"
+        ? "The model reported insufficient evidence for a complete Analysis."
+        : incompleteReason === "unable_to_complete"
+          ? "The model reported that it was unable to complete this Analysis."
+          : "The provider could not complete this Analysis.";
     case "evidence_unavailable":
       return "Captured evidence is unavailable. Re-prepare the Review before trying again.";
     case "evidence_mismatch":

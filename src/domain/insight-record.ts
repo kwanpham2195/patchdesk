@@ -115,6 +115,7 @@ export type InsightFailure = {
   readonly runId: InsightRunId;
   readonly reason: "cancelled" | "failed" | "invalid_result" | "superseded";
   readonly category?: InsightFailureCategory;
+  readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
   readonly provider: InsightProvider;
   readonly model: string;
   readonly reasoning: InsightReasoning;

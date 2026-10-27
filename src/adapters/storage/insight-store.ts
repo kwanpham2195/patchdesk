@@ -85,6 +85,9 @@ const failureFields = {
   runId: v.pipe(v.string(), v.minLength(1)),
   reason: v.picklist(["cancelled", "failed", "invalid_result", "superseded"]),
   category: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
+  incompleteReason: v.optional(
+    v.picklist(["insufficient_evidence", "unable_to_complete"]),
+  ),
   provider: providerSchema,
   model: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   reasoning: reasoningSchema,
@@ -574,7 +577,10 @@ function parseFailure(
     provider,
     model: input.model,
     reasoning: input.reasoning,
-    ...definedProps({ category: input.category }),
+    ...definedProps({
+      category: input.category,
+      incompleteReason: input.incompleteReason,
+    }),
     retryable: input.retryable,
     failedAt: failedAt.value,
   });
