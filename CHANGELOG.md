@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed Guide generation to report ungrouped files before finishing, so the model can group further changes or explicitly confirm the remaining Others. #830
+
 - Changed Brief, Guide, and Walkthrough to read captured diffs as plain files with recursive integrity checks. Guide and Walkthrough can inspect captured head files for surrounding code; Brief still uses only the patch.
 
 - Clarified that Analysis must read the whole change, keep short notes across compaction, and report incomplete only when captured evidence cannot be read, not because the change is large.

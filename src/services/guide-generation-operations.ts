@@ -8,12 +8,16 @@ import {
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
 import type { InsightArtifactStore } from "#src/adapters/storage/insight-artifact-store";
 import type { InsightJournalSnapshot } from "#src/adapters/storage/insight-run-journal-reader";
-import { guideInventoryEntrySchema } from "#src/domain/guide";
+import {
+  guideInventoryEntrySchema,
+  type GuideInventoryEntry,
+} from "#src/domain/guide";
 import { guidePreparedInputCodec } from "#src/domain/guide-preparation";
 import {
   GUIDE_REFUSAL_REASONS,
   type GuideAppOutcome,
   type GuideChildFrame,
+  type GuideCoverage,
   type GuideOperationKind,
   type GuideRefusalReason,
 } from "#src/domain/guide-protocol";
@@ -27,6 +31,7 @@ import {
   encodeGuideOperationPayload,
   encodeGuideReceiptResult,
   parseGuideReceiptResult,
+  guideOthersIds,
   type GuideBuild,
 } from "#src/domain/guide-result-records";
 import {
@@ -54,6 +59,7 @@ type ToolCall = Extract<GuideChildFrame, { kind: "tool" }>["call"];
 /** Rebuilt from durable receipts whenever its count disagrees with the journal's; never trusted across a failed commit. */
 type RunMemory = {
   readonly build: GuideBuild;
+  readonly inventory: ReadonlyArray<GuideInventoryEntry>;
   readonly ops: Map<string, ReplayedOperation>;
   count: number;
 };
@@ -64,7 +70,6 @@ type RunMemory = {
  * receipt data, which for `finish` includes the receipts accepted before it.
  */
 type Mutation<TApplied> = {
-  readonly kind: GuideOperationKind;
   readonly opId: string;
   readonly payloadText: string | undefined;
   readonly apply: (build: GuideBuild) => Result<TApplied, GuideRefusalReason>;
@@ -75,7 +80,10 @@ type Mutation<TApplied> = {
       readonly receipts: GuideRuntime["receipts"];
     },
   ) => string | undefined;
-};
+} & (
+  | { readonly kind: "finish"; readonly othersConfirmed: boolean }
+  | { readonly kind: Exclude<GuideOperationKind, "finish"> }
+);
 
 const MAX_INVENTORY_BYTES = 64 * 1024 * 1024;
 
@@ -137,6 +145,7 @@ export class GuideRunOperations {
         const input = call.input;
         return this.mutate(context, {
           kind: "finish",
+          othersConfirmed: input.othersConfirmed === true,
           opId: input.opId,
           payloadText: encodeGuideOperationPayload("finish", {
             ...input,
@@ -198,6 +207,7 @@ export class GuideRunOperations {
       );
     let replay: ReplayedOperation | undefined;
     let accepted: ReplayedOperation | undefined;
+    let coverage: GuideCoverage | undefined;
     const committed = await this.authority.produce<GuideRefusalReason>(
       context.run,
       async (snapshot) => {
@@ -216,6 +226,10 @@ export class GuideRunOperations {
           return err("op_conflict" as const);
         }
         if (memory.value.build.isClosed) return err("closed" as const);
+        if (mutation.kind === "finish" && !mutation.othersConfirmed) {
+          coverage = guideFinishCoverage(memory.value);
+          if (coverage !== undefined) return err("ungrouped_files" as const);
+        }
         const applied = mutation.apply(memory.value.build);
         // A refused operation changed nothing, so the memory view stays usable.
         if (applied._tag === "err") return applied;
@@ -253,6 +267,8 @@ export class GuideRunOperations {
     if (committed._tag === "err") {
       // A refusal leaves the durable log unchanged, but a failed commit may have changed memory first.
       if (!isRefusal(committed.error)) this.memory.delete(context.run.runId);
+      if (committed.error === "ungrouped_files")
+        return { status: "refused", reason: "ungrouped_files", coverage };
       return outcomeForFailure(committed.error);
     }
     if (replay !== undefined) return receiptOutcome(replay);
@@ -418,8 +434,9 @@ export class GuideRunOperations {
       MAX_INVENTORY_BYTES,
     );
     if (inventory._tag === "err") return err("storage");
-    const ids = parseInventoryIds(inventory.value);
-    if (ids === undefined) return err("storage");
+    const entries = parseInventory(inventory.value);
+    if (entries === undefined) return err("storage");
+    const ids = new Set(entries.map((entry) => entry.id));
     const replayed = await new GuideReceiptReplay(
       this.artifacts,
       store,
@@ -439,6 +456,7 @@ export class GuideRunOperations {
     if (replayed === undefined || replayed === "io") return err("storage");
     const memory: RunMemory = {
       build: replayed.build,
+      inventory: entries,
       ops: new Map(replayed.ops),
       count: runtime.receipts.count,
     };
@@ -471,14 +489,49 @@ function outcomeForFailure(
   return { status: "refused", reason: isRefusal(error) ? error : "storage" };
 }
 
-function parseInventoryIds(text: string): ReadonlySet<string> | undefined {
+function guideFinishCoverage(memory: RunMemory): GuideCoverage | undefined {
+  const others = new Set(
+    guideOthersIds(
+      memory.inventory.map((entry) => entry.id),
+      memory.build.snapshot(),
+    ),
+  );
+  if (others.size === 0) return undefined;
+  const ungrouped = memory.inventory.filter((entry) => others.has(entry.id));
+  const coverage: GuideCoverage = {
+    ungrouped: ungrouped.length,
+    byStatus: { added: 0, removed: 0, renamed: 0, modified: 0 },
+    largest: [],
+  };
+  for (const entry of ungrouped) coverage.byStatus[entry.status]++;
+  ungrouped.sort(
+    (left, right) =>
+      right.additions + right.deletions - left.additions - left.deletions,
+  );
+  for (const entry of ungrouped.slice(0, 20)) {
+    coverage.largest.push({
+      fileId: entry.id,
+      path: entry.status === "removed" ? entry.oldPath : entry.newPath,
+      changed: entry.additions + entry.deletions,
+    });
+    if (Buffer.byteLength(JSON.stringify(JSON.stringify(coverage))) > 8192) {
+      coverage.largest.pop();
+      break;
+    }
+  }
+  return coverage;
+}
+
+function parseInventory(
+  text: string,
+): ReadonlyArray<GuideInventoryEntry> | undefined {
   try {
     const parsed = v.safeParse(
       v.array(guideInventoryEntrySchema),
       JSON.parse(text),
     );
     return parsed.success && parsed.output.length > 0
-      ? new Set(parsed.output.map((entry) => entry.id))
+      ? parsed.output
       : undefined;
   } catch {
     return undefined;

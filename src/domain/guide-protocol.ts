@@ -37,6 +37,7 @@ export const guideAddMembersInputSchema = v.strictObject({
 });
 export const guideFinishInputSchema = v.strictObject({
   opId: insightArtifactIdSchema,
+  othersConfirmed: v.optional(v.boolean()),
 });
 export const guideLookupInputSchema = v.strictObject({
   opId: insightArtifactIdSchema,
@@ -135,8 +136,30 @@ export const GUIDE_REFUSAL_REASONS = [
   "storage",
   "cancelled",
   "unsupported",
+  "ungrouped_files",
 ] as const;
 export type GuideRefusalReason = (typeof GUIDE_REFUSAL_REASONS)[number];
+
+const guideCoverageSchema = v.strictObject({
+  ungrouped: P,
+  byStatus: v.strictObject({
+    added: v.number(),
+    removed: v.number(),
+    renamed: v.number(),
+    modified: v.number(),
+  }),
+  largest: v.pipe(
+    v.array(
+      v.strictObject({
+        fileId: guideFileIdSchema,
+        path: v.string(),
+        changed: v.number(),
+      }),
+    ),
+    v.maxLength(20),
+  ),
+});
+export type GuideCoverage = v.InferOutput<typeof guideCoverageSchema>;
 
 /** App to child. Replies repeat the connection identity so the child can verify who answered. */
 const guideAppReplySchema = v.strictObject({
@@ -152,6 +175,7 @@ const guideAppReplySchema = v.strictObject({
     v.strictObject({
       status: v.literal("refused"),
       reason: v.picklist(GUIDE_REFUSAL_REASONS),
+      coverage: v.optional(guideCoverageSchema),
     }),
     /**
      * The app cannot say whether the mutation or admission was recorded. Unlike `refused`, which promises no side

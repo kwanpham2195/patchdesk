@@ -59,6 +59,8 @@ Guide uses the shared [Preparing, Running, and Cancelling lifecycle](brief.md#wh
 
 The model submits groups and supporting files in small batches. Patchdesk validates the complete submitted result before making it readable. There is no twelve-group cap; the model chooses how many groups to create. Others still contains files outside those groups, not a promise that their changes are unimportant.
 
+If the model tries to finish with ungrouped files, Patchdesk keeps generation open and returns their count, counts by change status, and up to twenty of the largest remaining changes. The model can add supporting files or explicitly confirm that the remaining files belong in Others. Finishing with every file grouped needs no confirmation. This check imposes no group count or coverage percentage and does not prove that the model inspected every file.
+
 A previous result remains readable during regeneration. Failure and run progress appear separately from that result. Cancel run requests cancellation; cancellation is not complete until the run settles. A known active run keeps its cancellation control when result pages cannot be read or GitHub freshness becomes unavailable.
 
 One compact phase and action block shows Preparing, Running, or Cancelling, with elapsed time when available. Activity starts closed and appears only when a bounded trace is available. The shared Run Insights controls show common or Mixed values from selected editable rows, with optional row overrides. See [Brief](brief.md#begin-an-action) for those controls.
