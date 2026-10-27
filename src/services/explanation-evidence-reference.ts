@@ -32,7 +32,10 @@ export async function explanationEvidenceReference(
     readonly reviewId: ReviewId;
     readonly runId: string;
   },
-): Promise<InsightEvidenceReference | undefined> {
+): Promise<
+  | Extract<InsightEvidenceReference, { readonly entryPageId: string }>
+  | undefined
+> {
   const manifest = await new InsightResultStore(
     artifacts,
     run.profileId,
@@ -86,7 +89,9 @@ export async function explanationEvidenceReference(
         bytes: prepared.evidenceManifest.data.bytes,
       },
     });
-    return reference.success ? reference.output : undefined;
+    return reference.success && !("tree" in reference.output)
+      ? reference.output
+      : undefined;
   } catch {
     return undefined;
   }

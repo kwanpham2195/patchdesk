@@ -281,6 +281,8 @@ class StoredInputs {
       return this.stopped("io");
     const manifestRoot = await this.textRoot(bundle.value.manifestText);
     if (manifestRoot._tag === "err") return manifestRoot;
+    if (bundle.value.tree !== undefined)
+      return guidePreparationFailure("invalid_source");
     const entryRoot = await this.textRoot(bundle.value.entryPageId);
     if (entryRoot._tag === "err") return entryRoot;
     const bundleId = v.safeParse(

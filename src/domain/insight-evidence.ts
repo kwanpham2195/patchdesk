@@ -98,16 +98,43 @@ type EvidencePage = {
   readonly records: ReadonlyArray<EvidenceRecord>;
 };
 /** This descriptor is retained in the parent, not reconstructed from the writable manifest. */
-export type InsightEvidenceBundle = {
+type InsightEvidenceBundleBase = {
   readonly identity: InsightEvidenceIdentity;
   readonly bundleId: string;
   readonly directory: string;
-  readonly entryPageId: EvidencePageId;
   readonly pages: ReadonlyArray<EvidencePage>;
   readonly sources: ReadonlyArray<EvidenceSource>;
   readonly manifestText: string;
-  readonly patchPath: string;
 };
+/** The host retains this index separately from the model-readable manifest. */
+type InsightEvidenceTree = {
+  readonly format: "insight-evidence-tree/1";
+  readonly directories: ReadonlyArray<string>;
+  readonly files: ReadonlyArray<{
+    readonly name: string;
+    readonly bytes: number;
+    readonly sha256: string;
+  }>;
+  readonly diffs: ReadonlyArray<string>;
+  readonly snapshots: ReadonlyArray<{
+    readonly path: string;
+    readonly name: string;
+  }>;
+};
+/** Pages remain only for Insights that have not moved to the tree format. */
+export type InsightEvidenceBundle = InsightEvidenceBundleBase &
+  (
+    | {
+        readonly tree: InsightEvidenceTree;
+        readonly entryPageId?: never;
+        readonly patchPath?: never;
+      }
+    | {
+        readonly tree?: never;
+        readonly entryPageId: EvidencePageId;
+        readonly patchPath: string;
+      }
+  );
 /** Search results refer to captured offsets and the page carrying the match start. */
 export type EvidenceSearchMatch = EvidenceSite & {
   readonly sourceId: string;

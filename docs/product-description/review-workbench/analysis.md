@@ -77,11 +77,11 @@ A Finding card's Open in Analysis opens Insights on the Analysis reader, opens L
 
 ### While the action runs
 
-The run captures the represented revision before generation. Its first request names that revision and an evidence entry; the model reads captured pages as needed. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
+The run captures the represented revision before generation. Its first request names that revision and a captured read-only directory. The model is instructed to read every changed-file diff and open captured head files where surrounding code is needed. Skipped head snapshots record their reasons. A newer checkout or pull request revision cannot replace those bytes. Missing or changed required evidence fails the run and keeps the previous result readable. See [local storage and privacy](../cross-cutting/local-storage-and-privacy.md#while-the-action-runs) for account-provider permissions and diagnostic detail.
 
 Analysis execution has a 20-minute limit for every provider. A desktop request waits up to 60 seconds for its response. Evidence preparation still finishes before the start request returns a run ID.
 
-> Technical note: a native account run's initial text request is bounded to 64 KiB. Encoded evidence pages are bounded to 32 KiB. Ordinary local commands buffer at most 4 MiB on each output stream; local pull request diff capture streams directly to disk.
+> Technical note: a native account run's initial text request is bounded to 64 KiB. Captured head files are limited to 512 KiB each and 4 MiB per run. Ordinary local commands buffer at most 4 MiB on each output stream; local pull request diff capture streams directly to disk.
 
 Each Finding owns its pending and error state. Add to review reads Adding…, Confirm dismissal reads Dismissing…, and Restore reads Restoring… while their requests run. Add, Dismiss, or Restore is admitted once synchronously for that Finding, while another Finding can remain usable. Reverse settlement of concurrent Finding actions does not move an error or confirmation to the wrong Finding.
 
@@ -95,7 +95,7 @@ A generation run follows the lifecycle described in [Brief](brief.md#while-the-a
 
 ### Settle
 
-An incomplete Analysis ends as a failed run with **Analysis incomplete**. It supplies no new merge verdict. A previous Analysis remains readable with its original revision; without one, no verdict card is created. A complete result can have low confidence and still pass validation. A completed pi CLI Analysis does not need to include unused failure details; its Findings, verdict, and citations still pass the same validation. Reading every page is not a success requirement.
+An incomplete Analysis ends as a failed run with **Analysis incomplete**. It supplies no new merge verdict. A previous Analysis remains readable with its original revision; without one, no verdict card is created. A complete result can have low confidence and still pass validation. A completed pi CLI Analysis does not need to include unused failure details; its Findings, verdict, and citations still pass the same validation. An unread head snapshot does not make the Analysis incomplete.
 
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence. A suggestion is confirmed against the comment Patchdesk composed and returned, not against text the reader assembled, and its cited range is preserved whole whether the write started the pending review or appended to one. Once the review is submitted, GitHub renders that comment as a suggested change the pull request author can commit or add to a batch; Patchdesk neither applies it nor tracks what the author does with it.
 

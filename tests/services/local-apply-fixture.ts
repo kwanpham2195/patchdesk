@@ -1,6 +1,7 @@
+import { removeInsightFixtureRoot } from "./insight-evidence-fixture-cleanup";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -83,9 +84,7 @@ export function value<T>(result: Result<T, unknown>): T {
 }
 
 export async function cleanupLocalApplyRoots(): Promise<void> {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
+  await Promise.all(roots.splice(0).map(removeInsightFixtureRoot));
 }
 
 /** Runs git for fixture setup and evidence only; the code under test runs git through the production executor. */

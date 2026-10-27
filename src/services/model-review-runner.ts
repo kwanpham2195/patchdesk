@@ -5,11 +5,7 @@ import * as v from "valibot";
 import { ReviewInspector } from "./review-inspector";
 import type { InsightLanguage } from "#src/domain/insight-provider";
 import { composeReviewPrompt } from "./review-rubric";
-import {
-  parseEvidencePageId,
-  type EvidenceRecord,
-  type InsightEvidenceBundle,
-} from "#src/domain/insight-evidence";
+import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
 import { insightEvidenceReference } from "./insight-evidence-reference";
 
 const MAX_SNAPSHOT_FILE_BYTES = 512 * 1024;
@@ -58,98 +54,17 @@ export async function prepareModelReview(
   input: PrepareModelReviewInput,
 ): Promise<PreparedModelReview> {
   const headSha = input.evidence.identity.headSha;
-  const fileSnapshots: Record<string, string> = {};
-  const inventorySchema = v.looseObject({
-    id: v.string(),
-    newPath: v.string(),
-    snapshot: v.literal("captured"),
-  });
-  const extraSnapshotSchema = v.looseObject({
-    snapshotPath: v.string(),
-    snapshot: v.literal("captured"),
-  });
-  const pages = new Map(input.evidence.pages.map((page) => [page.id, page]));
-  const inventoryLink = pages
-    .get(input.evidence.entryPageId)
-    ?.records.find(
-      (record) => record.kind === "link" && record.relation === "inventory",
-    );
-  if (inventoryLink?.kind !== "link")
-    throw new Error("Captured inventory reference is missing");
-  let inventoryPageId: typeof inventoryLink.pageId | undefined =
-    inventoryLink.pageId;
-  const inventoryRecords: EvidenceRecord[] = [];
-  const visited = new Set<string>();
-  while (inventoryPageId !== undefined) {
-    const page = pages.get(inventoryPageId);
-    if (page === undefined || visited.has(inventoryPageId))
-      throw new Error("Captured inventory continuation is invalid");
-    visited.add(inventoryPageId);
-    inventoryRecords.push(...page.records);
-    const continuation = v.parse(
-      v.strictObject({
-        kind: v.literal("continuation"),
-        pageId: v.nullable(v.string()),
-      }),
-      JSON.parse(page.text.trimEnd().split("\n").at(-1) ?? ""),
-    );
-    inventoryPageId =
-      continuation.pageId === null
-        ? undefined
-        : parseEvidencePageId(continuation.pageId);
-    if (continuation.pageId !== null && inventoryPageId === undefined)
-      throw new Error("Captured inventory continuation is invalid");
-  }
+  const fileSnapshots: Record<string, string> = Object.create(null);
+  if (input.evidence.tree === undefined)
+    throw new Error("Analysis evidence must be re-prepared");
   const sources = new Map(
-    input.evidence.sources.map((source) => [source.id, source]),
+    input.evidence.sources.map((source) => [source.name, source]),
   );
-  const metadataIds = new Set<string>();
-  for (const [index, record] of inventoryRecords.entries()) {
-    if (record.kind !== "fragment" || metadataIds.has(record.sourceId))
-      continue;
-    metadataIds.add(record.sourceId);
-    const source = sources.get(record.sourceId);
+  for (const snapshot of input.evidence.tree.snapshots) {
+    const source = sources.get(snapshot.name);
     if (source === undefined)
-      throw new Error("Captured inventory source is missing");
-    let metadata: unknown;
-    try {
-      metadata = JSON.parse(source.text);
-    } catch {
-      continue;
-    }
-    const file = v.safeParse(inventorySchema, metadata);
-    const extra = v.safeParse(extraSnapshotSchema, metadata);
-    const path = file.success
-      ? file.output.newPath
-      : extra.success
-        ? extra.output.snapshotPath
-        : undefined;
-    if (path === undefined) continue;
-    let snapshotPage: (typeof input.evidence.pages)[number] | undefined;
-    for (const candidate of inventoryRecords.slice(index + 1)) {
-      if (candidate.kind === "fragment" && candidate.sourceId !== source.id)
-        break;
-      if (
-        candidate.kind === "link" &&
-        candidate.relation === "snapshot" &&
-        (!file.success || candidate.fileId === file.output.id)
-      ) {
-        snapshotPage = pages.get(candidate.pageId);
-        break;
-      }
-    }
-    if (snapshotPage === undefined)
-      throw new Error("Captured snapshot reference is missing");
-    const fragment = snapshotPage.records.find(
-      (record) => record.kind === "fragment",
-    );
-    const snapshot =
-      fragment?.kind === "fragment"
-        ? sources.get(fragment.sourceId)
-        : undefined;
-    if (snapshot === undefined)
       throw new Error("Captured snapshot source is missing");
-    fileSnapshots[path] = snapshot.text;
+    fileSnapshots[snapshot.path] = source.text;
   }
   const files = Object.keys(fileSnapshots);
   const inspector = new ReviewInspector({
@@ -178,6 +93,7 @@ export async function captureModelReviewSnapshots(input: {
   readonly worktreePath: string;
   readonly headSha: string;
   readonly context: string;
+  readonly onSkipped?: ((path: string, reason: string) => void) | undefined;
   readonly gitShow: (argv: ReadonlyArray<string>) => Promise<string>;
 }): Promise<Readonly<Record<string, string>>> {
   return snapshotChangedFiles(
@@ -185,6 +101,7 @@ export async function captureModelReviewSnapshots(input: {
     input.headSha,
     changedFiles(input.context),
     input.gitShow,
+    input.onSkipped,
   );
 }
 
@@ -193,12 +110,16 @@ async function snapshotChangedFiles(
   headSha: string | undefined,
   files: ReadonlyArray<string>,
   gitShow: (argv: ReadonlyArray<string>) => Promise<string>,
+  onSkipped?: (path: string, reason: string) => void,
 ): Promise<Readonly<Record<string, string>>> {
-  const snapshots: Record<string, string> = {};
+  const snapshots: Record<string, string> = Object.create(null);
   if (headSha === undefined) return snapshots;
   let snapshotBytes = 0;
-  for (const path of files) {
-    if (!isSafeRelativePath(path)) continue;
+  for (const [index, path] of files.entries()) {
+    if (!isSafeRelativePath(path)) {
+      onSkipped?.(path, "unrepresentable");
+      continue;
+    }
     try {
       const object = `${headSha}:${path}`;
       const git = ["git", "--no-replace-objects", "-C", worktreePath] as const;
@@ -210,21 +131,36 @@ async function snapshotChangedFiles(
         "--",
         path,
       ]);
-      if (!isRegularTreeEntry(mode)) continue;
+      if (!isRegularTreeEntry(mode)) {
+        onSkipped?.(path, mode.trim() === "" ? "deleted" : "nonregular");
+        continue;
+      }
       if ((await gitShow([...git, "cat-file", "-t", object])).trim() !== "blob")
         continue;
       const fileBytes = parseBlobByteLength(
         await gitShow([...git, "cat-file", "-s", object]),
       );
-      if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES)
+      if (fileBytes === undefined || fileBytes > MAX_SNAPSHOT_FILE_BYTES) {
+        onSkipped?.(path, "oversized");
         continue;
-      if (snapshotBytes + fileBytes > MAX_SNAPSHOT_TOTAL_BYTES) break;
+      }
+      if (snapshotBytes + fileBytes > MAX_SNAPSHOT_TOTAL_BYTES) {
+        for (const remaining of files.slice(index))
+          onSkipped?.(remaining, "over_run_total");
+        break;
+      }
       const contents = await gitShow([...git, "cat-file", "blob", object]);
-      if (Buffer.byteLength(contents, "utf8") !== fileBytes) continue;
+      if (
+        Buffer.byteLength(contents, "utf8") !== fileBytes ||
+        contents.includes("\0")
+      ) {
+        onSkipped?.(path, "binary");
+        continue;
+      }
       snapshots[path] = contents;
       snapshotBytes += fileBytes;
     } catch {
-      // Missing, binary, and unreadable blobs remain represented by the immutable patch.
+      onSkipped?.(path, "unavailable");
     }
   }
   return snapshots;

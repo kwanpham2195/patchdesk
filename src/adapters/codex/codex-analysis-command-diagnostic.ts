@@ -6,7 +6,7 @@ import type { CodexRpcMessage } from "./codex-app-server-rpc";
 export type CodexAnalysisCommandFailure = {
   readonly commandOrdinal: number;
   readonly exitCode: number | null;
-  readonly targetClass: "absolute_entry" | "literal_tilde" | "unknown";
+  readonly targetClass: "evidence_tree" | "unknown";
   readonly failureClass:
     | "not_found"
     | "permission_denied"
@@ -65,38 +65,19 @@ export function createCodexAnalysisCommandDiagnostic(
         return;
       failed = true;
       ordinals.clear();
-      // Only the observed literal zsh wrapper is unwrapped; no shell syntax is interpreted.
-      const wrapper = /^\/bin\/zsh -lc '([^'\r\n]+)'$/.exec(item.command);
-      let command = item.command;
-      if (wrapper?.[0] === item.command && wrapper[1] !== undefined)
-        command = wrapper[1];
-      // Only a single cat operand is recognized; expansions and compound syntax stay unknown.
-      const operand =
-        /^cat (?:-- )?(?:'([^'\n]+)'|"([^"$`\\\n]+)"|([A-Za-z0-9_./~-]+))$/.exec(
-          command,
-        );
-      const target =
-        operand?.[0] === command
-          ? (operand[1] ?? operand[2] ?? operand[3])
-          : undefined;
-      const targetClass =
-        target === diagnostic.entryPath
-          ? "absolute_entry"
-          : target?.startsWith("~/") &&
-              (operand?.[1] !== undefined || operand?.[2] !== undefined)
-            ? "literal_tilde"
-            : "unknown";
-      const output = item.aggregatedOutput;
+      const targetClass = item.command.includes(
+        diagnostic.entryPath.slice(0, diagnostic.entryPath.lastIndexOf("/")) +
+          "/",
+      )
+        ? "evidence_tree"
+        : "unknown";
+      const output = item.aggregatedOutput?.slice(0, 4096) ?? "";
       const failureClass =
         item.status === "declined"
           ? "native_denied"
-          : target !== undefined &&
-              (output === `cat: ${target}: No such file or directory\n` ||
-                output === `cat: '${target}': No such file or directory\n`)
+          : /: No such file or directory\n/.test(output)
             ? "not_found"
-            : target !== undefined &&
-                (output === `cat: ${target}: Permission denied\n` ||
-                  output === `cat: '${target}': Permission denied\n`)
+            : /: Permission denied\n/.test(output)
               ? "permission_denied"
               : "unknown";
       diagnostic.onFirstFailure({

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { mapConcurrent } from "#src/domain/map-concurrent";
@@ -14,6 +14,9 @@ import {
   type EvidenceSearchResult,
 } from "#src/domain/insight-evidence";
 import { err, ok, type Result } from "#src/domain/result";
+import { makeInsightEvidenceTreeRemovable } from "./insight-evidence-tree-removal";
+import { validateInsightEvidenceTree } from "./insight-evidence-tree-validation";
+import { isPathContained } from "./path-containment";
 import { writeAtomicFile } from "./json-file";
 import {
   evidencePathIsOwned,
@@ -46,6 +49,17 @@ export class InsightEvidenceStore {
         join(dirname(bundle.directory), ".unpublished-"),
       );
       const directory = temporary;
+      if (bundle.tree !== undefined) {
+        for (const relative of bundle.tree.directories) {
+          const path = join(directory, relative);
+          if (!isPathContained(directory, path))
+            return err({
+              _tag: "InsightEvidenceFailure",
+              reason: "evidence_mismatch",
+            });
+          await mkdir(path, { recursive: true, mode: 0o700 });
+        }
+      }
       // Files already begun finish; an abort stops the rest and the unpublished directory is removed below.
       const written = await mapConcurrent(files(bundle), 4, async (file) =>
         options.signal?.aborted
@@ -70,6 +84,17 @@ export class InsightEvidenceStore {
           _tag: "InsightEvidenceFailure",
           reason: "evidence_mismatch",
         });
+      if (bundle.tree !== undefined) {
+        await Promise.all(
+          files(bundle).map((file) => chmod(join(directory, file.name), 0o444)),
+        );
+        // Directory modes keep the execute bit, so the order of these chmods does not matter.
+        await Promise.all(
+          [...bundle.tree.directories, ""].map((relative) =>
+            chmod(join(directory, relative), 0o555),
+          ),
+        );
+      }
       await rename(temporary, bundle.directory);
       temporary = undefined;
       return await this.validate(bundle, options);
@@ -80,8 +105,17 @@ export class InsightEvidenceStore {
       if (
         temporary !== undefined &&
         (await evidencePathIsOwned(this.paths.dataDirectory(), temporary))
-      )
-        await rm(temporary, { recursive: true, force: true });
+      ) {
+        const removable =
+          bundle.tree === undefined
+            ? ok(undefined)
+            : await makeInsightEvidenceTreeRemovable(
+                this.paths.dataDirectory(),
+                temporary,
+              );
+        if (removable._tag === "ok")
+          await rm(temporary, { recursive: true, force: true });
+      }
     }
   }
 
@@ -106,6 +140,12 @@ export class InsightEvidenceStore {
           _tag: "InsightEvidenceFailure",
           reason: "evidence_mismatch",
         });
+      if (bundle.tree !== undefined)
+        return validateInsightEvidenceTree(
+          this.paths.dataDirectory(),
+          bundle,
+          options.signal,
+        );
       const expected = files(bundle);
       const names = await readdir(bundle.directory);
       const expectedNames = new Set(expected.map((file) => file.name));
@@ -254,7 +294,9 @@ export class InsightEvidenceStore {
     return (
       /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(identity.runId) &&
       bundle.directory ===
-        this.paths.insightEvidenceDirectory(
+        (bundle.tree === undefined
+          ? this.paths.insightEvidenceDirectory.bind(this.paths)
+          : this.paths.analysisEvidenceDirectory.bind(this.paths))(
           identity.profileId,
           identity.sessionId,
           identity.runId,
@@ -267,6 +309,7 @@ function digest(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 function files(bundle: InsightEvidenceBundle) {
+  if (bundle.tree !== undefined) return bundle.sources;
   return [
     ...bundle.pages.map((page) => ({
       name: `${page.id}.ndjson`,

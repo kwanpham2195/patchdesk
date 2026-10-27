@@ -1,4 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { removeInsightFixtureRoot } from "./insight-evidence-fixture-cleanup";
+import { buildInsightEvidenceTree } from "#src/services/insight-evidence-tree-builder";
+import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,15 +23,13 @@ const EXPECTED_ANALYSIS_TIMEOUT_MS = 20 * 60_000;
 
 const roots: string[] = [];
 afterEach(async () =>
-  Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  ),
+  Promise.all(roots.splice(0).map(removeInsightFixtureRoot)),
 );
 
 async function fixture(
   options: {
     readonly provider?: AccountInsightProvider;
-    readonly type?: "analysis" | "walkthrough" | "brief";
+    readonly type?: "analysis" | "walkthrough" | "brief" | "guide";
     readonly language?: "en" | "vi";
     readonly runValue?: Readonly<Record<string, ReadonlyArray<never> | null>>;
   } = {},
@@ -163,6 +164,39 @@ async function fixture(
       patchPath: patch,
     } as never,
   };
+  if (input.type === "analysis" && input.evidence !== undefined) {
+    const patchText = await readFile(patch, "utf8");
+    const tree = buildInsightEvidenceTree({
+      identity: {
+        ...input.evidence.identity,
+        patchHash: hashReviewArtifactContent(patchText) as never,
+      },
+      directory: paths.analysisEvidenceDirectory(
+        profileId,
+        sessionId,
+        input.runId,
+      ),
+      patch: patchText,
+      context: "{}",
+      reviewInput: "PR: patchdesk#42",
+      snapshots: {},
+      snapshotSkips: {},
+    });
+    if (tree._tag === "err") throw new Error("Invalid Analysis tree fixture");
+    if (
+      (await new InsightEvidenceStore(paths).publish(tree.value))._tag === "err"
+    )
+      throw new Error("Could not publish Analysis tree fixture");
+    return {
+      invoker,
+      input: { ...input, evidence: tree.value },
+      calls,
+      worktree,
+      reviewInput,
+      context,
+      patch,
+    };
+  }
   return { invoker, input, calls, worktree, reviewInput, context, patch };
 }
 
@@ -170,7 +204,7 @@ describe("AccountInsightInvoker", () => {
   it.each(["codex-cli-account", "pi-cli-account"] as const)(
     "uses captured complete Guide evidence on %s without unavailable tools",
     async (provider) => {
-      const value = await fixture({ provider, language: "vi" });
+      const value = await fixture({ provider, type: "guide", language: "vi" });
       if (value.input.evidence === undefined)
         throw new Error("Missing fixture evidence");
       const prepared = await prepareGuidePrompt({
@@ -380,7 +414,7 @@ describe("AccountInsightInvoker", () => {
     expect(invocation.prompt).toEqual(expect.any(String));
     // SAFETY: the prompt assertion just above proves invocation.prompt is a string.
     const prompt = invocation.prompt as string;
-    expect(prompt).toContain("EVIDENCE ENTRY:");
+    expect(prompt).toContain("Start with README.md, then files.json.");
     expect(prompt).not.toContain("diff --git a/a.ts b/a.ts");
     expect(prompt).toContain(
       "The verdict must match the findings: use request_changes when any finding is P0 or P1",

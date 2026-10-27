@@ -257,6 +257,17 @@ export class InsightRunExecutor {
               stderr: undefined,
             })
           : await this.invokePrepared(input, controller, onActivity);
+      const after = await evidenceStore.validate(input.evidence);
+      if (after._tag === "err") {
+        await this.recordExecutionFailure(
+          input,
+          type,
+          runId,
+          insightEvidenceFailureCategory(after.error.reason),
+          after.error.reason,
+        );
+        return;
+      }
       const latestReview = await this.reviews.load(
         input.profileId,
         input.reviewId,
@@ -382,17 +393,6 @@ export class InsightRunExecutor {
         }
         return;
       }
-      const after = await evidenceStore.validate(input.evidence);
-      if (after._tag === "err") {
-        await this.recordExecutionFailure(
-          input,
-          type,
-          runId,
-          insightEvidenceFailureCategory(after.error.reason),
-          after.error.reason,
-        );
-        return;
-      }
       // Every invoker leaves its payload `unknown`; the JSON grammar is the contract validation needs.
       const payload = v.safeParse(rawJsonValueSchema, invocation.value);
       if (!payload.success) {
@@ -408,7 +408,7 @@ export class InsightRunExecutor {
       const validated = await validateInsightResult(
         type,
         payload.output,
-        { ...input, patchPath: input.evidence.patchPath },
+        { ...input, patchPath: input.evidence.patchPath ?? input.patchPath },
         {
           sessionId: input.sessionId,
           headSha: latestSession.value.key.headSha,
