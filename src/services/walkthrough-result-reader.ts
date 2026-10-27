@@ -504,7 +504,7 @@ export class WalkthroughResultReader {
       category = found;
     }
     const diagnostic =
-      category === "runtime_unavailable"
+      category === "runtime_unavailable" || category === "unexpected_failure"
         ? await this.diagnostics.read(
             { profileId, reviewId, type: "walkthrough", runId: run.value },
             failure.value,

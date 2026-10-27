@@ -340,15 +340,20 @@ export class GuidePassConclusion {
         outcome,
         pass.request.selection.provider,
       );
-      await this.settle(
-        ref,
+      const code =
         diagnostic === "unsupported_codex_version"
           ? "capability_unavailable"
           : state.nativeExecution === undefined
             ? failureCode(outcome.reason)
-            : "unresolved_work",
+            : "unresolved_work";
+      // settleRun refuses a diagnostic whose code it does not pair with, which would leave the slot held.
+      await this.settle(
+        ref,
+        code,
         "generation",
-        diagnostic,
+        code === "capability_unavailable" || code === "unresolved_work"
+          ? diagnostic
+          : undefined,
       );
       return;
     }

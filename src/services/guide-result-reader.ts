@@ -305,7 +305,7 @@ export class GuideResultReader {
       category = parsed;
     }
     const diagnostic =
-      category === "runtime_unavailable"
+      category === "runtime_unavailable" || category === "unexpected_failure"
         ? await this.diagnostics.read(
             { profileId, reviewId, type: "guide", runId: runId.value },
             failure.value,
