@@ -1,4 +1,7 @@
-import type { InsightFailureDiagnostic } from "#src/domain/insight-failure-diagnostic";
+import type {
+  ExplanationFailureDiagnostic,
+  InsightFailureDiagnostic,
+} from "#src/domain/insight-failure-diagnostic";
 import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
 import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
 import type { ExplanationConnectionIdentity } from "#src/domain/explanation-channel";
@@ -55,11 +58,21 @@ export type ExplanationDeadline =
   | { readonly kind: "no-total-deadline/1" }
   | { readonly kind: "walkthrough-deadline/1"; readonly deadlineAt: string };
 
-/** Only the native adapter's fixed version preflight refusal can acquire this label. */
-export function explanationVersionDiagnostic(
+/** Projects only known native terminal and preflight reasons into public labels. */
+export function explanationFailureDiagnostic(
   outcome: ExplanationProducerOutcome,
   provider: InsightProvider,
-): "unsupported_codex_version" | undefined {
+): ExplanationFailureDiagnostic | undefined {
+  if (
+    outcome._tag === "failed" &&
+    outcome.effectKnown &&
+    outcome.reason === "execution_failed" &&
+    ((provider === "codex-cli-account" &&
+      outcome.detail === "native_turn_ended") ||
+      (provider === "pi-cli-account" &&
+        outcome.detail === "pi_settled_without_finish"))
+  )
+    return "provider_completed_without_finish";
   return provider === "codex-cli-account" &&
     outcome._tag === "failed" &&
     outcome.effectKnown &&

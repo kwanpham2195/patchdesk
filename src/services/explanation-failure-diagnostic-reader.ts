@@ -7,7 +7,10 @@ import type {
   InsightJournalSnapshot,
 } from "#src/adapters/storage/insight-run-journal-reader";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
-import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
+import {
+  EXPLANATION_FAILURE_DETAILS,
+  type ExplanationFailureDiagnostic,
+} from "#src/domain/insight-failure-diagnostic";
 import {
   insightAuthorizationCodec,
   insightBindingCodec,
@@ -22,10 +25,10 @@ import type { InsightSlotKey } from "./insight-slot-records";
 
 type Scope = InsightSlotKey & { readonly runId: string };
 type Failure = v.InferOutput<typeof insightLegacyFailureCodec.schema>;
-type Diagnostic = "unsupported_codex_version" | undefined;
+type Diagnostic = ExplanationFailureDiagnostic | undefined;
 type ReadResult = Result<Diagnostic, "invalid_result" | "storage_unavailable">;
 
-/** Reads the existing terminal journal only for a Codex runtime failure; no new diagnostic store is created. */
+/** Reads fixed native failure labels from the existing terminal journal without native history. */
 export class ExplanationFailureDiagnosticReader {
   constructor(
     private readonly paths: PatchdeskPaths,
@@ -35,7 +38,11 @@ export class ExplanationFailureDiagnosticReader {
 
   /** Exact identity and failure agreement are required before fixed application text becomes a public label. */
   async read(scope: Scope, failure: Failure): Promise<ReadResult> {
-    if (failure.provider !== "codex-cli-account" || failure.reason !== "failed")
+    if (
+      (failure.provider !== "codex-cli-account" &&
+        failure.provider !== "pi-cli-account") ||
+      failure.reason !== "failed"
+    )
       return ok(undefined);
     const runId = v.safeParse(insightArtifactRunIdSchema, scope.runId);
     if (!runId.success) return err("invalid_result");
@@ -110,7 +117,6 @@ export class ExplanationFailureDiagnosticReader {
       [identity.value.reviewId, reviewId],
       [identity.value.runId, runId],
       [failure.runId, runId],
-      [failure.category, "runtime_unavailable"],
     ] as const) {
       const same = await this.artifacts.verifyTextRootEquals(
         profileId,
@@ -128,7 +134,6 @@ export class ExplanationFailureDiagnosticReader {
     );
     if (record._tag === "err") return err("invalid_result");
     if (
-      record.value.code !== "capability_unavailable" ||
       record.value.phase !== "generation" ||
       record.value.at !== failure.failedAt ||
       record.value.recovery !== "terminal" ||
@@ -155,19 +160,36 @@ export class ExplanationFailureDiagnosticReader {
     );
     if (
       selection._tag === "err" ||
-      selection.value.provider !== "codex-cli-account" ||
+      selection.value.provider !== failure.provider ||
       selection.value.reasoning !== failure.reasoning ||
       selection.value.model.data.sha256 !== failure.model.data.sha256
     )
       return err("invalid_result");
+    const diagnostic =
+      record.value.code === "capability_unavailable" &&
+      failure.provider === "codex-cli-account"
+        ? "unsupported_codex_version"
+        : record.value.code === "unresolved_work"
+          ? "provider_completed_without_finish"
+          : undefined;
+    if (diagnostic === undefined) return ok(undefined);
+    const category = await this.artifacts.verifyTextRootEquals(
+      profileId,
+      reviewId,
+      failure.category,
+      diagnostic === "unsupported_codex_version"
+        ? "runtime_unavailable"
+        : "unexpected_failure",
+    );
+    if (category._tag === "err") return err("invalid_result");
     const detail = await this.artifacts.textRootEquals(
       profileId,
       reviewId,
       record.value.detail,
-      CODEX_EXPLANATION_VERSION_MESSAGE,
+      EXPLANATION_FAILURE_DETAILS[diagnostic],
     );
     return detail._tag === "err"
       ? err("invalid_result")
-      : ok(detail.value ? "unsupported_codex_version" : undefined);
+      : ok(detail.value ? diagnostic : undefined);
   }
 }

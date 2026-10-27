@@ -345,6 +345,13 @@ export class InsightRunExecutor {
                     runId,
                     reason: cancelled ? "cancelled" : "failed",
                     category,
+                    ...definedProps({
+                      incompleteReason:
+                        invocation._tag === "err" &&
+                        "incompleteReason" in invocation.error
+                          ? invocation.error.incompleteReason
+                          : undefined,
+                    }),
                     retryable: true,
                     failedAt: timestamp.value,
                   },

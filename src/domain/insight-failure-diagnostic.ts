@@ -7,8 +7,18 @@ import type { Result } from "./result";
 import type { InsightFailureCategory } from "./insight-record";
 import { CODEX_EXPLANATION_VERSION_MESSAGE } from "./codex-explanation-version";
 
+/** Fixed explanation labels may cross storage and UI boundaries without native prose. */
+export const EXPLANATION_FAILURE_DETAILS = {
+  unsupported_codex_version: CODEX_EXPLANATION_VERSION_MESSAGE,
+  provider_completed_without_finish:
+    "The model ended before finishing this Guide or Walkthrough. The previous result, if any, is kept.",
+} as const;
+export type ExplanationFailureDiagnostic =
+  keyof typeof EXPLANATION_FAILURE_DETAILS;
+
 /** Safe diagnostic fields; provider text is never copied into them. */
 export type InsightFailureDiagnostic = {
+  readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
   readonly phase?: string;
   readonly code?: string;
   readonly detail?: string;
@@ -19,7 +29,7 @@ export function insightFailureDiagnostic(
   reason: InsightFailureCategory | "cancelled",
   phase = "turn",
   detail?: string,
-): Required<InsightFailureDiagnostic> {
+): Required<Omit<InsightFailureDiagnostic, "incompleteReason">> {
   if (
     reason === "runtime_unavailable" &&
     phase === "native_policy_unsupported" &&
@@ -105,6 +115,7 @@ export function analysisIncompleteDiagnostic(
   return {
     ...insightFailureDiagnostic("analysis_incomplete", incomplete.reason),
     detail,
+    incompleteReason: incomplete.reason,
   };
 }
 

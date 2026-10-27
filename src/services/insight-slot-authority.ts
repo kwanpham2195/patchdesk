@@ -14,7 +14,10 @@ import type { InsightStore } from "#src/adapters/storage/insight-store";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { IsoTimestamp } from "#src/domain/ids";
 import { definedProps } from "#src/domain/defined-props";
-import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
+import {
+  EXPLANATION_FAILURE_DETAILS,
+  type ExplanationFailureDiagnostic,
+} from "#src/domain/insight-failure-diagnostic";
 import type { InsightArtifactReference } from "#src/domain/insight-artifact-scalars";
 import type { InsightFailureRecord } from "#src/domain/insight-run-binding-contract";
 import { insightBindingCodec } from "#src/domain/insight-run-binding-contract";
@@ -284,7 +287,7 @@ export class InsightSlotAuthority {
   async settleRun(
     input: InsightRunRef &
       Pick<InsightFailureRecord, "code" | "phase"> & {
-        readonly diagnostic?: "unsupported_codex_version" | undefined;
+        readonly diagnostic?: ExplanationFailureDiagnostic | undefined;
       },
   ): Promise<Result<Outcome, InsightSlotFailure>> {
     return this.advanceActive(
@@ -294,14 +297,17 @@ export class InsightSlotAuthority {
         if (input.diagnostic === undefined)
           return settleDecision(snapshot, input.code, input.phase);
         if (
-          input.code !== "capability_unavailable" ||
+          input.code !==
+            (input.diagnostic === "unsupported_codex_version"
+              ? "capability_unavailable"
+              : "unresolved_work") ||
           (input.type !== "guide" && input.type !== "walkthrough")
         )
           return failed();
         const detail = await this.artifacts.writeTextRoot(
           input.profileId,
           input.reviewId,
-          CODEX_EXPLANATION_VERSION_MESSAGE,
+          EXPLANATION_FAILURE_DETAILS[input.diagnostic],
         );
         return detail._tag === "err"
           ? failed()

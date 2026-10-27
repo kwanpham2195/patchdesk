@@ -1,3 +1,4 @@
+import type { ExplanationFailureDiagnostic } from "#src/domain/insight-failure-diagnostic";
 import { createHash } from "node:crypto";
 import { definedProps } from "#src/domain/defined-props";
 import * as v from "valibot";
@@ -19,7 +20,7 @@ import { err, ok, type Result } from "#src/domain/result";
 import type { ExplanationRunTransactions } from "./explanation-run-transactions";
 import type { GuideStartRequest } from "./guide-generation-service";
 import type { ExplanationProducerOutcome } from "./explanation-producer";
-import { explanationVersionDiagnostic } from "./explanation-producer";
+import { explanationFailureDiagnostic } from "./explanation-producer";
 import {
   explanationStartCount,
   nativeTurnStatus,
@@ -335,13 +336,13 @@ export class GuidePassConclusion {
         await this.pause(pass);
         return;
       }
-      const diagnostic = explanationVersionDiagnostic(
+      const diagnostic = explanationFailureDiagnostic(
         outcome,
         pass.request.selection.provider,
       );
       await this.settle(
         ref,
-        diagnostic !== undefined
+        diagnostic === "unsupported_codex_version"
           ? "capability_unavailable"
           : state.nativeExecution === undefined
             ? failureCode(outcome.reason)
@@ -462,7 +463,7 @@ export class GuidePassConclusion {
     ref: InsightRunRef,
     code: InsightFailureRecord["code"],
     phase: InsightFailureRecord["phase"],
-    diagnostic?: "unsupported_codex_version",
+    diagnostic?: ExplanationFailureDiagnostic,
   ): Promise<boolean> {
     try {
       const settled = await this.authority.settleRun({

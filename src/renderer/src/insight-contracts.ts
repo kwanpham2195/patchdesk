@@ -57,6 +57,9 @@ export const insightFields = {
     v.strictObject({
       runId: v.optional(v.pipe(v.string(), v.minLength(1))),
       category: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
+      incompleteReason: v.optional(
+        v.picklist(["insufficient_evidence", "unable_to_complete"]),
+      ),
       model: v.pipe(v.string(), v.minLength(1)),
       reasoning: v.picklist(["minimal", "low", "medium", "high", "xhigh"]),
       retryable: v.boolean(),

@@ -42,6 +42,7 @@ export type InsightInvocationInput = {
 /** Provider-classified failure; cancellation remains distinct from failure. */
 type InsightInvocationFailure = {
   readonly reason: InsightFailureCategory | "cancelled";
+  readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
   readonly phase?: string;
   readonly code?: string;
   readonly detail?: string;
