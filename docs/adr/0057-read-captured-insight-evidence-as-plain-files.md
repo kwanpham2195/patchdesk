@@ -48,7 +48,7 @@ Files have mode 0444. Directories stay owner-writable so ordinary retention remo
 
 ### Migration
 
-Analysis moved first on both native providers. Brief, Guide and Walkthrough now use the same tree and native reading instructions. The page builder, page references, continuation traversal and store page/search methods remain pending deletion in a separate follow-up. Result and reader pagination are separate from the captured evidence format.
+Analysis moved first on both native providers. Brief, Guide and Walkthrough now use the same tree and native reading instructions. The page builder, page references, continuation traversal and store page/search methods have been deleted. Result and reader pagination are separate from the captured evidence format.
 
 The page format postdates the latest release, so no compatibility path is required. An unsettled preparation in the page format fails closed and requires re-preparation. Retained results keep their semantic citations and remain readable.
 
@@ -58,4 +58,4 @@ Models can inspect the complete diff without reading every full head snapshot. T
 
 All four Insights now read the tree. Guide and Walkthrough capture head snapshots within the existing limits; Brief still captures neither snapshots nor review context. The host-held recursive index remains the integrity authority, independently of the model-readable manifest.
 
-The page format code remains until the deletion follow-up. Its presence does not authorize a page fallback for a new run. This decision does not establish better result quality, Pi's compliance with mode bits, or completion within a generation deadline. Live native runs must establish those outcomes separately. Guide coverage remains a separate follow-up in #830.
+The page format code has been deleted. This decision does not establish better result quality, Pi's compliance with mode bits, or completion within a generation deadline. Live native runs must establish those outcomes separately. Guide coverage remains a separate follow-up in #830.

@@ -563,19 +563,6 @@ export class PatchdeskPaths {
     return join(this.sessionDirectory(profileId, sessionId), "prepared");
   }
 
-  /** One run's captured evidence follows its session's retention and quarantine lifetime. */
-  insightEvidenceDirectory(
-    profileId: WorkspaceProfileId,
-    sessionId: ReviewSessionId,
-    runId: InsightRunId,
-  ): string {
-    return join(
-      this.preparedDirectory(profileId, sessionId),
-      "insight-evidence",
-      runId,
-    );
-  }
-
   /** Plain-file Analysis captures remain under their session's preparation lifetime. */
   analysisEvidenceDirectory(
     profileId: WorkspaceProfileId,

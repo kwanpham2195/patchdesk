@@ -31,7 +31,7 @@ async function briefPromptResult(patch: string | Buffer) {
           patchHash: "c".repeat(64),
         },
         bundleId: "d".repeat(64),
-        entryPageId: `${"d".repeat(64)}-p1`,
+        directory: "captured-evidence",
       } as never,
     });
   } finally {
@@ -91,7 +91,7 @@ describe("prepareBriefPrompt", () => {
     if (prepared._tag === "err") throw new Error(prepared.error.reason);
     const facts = prepared.value.slice(
       prepared.value.indexOf("PATCH FACTS"),
-      prepared.value.indexOf("EVIDENCE ENTRY"),
+      prepared.value.indexOf("This operation describes"),
     );
     expect(facts).toContain("Changed files: 2 (2 renamed)");
     expect(facts).toContain("job/ -> deploy/: 2 files, 0 also edited");

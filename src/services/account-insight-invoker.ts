@@ -205,7 +205,7 @@ export class AccountInsightInvoker implements InsightInvoker {
           phase: "guide_input_missing",
         });
       const runTimeoutMs = await resolveWalkthroughTimeoutMs(
-        { contextPath: input.contextPath, patchPath: input.evidence.patchPath },
+        { contextPath: input.contextPath, patchPath: input.patchPath },
         options.signal,
       );
       const result = await runNative({

@@ -11,7 +11,7 @@ import {
 } from "#src/domain/ids";
 import type { InsightTextRootDescriptor } from "#src/domain/insight-artifact-scalars";
 import {
-  treeEvidenceReferenceSchema,
+  insightEvidenceReferenceSchema,
   type InsightEvidenceReference,
 } from "./insight-evidence-reference";
 
@@ -29,9 +29,7 @@ export async function explanationEvidenceReference(
     readonly reviewId: ReviewId;
     readonly runId: string;
   },
-): Promise<
-  Extract<InsightEvidenceReference, { readonly tree: object }> | undefined
-> {
+): Promise<InsightEvidenceReference | undefined> {
   const manifest = await new InsightResultStore(
     artifacts,
     run.profileId,
@@ -44,7 +42,7 @@ export async function explanationEvidenceReference(
       v.looseObject({
         identity: v.unknown(),
         bundleId: v.string(),
-        ...treeEvidenceReferenceSchema.entries.tree.entries,
+        ...insightEvidenceReferenceSchema.entries.tree.entries,
       }),
       JSON.parse(manifest.value),
     );
@@ -61,11 +59,10 @@ export async function explanationEvidenceReference(
         bytes: prepared.evidenceManifest.data.bytes,
       },
     ];
-    const reference = v.safeParse(treeEvidenceReferenceSchema, {
+    const reference = v.safeParse(insightEvidenceReferenceSchema, {
       identity: parsed.identity,
       bundleId: parsed.bundleId,
       directory,
-      pages: [],
       sources: files.map((file, index) => ({ ...file, id: `s${index + 1}` })),
       tree: {
         format: parsed.format,

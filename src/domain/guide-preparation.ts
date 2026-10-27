@@ -68,7 +68,6 @@ const guidePreparationCountsSchema = v.strictObject({
   inventoryFiles: insightArtifactUnsignedSchema,
   contextBytes: insightArtifactUnsignedSchema,
   evidenceSources: insightArtifactUnsignedSchema,
-  evidencePages: insightArtifactUnsignedSchema,
 });
 
 /** Descriptor-only preparation reply shared by the worker and sandboxed preload. */

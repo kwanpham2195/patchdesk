@@ -193,7 +193,6 @@ export function buildInsightEvidenceTree(input: {
     directory: input.directory,
     bundleId,
     sources,
-    pages: [],
     manifestText,
     tree: {
       format: "insight-evidence-tree/1",

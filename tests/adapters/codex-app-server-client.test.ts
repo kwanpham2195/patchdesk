@@ -833,7 +833,7 @@ describe("buildCodexAnalysisPrompt", () => {
           patchHash: "c".repeat(64),
         },
         bundleId: "d".repeat(64),
-        entryPageId: `${"d".repeat(64)}-p1`,
+        directory: "captured-evidence",
       } as never,
       language: "en",
     });
@@ -856,7 +856,7 @@ describe("buildCodexAnalysisPrompt", () => {
       "P2 is a defect with a workaround, or a real maintainability risk.",
     );
     expect(result.value).toContain("P3 is a nit.");
-    expect(result.value).toContain("EVIDENCE ENTRY:");
+    expect(result.value).toContain("Start with README.md, then files.json.");
     expect(result.value).toContain("Captured head:");
     expect(result.value).not.toContain("PATCH ARTIFACT:");
     expect(

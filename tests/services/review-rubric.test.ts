@@ -9,7 +9,7 @@ const prompt = composeReviewPrompt({
       patchHash: "c".repeat(64),
     },
     bundleId: "d".repeat(64),
-    entryPageId: `${"d".repeat(64)}-p1`,
+    directory: "captured-evidence",
   } as never,
   language: "en",
 });
@@ -57,7 +57,7 @@ describe("review rubric", () => {
   });
 
   it("labels each input section", () => {
-    expect(prompt).toContain(`EVIDENCE ENTRY: ${"d".repeat(64)}-p1`);
+    expect(prompt).toContain("captured-evidence");
     expect(prompt).toContain("Captured head:");
     expect(prompt).not.toContain("PATCH ARTIFACT:");
     expect(prompt).not.toContain("REVIEW CONTEXT DOCUMENT:");
