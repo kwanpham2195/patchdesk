@@ -423,6 +423,7 @@ export class ExplanationPreparationService {
       prepared,
       sessionId,
       run,
+      this.resources.diagnostic,
     );
   }
 

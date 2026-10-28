@@ -1,3 +1,6 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
+import type { InsightEvidenceFailureDetail } from "#src/domain/insight-evidence";
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
 import * as v from "valibot";
 
 import { InsightResultStore } from "#src/adapters/storage/insight-result-store";
@@ -22,21 +25,30 @@ const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
 export async function explanationEvidenceReference(
   artifacts: InsightArtifactStore,
   destination: PatchdeskPaths,
-  prepared: { readonly evidenceManifest: InsightTextRootDescriptor },
+  prepared: {
+    readonly evidenceManifest: InsightTextRootDescriptor;
+    readonly evidenceBundleId: string;
+  },
   sessionId: ReviewSessionId,
   run: {
     readonly profileId: WorkspaceProfileId;
     readonly reviewId: ReviewId;
     readonly runId: string;
   },
+  diagnostic?: (entry: LogEntryInput) => void,
 ): Promise<InsightEvidenceReference | undefined> {
+  const refuse = (detail: InsightEvidenceFailureDetail): undefined => {
+    logInsightEvidenceFailure(diagnostic, run.runId, detail);
+    return undefined;
+  };
   const manifest = await new InsightResultStore(
     artifacts,
     run.profileId,
     run.reviewId,
   ).readText(prepared.evidenceManifest, MAX_MANIFEST_BYTES);
   const runId = parseInsightRunId(run.runId);
-  if (manifest._tag === "err" || runId._tag === "err") return undefined;
+  if (manifest._tag === "err") return refuse("manifest_unavailable");
+  if (runId._tag === "err") return refuse("identity_mismatch");
   try {
     const parsed = v.parse(
       v.looseObject({
@@ -76,8 +88,18 @@ export async function explanationEvidenceReference(
         bytes: prepared.evidenceManifest.data.bytes,
       },
     });
-    return reference.success ? reference.output : undefined;
+    if (!reference.success) return refuse("manifest_invalid");
+    const identity = reference.output.identity;
+    if (
+      identity.profileId !== run.profileId ||
+      identity.reviewId !== run.reviewId ||
+      identity.sessionId !== sessionId ||
+      identity.runId !== runId.value ||
+      reference.output.bundleId !== prepared.evidenceBundleId
+    )
+      return refuse("identity_mismatch");
+    return reference.output;
   } catch {
-    return undefined;
+    return refuse("manifest_invalid");
   }
 }

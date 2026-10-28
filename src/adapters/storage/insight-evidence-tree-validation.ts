@@ -5,8 +5,10 @@ import { createHash } from "node:crypto";
 import type {
   InsightEvidenceBundle,
   InsightEvidenceFailure,
+  InsightEvidenceFailureDetail,
 } from "#src/domain/insight-evidence";
 import { err, ok, type Result } from "#src/domain/result";
+import { isNotFound } from "./json-file";
 import { isPathContained } from "./path-containment";
 import {
   evidencePathIsOwned,
@@ -23,13 +25,12 @@ export async function validateInsightEvidenceTree(
   const mismatch = {
     _tag: "InsightEvidenceFailure",
     reason: "evidence_mismatch",
+    detail: "tree_invalid",
   } as const;
   const tree = bundle.tree;
-  if (
-    tree === undefined ||
-    !(await evidencePathIsOwned(root, bundle.directory))
-  )
-    return err(mismatch);
+  if (tree === undefined) return err(mismatch);
+  if (!(await evidencePathIsOwned(root, bundle.directory)))
+    return err({ ...mismatch, detail: "unexpected_entry" });
   const expected = new Map(tree.files.map((file) => [file.name, file]));
   const directories = new Set(tree.directories);
   if (
@@ -40,24 +41,31 @@ export async function validateInsightEvidenceTree(
     return err(mismatch);
   const foundFiles = new Set<string>();
   const foundDirectories = new Set<string>();
+  let firstFailure: InsightEvidenceFailure | undefined;
+  const refuse = (detail: InsightEvidenceFailureDetail): false => {
+    firstFailure ??= { ...mismatch, detail };
+    return false;
+  };
   const visit = async (relative: string): Promise<boolean> => {
-    if (signal?.aborted) return false;
+    if (signal?.aborted) return refuse("cancelled");
     const path = join(bundle.directory, relative);
     if (
       !isPathContained(bundle.directory, path) ||
       !(await evidencePathIsOwned(root, path))
     )
-      return false;
+      return refuse("unexpected_entry");
     const stat = await lstat(path);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      return refuse("unexpected_entry");
     for (const name of await readdir(path)) {
       const child = relative === "" ? name : `${relative}/${name}`;
       const childPath = join(bundle.directory, child);
-      if (!isPathContained(bundle.directory, childPath)) return false;
+      if (!isPathContained(bundle.directory, childPath))
+        return refuse("unexpected_entry");
       const entry = await lstat(childPath);
-      if (entry.isSymbolicLink()) return false;
+      if (entry.isSymbolicLink()) return refuse("unexpected_entry");
       if (entry.isDirectory()) {
-        if (!directories.has(child)) return false;
+        if (!directories.has(child)) return refuse("unexpected_entry");
         foundDirectories.add(child);
         if (!(await visit(child))) return false;
       } else {
@@ -67,25 +75,34 @@ export async function validateInsightEvidenceTree(
           !entry.isFile() ||
           (entry.mode & 0o777) !== 0o444
         )
-          return false;
+          return refuse("unexpected_entry");
         const checked = await validateEvidenceFile({
           root,
           path: childPath,
           ...file,
         });
-        if (checked._tag === "err") return false;
+        if (checked._tag === "err") {
+          firstFailure ??= checked.error;
+          return false;
+        }
         foundFiles.add(child);
       }
     }
     return true;
   };
   try {
+    if (!(await visit(""))) return err(firstFailure ?? mismatch);
     if (
-      !(await visit("")) ||
       foundFiles.size !== expected.size ||
       foundDirectories.size !== directories.size
     )
-      return err(mismatch);
+      return err({
+        ...mismatch,
+        detail:
+          expected.has("manifest.json") && !foundFiles.has("manifest.json")
+            ? "manifest_unavailable"
+            : "file_missing",
+      });
     const patchHash = createHash("sha256");
     for (const name of tree.diffs) {
       const file = expected.get(name);
@@ -101,11 +118,14 @@ export async function validateInsightEvidenceTree(
     }
     return patchHash.digest("hex") === bundle.identity.patchHash
       ? ok(undefined)
-      : err(mismatch);
-  } catch {
-    return err({
-      _tag: "InsightEvidenceFailure",
-      reason: "evidence_unavailable",
-    });
+      : err({ ...mismatch, detail: "size_hash_mismatch" });
+  } catch (cause) {
+    return err(
+      firstFailure ?? {
+        _tag: "InsightEvidenceFailure",
+        reason: "evidence_unavailable",
+        detail: isNotFound(cause) ? "file_missing" : "file_unreadable",
+      },
+    );
   }
 }

@@ -1,3 +1,4 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
 import {
   acquireInsightArtifactJobWorker,
   type InsightArtifactJobWorker,
@@ -45,6 +46,7 @@ type PermitWaiter = {
 
 /** Process-owned reader quotas, permits and both artifact workers. */
 export type InsightResourceBundle = {
+  readonly diagnostic?: (entry: LogEntryInput) => void;
   /** At most 4 active UI reads and 64 FIFO waiters; cancellation returns read/io. */
   readonly uiReader: Reader;
   /** Propagates a request's lifetime through the storage graph without changing stored-value APIs. */
@@ -295,6 +297,7 @@ function createBundle(
   }
 
   return {
+    diagnostic: (entry) => logs?.write(entry),
     uiReader: leasedReader(() => ui, "ui"),
     withReadSignal: (signal, action) => readSignal.run(signal, action),
     authorityReader: leasedReader(() => authority, "authority"),

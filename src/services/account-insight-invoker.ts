@@ -1,3 +1,4 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
 import {
   insightFailureDiagnostic,
   analysisIncompleteDiagnostic,
@@ -76,6 +77,7 @@ export class AccountInsightInvoker implements InsightInvoker {
     ) => AccountInsightRunner,
     private readonly executablePath: string,
     private readonly readHead: WorktreeHeadReader,
+    private readonly diagnostic?: (entry: LogEntryInput) => void,
   ) {}
 
   async invoke(
@@ -134,6 +136,7 @@ export class AccountInsightInvoker implements InsightInvoker {
     const nativeInstructions = await accountInsightEvidenceInstructions(
       input.evidence,
       this.paths,
+      this.diagnostic,
     );
     if (nativeInstructions._tag === "err")
       return err({
@@ -171,6 +174,8 @@ export class AccountInsightInvoker implements InsightInvoker {
             ...run,
             prompt,
             attempt: attempt.value,
+            diagnostic: this.diagnostic,
+            runId: evidence.identity.runId,
             maxPromptBytes: NATIVE_INSIGHT_PROMPT_BYTES,
           },
           options,

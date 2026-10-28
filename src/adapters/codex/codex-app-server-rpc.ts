@@ -13,6 +13,7 @@ import type { CodexAppServerFailure } from "./codex-app-server-client";
 import type { CodexActivityEmitter } from "./codex-activity";
 import { dynamicToolLine } from "./codex-dynamic-tool-line";
 import type {
+  CodexDiscoveryStep,
   CodexDiagnostic,
   CodexDiagnosticFields,
   CodexStopFailureCause,
@@ -26,6 +27,7 @@ const FILE_APPROVAL_METHOD = "item/fileChange/requestApproval";
 const PERMISSIONS_APPROVAL_METHOD = "item/permissions/requestApproval";
 
 type PendingRequest = {
+  readonly discoveryStep: CodexDiscoveryStep | undefined;
   readonly resolve: (value: JsonObject) => void;
   readonly reject: (cause: RpcFailure) => void;
   readonly timer: ReturnType<typeof setTimeout>;
@@ -231,6 +233,7 @@ export class RpcChild {
     params: P,
     signal?: AbortSignal,
     timeoutMs = REQUEST_TIMEOUT_MS,
+    discoveryStep?: CodexDiscoveryStep,
   ): Promise<Result<JsonObject, RpcFailure>> {
     if (
       this.child?.stdin === null ||
@@ -238,11 +241,11 @@ export class RpcChild {
       this.stopped ||
       this.broken
     ) {
-      this.detail("request_unavailable");
+      this.detail("request_unavailable", { discoveryStep });
       return err("process_unavailable");
     }
     if (signal?.aborted) {
-      this.detail("request_aborted");
+      this.detail("request_aborted", { discoveryStep });
       return err("cancelled");
     }
     const id = String(++this.nextId);
@@ -251,7 +254,7 @@ export class RpcChild {
         () => {
           const pending = this.pending.get(id);
           if (pending === undefined) return;
-          this.detail("request_timeout");
+          this.detail("request_timeout", { discoveryStep });
           this.pending.delete(id);
           pending.reject("timeout");
         },
@@ -267,11 +270,11 @@ export class RpcChild {
         signal?.removeEventListener("abort", onAbort);
         resolveResult(err(cause));
       };
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, discoveryStep });
       const onAbort = (): void => {
         signal?.removeEventListener("abort", onAbort);
         if (this.pending.delete(id)) {
-          this.detail("request_aborted");
+          this.detail("request_aborted", { discoveryStep });
           clearTimeout(timer);
           resolveResult(err("cancelled"));
         }
@@ -304,7 +307,9 @@ export class RpcChild {
         this.stopped = true;
         failureCause = "pending_requests_threw";
         for (const pending of this.pending.values()) {
-          this.detail("request_stopped");
+          this.detail("request_stopped", {
+            discoveryStep: pending.discoveryStep,
+          });
           clearTimeout(pending.timer);
           pending.reject("stopped");
         }
@@ -396,8 +401,17 @@ export class RpcChild {
       this.pending.delete(String(id));
       const errorParsed = v.safeParse(rpcErrorSchema, message.error);
       if (errorParsed.success) {
-        this.detail("remote_rpc_error");
         const { code, message: errorMessage } = errorParsed.output;
+        this.detail("remote_rpc_error", {
+          discoveryStep: pending.discoveryStep,
+          remoteErrorCode:
+            v.is(v.number(), code) &&
+            Number.isInteger(code) &&
+            code >= -2147483648 &&
+            code <= 2147483647
+              ? code
+              : undefined,
+        });
         const base = { _tag: "rpc_error" as const };
         const withCode = code === undefined ? base : { ...base, code };
         const rpcError =
@@ -408,7 +422,9 @@ export class RpcChild {
       } else {
         const result = message.result;
         if (result === undefined || !v.is(codexRpcResultSchema, result)) {
-          this.detail("rpc_result_invalid");
+          this.detail("rpc_result_invalid", {
+            discoveryStep: pending.discoveryStep,
+          });
           pending.reject("invalid_rpc_result");
         } else pending.resolve(result);
       }
@@ -441,8 +457,13 @@ export class RpcChild {
 
   private detail(
     code: Extract<CodexDiagnostic, readonly ["rpc_detail", string]>[1],
+    fields: CodexDiagnosticFields = {},
   ): void {
-    this.diagnostic?.(["rpc_detail", code], {}, this.diagnosticStopping);
+    try {
+      this.diagnostic?.(["rpc_detail", code], fields, this.diagnosticStopping);
+    } catch {
+      // Diagnostics cannot settle or interrupt an RPC request.
+    }
   }
 
   private failPending(

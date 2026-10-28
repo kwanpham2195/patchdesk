@@ -124,6 +124,7 @@ export function insightCoordinatorFactory({
           clientFactory,
           executablePath,
           readHead,
+          (entry) => logs.write(entry),
         ).invoke(input, options);
       },
     });
@@ -179,6 +180,7 @@ export function insightCoordinatorFactory({
             dirname(fileURLToPath(import.meta.url)),
             "pi-explanation-helper.mjs",
           ),
+      (entry) => logs.write(entry),
     );
     const explanationProducers: ExplanationProducers = {
       "codex-cli-account": codexProducer,

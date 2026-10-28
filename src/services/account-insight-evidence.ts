@@ -1,3 +1,5 @@
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
 import { analysisEvidencePrompt } from "./insight-evidence-reference";
 
@@ -13,10 +15,23 @@ import { err, ok, type Result } from "#src/domain/result";
 export async function accountInsightEvidenceInstructions(
   bundle: InsightEvidenceBundle,
   paths: PatchdeskPaths,
+  diagnostic?: (entry: LogEntryInput) => void,
 ): Promise<Result<string, InsightEvidenceFailure>> {
-  if (bundle.tree === undefined)
-    return err({ _tag: "InsightEvidenceFailure", reason: "evidence_mismatch" });
-  const checked = await new InsightEvidenceStore(paths).validate(bundle);
+  if (bundle.tree === undefined) {
+    logInsightEvidenceFailure(
+      diagnostic,
+      bundle.identity.runId,
+      "tree_invalid",
+    );
+    return err({
+      _tag: "InsightEvidenceFailure",
+      reason: "evidence_mismatch",
+      detail: "tree_invalid",
+    });
+  }
+  const checked = await new InsightEvidenceStore(paths, diagnostic).validate(
+    bundle,
+  );
   if (checked._tag === "err") return checked;
   return ok(
     [

@@ -99,8 +99,18 @@ type Codes = {
 export type CodexDiagnostic = {
   [K in keyof Codes]: readonly [K, Codes[K]];
 }[keyof Codes];
+export type CodexDiscoveryStep =
+  | "config_read"
+  | "login_start"
+  | "config_requirements_read"
+  | "account_read"
+  | "private_config_read"
+  | "skills_list";
+
 /** Only already-classified enums and measured counters may accompany observations. */
 export type CodexDiagnosticFields = {
+  readonly discoveryStep?: CodexDiscoveryStep | undefined;
+  readonly remoteErrorCode?: number | undefined;
   readonly argumentKind?:
     | "missing"
     | "null"
@@ -195,6 +205,7 @@ export class CodexExplanationDiagnostics {
   private trigger:
     | { readonly event: CodexDiagnostic; readonly order: number }
     | undefined;
+  private discoveryFailure: CodexDiagnosticFields | undefined;
   private secondary: CodexDiagnostic | undefined;
   private cleanupRecorded = false;
   /** Session phase changes do not change a latched trigger. */
@@ -213,6 +224,12 @@ export class CodexExplanationDiagnostics {
     secondaryOnly = false,
   ): void {
     if (this.final) return;
+    if (
+      event[0] === "rpc_detail" &&
+      fields.discoveryStep !== undefined &&
+      phase !== "cleanup"
+    )
+      this.discoveryFailure ??= fields;
     if (this.order === 65535) this.saturated = true;
     else this.order++;
     if (event[0] === "cleanup" && !secondaryOnly) {
@@ -300,6 +317,8 @@ export class CodexExplanationDiagnostics {
       ...required,
       orderSaturated: this.saturated || undefined,
       overflow: this.overflow || undefined,
+      discoveryStep: (this.discoveryFailure ?? fields).discoveryStep,
+      remoteErrorCode: (this.discoveryFailure ?? fields).remoteErrorCode,
       rpcIdKind: fields.rpcIdKind,
       namespaceKind: fields.namespaceKind,
       binding: fields.binding,
