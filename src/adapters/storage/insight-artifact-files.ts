@@ -157,7 +157,7 @@ export async function installImmutableInsightArtifactFile(
     const beforeVerification = await lstat(path);
     const verified = await verifyInstalledImmutableFile(
       ownedRoot,
-      reviewDirectory,
+      [objects, namespace, resolve(reviewDirectory)],
       path,
       bytes,
       parents.value,
@@ -177,7 +177,7 @@ export async function installImmutableInsightArtifactFile(
       return verified;
     return await verifyInstalledImmutableFile(
       ownedRoot,
-      reviewDirectory,
+      [objects, namespace, resolve(reviewDirectory)],
       path,
       bytes,
       parents.value,
@@ -190,7 +190,7 @@ export async function installImmutableInsightArtifactFile(
 
 async function verifyInstalledImmutableFile(
   ownedRoot: string,
-  reviewDirectory: string,
+  directories: ReadonlyArray<string>,
   path: string,
   bytes: Uint8Array,
   parents: ReadonlyArray<Stats>,
@@ -202,11 +202,7 @@ async function verifyInstalledImmutableFile(
       verified.error.reason === "not_found" ? "io" : verified.error.reason,
     );
   // Sync every namespace entry even on reuse after another writer's uncertain fsync.
-  for (const directory of [
-    dirname(path),
-    dirname(dirname(path)),
-    resolve(reviewDirectory),
-  ]) {
+  for (const directory of directories) {
     const synced = await syncOwnedDirectory(directory);
     if (synced._tag === "err") return synced;
   }
