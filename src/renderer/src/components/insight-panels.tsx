@@ -31,6 +31,7 @@ import { CopyLoadedTextButton } from "./copy-loaded-text-button";
 import { loadInsightFailureDiagnostics } from "./insight-failure-diagnostics";
 import { RelativeTime } from "./relative-time";
 import type { NativeSessionAttemptPage } from "#src/domain/native-session-attempt";
+import { InsightAttemptDetails } from "./insight-attempt-details";
 import { INSIGHT_STATUS_LABELS } from "#src/renderer/src/insight-status";
 import { INSIGHT_ICONS } from "#src/renderer/src/insight-icons";
 import { InsightStatusIcon } from "./insight-status-icon";
@@ -436,6 +437,29 @@ export function InsightFailed({
       setRepreparing(false);
     }
   };
+  const interruption = projection.replacementFailure?.reason;
+  // A cancelled or superseded run is not a failure, so it keeps its run details instead of the failure line.
+  if (interruption === "cancelled" || interruption === "superseded")
+    return (
+      <Alert>
+        <AlertDescription>
+          <p>
+            {interruption === "cancelled"
+              ? "The new run was cancelled."
+              : "The new run was superseded by a different Review revision."}{" "}
+            {generatedAt === undefined ? "" : "Showing the previous result."}
+          </p>
+          <details className="text-xs">
+            <summary className="cursor-pointer">Run details</summary>
+            <InsightAttemptDetails
+              key={detailsSource?.runId ?? nativeAttempts?.attempts[0]?.runId}
+              page={nativeAttempts}
+              source={detailsSource}
+            />
+          </details>
+        </AlertDescription>
+      </Alert>
+    );
   return (
     <Alert
       variant="warning"

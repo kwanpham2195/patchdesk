@@ -20,6 +20,7 @@ const failedProjection = {
   status: "failed",
   replacementFailure: {
     runId: "run-a",
+    reason: "failed",
     model: "gpt-5.6-luna",
     reasoning: "high",
     category: "review_worktree_unavailable",
