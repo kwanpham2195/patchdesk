@@ -50,17 +50,22 @@ export function changeIntentSummary(view: ChangeIntentView | null): string {
   );
 }
 
-/** What an Analysis result says about the intent it checked; undefined when it ran against none. */
+/** What an Analysis result says about the intent it checked, compared with the current setting. */
 export function analysisChangeIntentLine(
   ran: (ChangeIntentSetting & { readonly sha256: string }) | undefined,
   current: ChangeIntentView | null | undefined,
 ): string | undefined {
-  if (ran === undefined) return undefined;
+  const matchesCurrentIntent = analysisRanAgainstChangeIntent(
+    ran,
+    current?.setting,
+  );
+  if (ran === undefined)
+    return matchesCurrentIntent ? undefined : "Ran without a change intent";
   const checked =
     ran.kind === "text"
       ? "Checked against: change intent"
       : `Checked against: spec ${ran.path}`;
-  return analysisRanAgainstChangeIntent(ran, current?.setting)
+  return matchesCurrentIntent
     ? checked
     : `${checked} · Intent changed since this run`;
 }

@@ -33,6 +33,8 @@ stateDiagram-v2
 
 Analysis opens in the Insights slot for the represented Review session. At the right end of the tab strip, a muted meta line says when the Analysis was generated ("Generated 7h", or "Outdated · generated 7h"), the provider and model, and the language when it is not English (for example "Vietnamese"), with a secondary Regenerate button while the Insight is current.
 
+For a local Review, the meta line names the Change intent or spec file the Analysis checked and says "Intent changed since this run" if the current setting differs. If the Analysis ran without an intent and one is added later, it says "Ran without a change intent". With no intent then or now, no intent label appears.
+
 The reader shows its cards in a fixed order.
 
 - **Verdict card.** A verdict badge reads Ready to approve, Changes requested, or Comment recommended, with the approved, changes-requested, or commented review icon beside it. Beside it, one badge reads "X of Y handled", or "No findings" when Analysis generated none, and one badge gives the CI state as Passing, Failing, Pending, Skipped, or Unknown; Failing is drawn as destructive. A heading follows the verdict: "The change is ready for your final review.", "Resolve the blocking findings before approval.", or "Review the highlighted concern before you finish." The generated summary sits below the heading. When Patchdesk allows finishing with an Analysis summary, the card carries a Finish review button.
@@ -172,6 +174,8 @@ Review activity retains the incomplete reason and a fixed summary of recognizabl
 - Replacement code containing a Markdown fence is refused rather than escaped, because a fence line would close the published suggestion block early.
 
 ## Open questions and verification
+
+The #499 meta-line change was verified over CDP on 2026-10-28 using the production Insights slot with fixture Analysis data. Adding an intent showed "Ran without a change intent"; no intent still showed no label, and a matching intent kept "Checked against: change intent". No provider run was started.
 
 The compact failure warning and Copy diagnostics follow the current source change after `9bdbed9e`. Desktop screenshots and a real clipboard click remain pending because CDP reported a hidden document on 2026-10-28. No generation was started.
 

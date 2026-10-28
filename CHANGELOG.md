@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed Analysis omitting "Ran without a change intent" after a Change intent is added to a local Review. #499
+
 ## 0.0.20 - 2026-10-28
 
 - Changed all four Insights to run through Codex CLI account or pi CLI account. The bundled API-key runtime is removed; a saved API-key choice opens on your most recent native account instead. #821 #831
