@@ -70,8 +70,11 @@ jobs:
       - name: Lint the whole repository
         run: pnpm lint
 
+      # tsc peaks near 2.8 GB on this project, above Node 22's default heap on the runner.
       - name: Run typecheck
         run: pnpm typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Run complete tests
         run: pnpm test:all
