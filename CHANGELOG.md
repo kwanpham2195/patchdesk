@@ -2,55 +2,16 @@
 
 ## Unreleased
 
-- Clarified Guide coverage and files it did not explain. Others now puts changed code first by lines changed, with renamed and deleted files in folded sections.
-
-- Compacted failed Insights to a warning, recovery action, and Copy diagnostics, preserving previous results and moving safe debugging metadata out of the reader. Activity remains available while a run is active.
-
-- Changed Insight run dialogs to preselect a recent available native account for retired or unavailable saved providers, explain the replacement, and show each batch row's provider and model. Batch rows keep their own choices when checked.
-
-- Changed Guide generation to report ungrouped files before finishing, so the model can group further changes or explicitly confirm the remaining Others. #830
-
-- Changed Brief, Guide, and Walkthrough to read captured diffs as plain files with recursive integrity checks. Guide and Walkthrough can inspect captured head files for surrounding code; Brief still uses only the patch.
-
-- Clarified that Analysis must read the whole change, keep short notes across compaction, and report incomplete only when captured evidence cannot be read, not because the change is large.
-
-- Changed Analysis to read captured diffs as plain files and open head snapshots only for surrounding code, with recursive integrity checks that preserve the previous result if evidence changes.
-
-- Clarified incomplete Analysis and missing-finish failures, and instructed native Insights to request 10000 output tokens for each captured-page read.
-
-- Fixed native Insight cancellation on macOS treating a brief process-exit permission error as failed cleanup and remaining stuck on Cancelling.
-
-- Compacted Guide to one toolbar and one file header, with docked group explanations beside continuously scrolling code. Kept file context and cancelled-run diagnostics on request, and shortened paused recovery panels while preserving spend warnings and required acknowledgments. #831
-
-- Changed all four Insights to run through Codex CLI account or pi CLI account and removed the bundled API-key runtime and model catalog. Saved API choices require an explicit native provider and model; historical results keep their API key provenance. #821
-
-- Retained private native attempt history with unknown completeness, safe attempt Details, and separate host failure, history capture, and cleanup outcomes. Review protection can retain history indefinitely. #821
-
-- Simplified Insight progress and failures with one status/action block, collapsed Activity, readable previous results, and shared Run Insights settings with optional row overrides. Mixed values stay visible; only accepted starts save preferences. #821
-
-- Added paged Walkthrough generation and reading with a 64 MiB captured-patch ceiling, original hunk line numbers, and no fixed chapter or section totals. Earlier-format results and progress are not imported. #821
-
-- Saved Walkthrough reviewed marks and current section per result. Cancel keeps the previous result and Regenerate available; interrupted requests pause for Start new generation, which opens a spend acknowledgment before dispatch and preserves the original generation deadline. Recovery and native cessation must be confirmed. #821
-
-- Added paged Guide generation without a twelve-group cap, with a 64 MiB captured-patch ceiling, saved reading progress, visible context completeness, and Start new generation for eligible uncertain native requests. Earlier-format Guides and progress are not imported. #821
-
-- Removed Guide's 2 MiB patch limit for captured evidence, while keeping model requests and evidence pages bounded and validating the complete retained patch. #821
-
-- Changed Insight startup to acknowledge saved runs before preparing evidence, show Preparing and Cancelling separately from Running, and recover an active run after a lost start response. Guide preparation failures follow the same saved-run lifecycle. #821
-
-- Increased desktop request waits to 60 seconds and Analysis execution to 20 minutes, with larger bounded native prompts, evidence pages, and buffered command output. Incomplete Analysis and Codex cleanup failures retain safe explanations in Review activity. #821
-
-- Fixed opening large pull requests with a local checkout by capturing the diff directly to disk instead of applying the command-output limit.
-
-- Changed Brief, Walkthrough, Analysis, and Guide to read captured revision evidence on demand instead of sending the complete patch in the first model request. Missing or changed evidence and incomplete Analysis preserve the previous result and explain the failure. Pi CLI retains completed Analysis results without requiring unused failure fields. #821
-
-- Added an explicit root-package check and one full check per commit, serialized across worktrees.
-
-- Added Update now for apps installed with the shell installer or from the disk image: Patchdesk quits, installs the new release, and reopens. `install-release.sh --update` updates such an install by hand. Version 0.0.19 and earlier still show the Homebrew command for these installs, so update them once with `curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update` after quitting Patchdesk. #808
-
-- Fixed opening pull requests in the dev app failing with "could not save the local review state" when a local checkout was configured.
-
-- Added Guide in Insights: behavior groups beside complete retained file diffs, shared Viewed and review actions, saved Reviewed groups and reading position, and compact animated group/file navigation that stays available in narrow windows. Walkthrough remains separate. #816
+- Changed all four Insights to run through Codex CLI account or pi CLI account. The bundled API-key runtime is removed; a saved API-key choice opens on your most recent native account instead. #821 #831
+- Added Guide in Insights: behavior groups beside complete file diffs, with saved Reviewed groups and reading position. Guide reports files it did not group before finishing, and Others explains them with changed code first. #816 #830
+- Changed Insights to read captured evidence as plain files, so the model opens only what it needs on large pull requests. Analysis reads the whole change instead of stopping early. #821
+- Added paged Walkthrough and Guide reading with no fixed chapter, section or group limits, a 64 MiB captured-patch ceiling, and saved reviewed marks. Earlier-format results are not imported. #821
+- Compacted failed Insights to one line with the reason, the action, and Copy diagnostics, keeping the previous result readable. Run Insights shows each Insight's provider and model.
+- Showed Preparing and Cancelling separately from Running, and recovered an active run after a lost start response. Interrupted Walkthrough and Guide runs pause for an explicit Start new generation with a spend acknowledgment. #821
+- Kept each native Insight attempt's session history privately for debugging, and raised the Analysis time limit to 20 minutes. #821
+- Fixed native Insight cancellation on macOS staying stuck on Cancelling.
+- Fixed opening large pull requests with a local checkout, and opening pull requests in the dev app with a local checkout configured.
+- Added Update now for shell-installer and disk-image installs. Version 0.0.19 and earlier still show the Homebrew command, so update them once with `curl -fsSL https://raw.githubusercontent.com/kwanpham2195/patchdesk/main/scripts/install-release.sh | sh -s -- --update` after quitting Patchdesk. #808
 
 ## 0.0.19 - 2026-10-02
 
