@@ -1,3 +1,5 @@
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
+import type { LogEntryInput } from "#src/domain/log-entry";
 import { realpath, lstat } from "node:fs/promises";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import { NativeSessionAttemptStore } from "#src/adapters/storage/native-session-attempt-store";
@@ -26,6 +28,7 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
     private readonly readHead: WorktreeHeadReader,
     private readonly launcher: string,
     private readonly helper: string,
+    private readonly diagnostic?: (entry: LogEntryInput) => void,
   ) {}
 
   async invokeGuide(
@@ -68,8 +71,14 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
       identity.profileId !== input.profileId ||
       identity.sessionId !== input.sessionId ||
       identity.runId.toString() !== input.identity.runId.toString()
-    )
+    ) {
+      logInsightEvidenceFailure(
+        this.diagnostic,
+        input.identity.runId.toString(),
+        "identity_mismatch",
+      );
       return fail("evidence_mismatch");
+    }
     const worktree = await realpath(
       this.paths.worktreeDirectory(identity.profileId, identity.sessionId),
     ).catch(() => undefined);
@@ -89,6 +98,7 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
     const bundle = await loadInsightEvidenceReference(
       input.evidence,
       this.paths,
+      this.diagnostic,
     );
     if (bundle._tag === "err") return fail(bundle.error.reason);
     const base = await composeNativeExplanationPrompt(
@@ -135,9 +145,10 @@ export class PiCliExplanationProducer implements NativeExplanationProducer {
       declarations,
     });
     // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the post-invocation evidence check must observe the tree after the session ends.
-    const checked = await new InsightEvidenceStore(this.paths).validate(
-      bundle.value,
-    );
+    const checked = await new InsightEvidenceStore(
+      this.paths,
+      this.diagnostic,
+    ).validate(bundle.value);
     return checked._tag === "err"
       ? {
           _tag: "failed",

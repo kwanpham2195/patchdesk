@@ -1,3 +1,5 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
 import { join } from "node:path";
 import * as v from "valibot";
 
@@ -98,14 +100,26 @@ export function insightEvidenceReference(
 export async function loadInsightEvidenceReference(
   reference: InsightEvidenceReference,
   paths: PatchdeskPaths,
+  diagnostic?: (entry: LogEntryInput) => void,
 ): Promise<Result<InsightEvidenceBundle, InsightEvidenceFailure>> {
   const identity = reference.identity;
+  const refuse = (
+    failure: InsightEvidenceFailure,
+  ): Result<never, InsightEvidenceFailure> => {
+    logInsightEvidenceFailure(
+      diagnostic,
+      identity.runId,
+      failure.detail ?? "tree_invalid",
+    );
+    return err(failure);
+  };
   const mismatch = {
     _tag: "InsightEvidenceFailure",
     reason: "evidence_mismatch",
+    detail: "identity_mismatch",
   } as const;
   if (reference.tree?.format !== "insight-evidence-tree/1")
-    return err(mismatch);
+    return refuse({ ...mismatch, detail: "tree_invalid" });
   if (
     reference.directory !==
     paths.analysisEvidenceDirectory(
@@ -114,7 +128,7 @@ export async function loadInsightEvidenceReference(
       identity.runId,
     )
   )
-    return err(mismatch);
+    return refuse(mismatch);
   const sources = [];
   for (const source of reference.sources) {
     const read = await readEvidenceFile({
@@ -122,12 +136,21 @@ export async function loadInsightEvidenceReference(
       path: join(reference.directory, source.name),
       ...source,
     });
-    if (read._tag === "err") return read;
+    if (read._tag === "err")
+      return refuse({
+        ...read.error,
+        detail:
+          source.name === "manifest.json" &&
+          read.error.detail === "file_missing"
+            ? "manifest_unavailable"
+            : (read.error.detail ?? "file_unreadable"),
+      });
     sources.push({ ...source, text: read.value });
   }
   const manifest = sources.find((source) => source.name === "manifest.json");
+  if (manifest === undefined)
+    return refuse({ ...mismatch, detail: "manifest_unavailable" });
   if (
-    manifest === undefined ||
     manifest.sha256 !== reference.manifest.sha256 ||
     Buffer.byteLength(manifest.text) !== reference.manifest.bytes ||
     JSON.stringify(reference.tree.files) !==
@@ -135,7 +158,7 @@ export async function loadInsightEvidenceReference(
         sources.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),
       )
   )
-    return err(mismatch);
+    return refuse({ ...mismatch, detail: "size_hash_mismatch" });
   const bundle: InsightEvidenceBundle = {
     identity,
     bundleId: reference.bundleId,
@@ -144,7 +167,9 @@ export async function loadInsightEvidenceReference(
     manifestText: manifest.text,
     tree: reference.tree,
   };
-  const checked = await new InsightEvidenceStore(paths).validate(bundle);
+  const checked = await new InsightEvidenceStore(paths, diagnostic).validate(
+    bundle,
+  );
   return checked._tag === "err" ? checked : ok(bundle);
 }
 

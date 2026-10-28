@@ -1,3 +1,5 @@
+import { definedProps } from "#src/domain/defined-props";
+import type { CodexDiagnosticSink } from "./codex-explanation-diagnostics";
 import { runCodexExplanation } from "./codex-explanation-session";
 import type { CodexExplanationInput } from "./codex-explanation-protocol";
 import type { ExplanationProducerOutcome } from "#src/services/explanation-producer";
@@ -93,6 +95,8 @@ export type CodexRunInput = {
   readonly model: string;
   readonly reasoning: InsightReasoning;
   readonly prompt: string;
+  readonly diagnostic?: CodexDiagnosticSink | undefined;
+  readonly runId?: string | undefined;
   readonly outputSchema?: JsonSchema;
   readonly maxPromptBytes?: number;
   readonly runTimeoutMs?: number;
@@ -279,8 +283,36 @@ export class CodexAppServerClient {
     },
     home: CodexInsightHome,
   ): Promise<Result<unknown, CodexAppServerFailure>> {
+    let discoveryFailureRecorded = false;
     const isolation = await discoverCodexInsightSession(
-      () => new RpcChild(this.processFactory),
+      () =>
+        new RpcChild(this.processFactory, (event, fields, stopping) => {
+          if (
+            discoveryFailureRecorded ||
+            stopping ||
+            event[0] !== "rpc_detail" ||
+            fields.discoveryStep === undefined
+          )
+            return;
+          discoveryFailureRecorded = true;
+          try {
+            input.diagnostic?.({
+              process: "main",
+              level: "info",
+              topic: "native-insight-diagnostic",
+              message: "Native Insight diagnostic",
+              ...definedProps({ correlationId: input.runId }),
+              meta: {
+                category: event[0],
+                code: event[1],
+                discoveryStep: fields.discoveryStep,
+                remoteErrorCode: fields.remoteErrorCode,
+              },
+            });
+          } catch {
+            // Diagnostic delivery cannot change discovery or cleanup.
+          }
+        }),
       this.executablePath,
       input.worktreePath,
       home,

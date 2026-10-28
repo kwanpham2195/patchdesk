@@ -20,9 +20,22 @@ export type InsightEvidenceIdentity = {
   readonly patchHash: ContentHash;
   readonly intentHash: string | null;
 };
+/** Fixed local diagnostics never contain evidence paths or content. */
+export type InsightEvidenceFailureDetail =
+  | "manifest_unavailable"
+  | "manifest_invalid"
+  | "file_missing"
+  | "file_unreadable"
+  | "size_hash_mismatch"
+  | "unexpected_entry"
+  | "identity_mismatch"
+  | "tree_invalid"
+  | "cancelled";
+
 /** Expected failure codes contain no evidence excerpts or sensitive paths. */
 export type InsightEvidenceFailure = {
   readonly _tag: "InsightEvidenceFailure";
+  readonly detail?: InsightEvidenceFailureDetail;
   readonly reason:
     | "evidence_unavailable"
     | "evidence_mismatch"

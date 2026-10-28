@@ -324,6 +324,8 @@ export async function discoverCodexInsightSession(
       "config/read",
       { cwd, includeLayers: true },
       signal,
+      undefined,
+      "config_read",
     );
     if (signal?.aborted)
       return err({ reason: "cancelled", phase: "initialize" });
@@ -359,16 +361,35 @@ export async function discoverCodexInsightSession(
         phase: "native_auth_unsupported",
       });
     if (
-      (await discovery.request("account/login/start", home.login, signal))
-        ._tag === "err"
+      (
+        await discovery.request(
+          "account/login/start",
+          home.login,
+          signal,
+          undefined,
+          "login_start",
+        )
+      )._tag === "err"
     )
       return err({
         reason: "runtime_unavailable",
         phase: "native_auth_unsupported",
       });
     const [requirements, account] = await Promise.all([
-      discovery.request("configRequirements/read", {}, signal),
-      discovery.request("account/read", { refreshToken: false }, signal),
+      discovery.request(
+        "configRequirements/read",
+        {},
+        signal,
+        undefined,
+        "config_requirements_read",
+      ),
+      discovery.request(
+        "account/read",
+        { refreshToken: false },
+        signal,
+        undefined,
+        "account_read",
+      ),
     ]);
     if (
       requirements._tag === "err" ||
@@ -395,11 +416,15 @@ export async function discoverCodexInsightSession(
           "config/read",
           { cwd, includeLayers: false },
           signal,
+          undefined,
+          "private_config_read",
         ),
         privateDiscovery.request(
           "skills/list",
           { cwds: [cwd], forceReload: true },
           signal,
+          undefined,
+          "skills_list",
         ),
       ]);
       if (privateConfig._tag === "err" || privateSkills._tag === "err")

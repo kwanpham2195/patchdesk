@@ -54,6 +54,7 @@ export async function validateEvidenceFile(
         return err({
           _tag: "InsightEvidenceFailure",
           reason: "evidence_mismatch",
+          detail: "size_hash_mismatch",
         });
       hash.update(buffer.subarray(0, read.bytesRead));
       readBytes += read.bytesRead;
@@ -64,6 +65,7 @@ export async function validateEvidenceFile(
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_mismatch",
+        detail: "size_hash_mismatch",
       });
     return ok(undefined);
   });
@@ -94,6 +96,7 @@ export async function readEvidenceFile(
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_mismatch",
+        detail: "size_hash_mismatch",
       });
     return ok(content.toString("utf8"));
   });
@@ -108,6 +111,7 @@ async function withEvidenceFile<T>(
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_mismatch",
+        detail: "unexpected_entry",
       });
     const root = await realpath(input.root);
     const path = await realpath(input.path);
@@ -115,26 +119,51 @@ async function withEvidenceFile<T>(
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_mismatch",
+        detail: "unexpected_entry",
       });
     const file = await open(
       input.path,
       constants.O_RDONLY | constants.O_NOFOLLOW,
     );
+    let observed: Result<T, InsightEvidenceFailure>;
     try {
       const metadata = await file.stat();
-      if (!metadata.isFile() || metadata.size !== input.bytes)
+      observed = !metadata.isFile()
+        ? err({
+            _tag: "InsightEvidenceFailure",
+            reason: "evidence_mismatch",
+            detail: "unexpected_entry",
+          })
+        : metadata.size !== input.bytes
+          ? err({
+              _tag: "InsightEvidenceFailure",
+              reason: "evidence_mismatch",
+              detail: "size_hash_mismatch",
+            })
+          : await read(file);
+    } catch (cause) {
+      observed = err({
+        _tag: "InsightEvidenceFailure",
+        reason: "evidence_unavailable",
+        detail: isNotFound(cause) ? "file_missing" : "file_unreadable",
+      });
+    }
+    try {
+      await file.close();
+    } catch {
+      if (observed._tag === "ok")
         return err({
           _tag: "InsightEvidenceFailure",
-          reason: "evidence_mismatch",
+          reason: "evidence_unavailable",
+          detail: "file_unreadable",
         });
-      return await read(file);
-    } finally {
-      await file.close();
     }
-  } catch {
+    return observed;
+  } catch (cause) {
     return err({
       _tag: "InsightEvidenceFailure",
       reason: "evidence_unavailable",
+      detail: isNotFound(cause) ? "file_missing" : "file_unreadable",
     });
   }
 }

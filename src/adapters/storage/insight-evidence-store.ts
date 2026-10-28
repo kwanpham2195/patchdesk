@@ -1,3 +1,5 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { logInsightEvidenceFailure } from "#src/services/insight-evidence-diagnostic";
 import { chmod, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -15,7 +17,10 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /** Publishes run-owned bundles and reads only parent-indexed evidence. */
 export class InsightEvidenceStore {
-  constructor(private readonly paths: PatchdeskPaths) {}
+  constructor(
+    private readonly paths: PatchdeskPaths,
+    private readonly diagnostic?: (entry: LogEntryInput) => void,
+  ) {}
 
   /** Interrupted temporary directories cannot be selected by a run descriptor. */
   async publish(
@@ -94,10 +99,25 @@ export class InsightEvidenceStore {
     bundle: InsightEvidenceBundle,
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<Result<void, InsightEvidenceFailure>> {
+    const result = await this.validateTree(bundle, options);
+    if (result._tag === "err")
+      logInsightEvidenceFailure(
+        this.diagnostic,
+        bundle.identity.runId,
+        result.error.detail ?? "tree_invalid",
+      );
+    return result;
+  }
+
+  private async validateTree(
+    bundle: InsightEvidenceBundle,
+    options: { readonly signal?: AbortSignal },
+  ): Promise<Result<void, InsightEvidenceFailure>> {
     if (!this.owns(bundle))
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_mismatch",
+        detail: "identity_mismatch",
       });
     try {
       if (
@@ -109,6 +129,7 @@ export class InsightEvidenceStore {
         return err({
           _tag: "InsightEvidenceFailure",
           reason: "evidence_mismatch",
+          detail: "unexpected_entry",
         });
       return validateInsightEvidenceTree(
         this.paths.dataDirectory(),
@@ -119,6 +140,7 @@ export class InsightEvidenceStore {
       return err({
         _tag: "InsightEvidenceFailure",
         reason: "evidence_unavailable",
+        detail: "file_unreadable",
       });
     }
   }

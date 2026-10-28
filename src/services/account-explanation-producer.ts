@@ -1,3 +1,4 @@
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
 import { realpath } from "node:fs/promises";
 import type { CodexDiagnosticSink } from "#src/adapters/codex/codex-explanation-diagnostics";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
@@ -61,8 +62,14 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       identity.sessionId !== input.sessionId ||
       identity.runId.toString() !== input.identity.runId.toString() ||
       identity.type !== request.kind
-    )
+    ) {
+      logInsightEvidenceFailure(
+        this.diagnostic,
+        input.identity.runId.toString(),
+        "identity_mismatch",
+      );
       return failure("evidence_mismatch");
+    }
     const worktree = await realpath(
       this.paths.worktreeDirectory(identity.profileId, identity.sessionId),
     ).catch(() => undefined);
@@ -74,6 +81,7 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
     const bundle = await loadInsightEvidenceReference(
       input.evidence,
       this.paths,
+      this.diagnostic,
     );
     if (bundle._tag === "err")
       return {
@@ -126,9 +134,10 @@ export class AccountExplanationProducer implements NativeExplanationProducer {
       diagnostic: this.diagnostic,
     });
     // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- the post-invocation evidence check must observe the tree after the session ends.
-    const checked = await new InsightEvidenceStore(this.paths).validate(
-      bundle.value,
-    );
+    const checked = await new InsightEvidenceStore(
+      this.paths,
+      this.diagnostic,
+    ).validate(bundle.value);
     return checked._tag === "err"
       ? {
           _tag: "failed",
