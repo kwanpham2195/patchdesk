@@ -8,6 +8,7 @@ import type {
   InsightProviderCatalogModel,
 } from "./insight-catalog-contracts";
 import type { InsightRunPreference } from "./insight-run-preferences";
+import { selectInsightRunDefaults } from "#src/domain/insight-run-defaults";
 import type { InsightType } from "#src/domain/insight-record";
 import { supportsInsightProvider } from "#src/domain/insight-provider-capabilities";
 
@@ -18,6 +19,7 @@ export type InsightRunOptions = {
   readonly model: string | null;
   readonly reasoning: InsightReasoning;
   readonly language: InsightLanguage;
+  readonly selectionNotice: "retired" | "unavailable" | null;
 };
 
 function providerModels(
@@ -52,27 +54,12 @@ export function seedInsightRunOptions(
   type: InsightType,
   preference: InsightRunPreference | undefined,
   catalog: InsightProviderCatalog | undefined,
+  recent: ReadonlyArray<InsightRunPreference> = [],
 ): InsightRunOptions {
-  const saved = preference;
-  const provider =
-    saved?.provider ??
-    catalog?.providers.find(
-      (candidate) =>
-        candidate.available &&
-        candidate.supportedTypes.includes(type) &&
-        supportsInsightProvider(type, candidate.id),
-    )?.id ??
-    "pi";
-  const models = providerModels(type, catalog, provider);
+  const selected = selectInsightRunDefaults(type, preference, catalog, recent);
   return {
-    provider,
-    models,
-    model:
-      saved !== undefined &&
-      models.some((candidate) => candidate.id === saved.model)
-        ? saved.model
-        : (models[0]?.id ?? null),
-    reasoning: saved?.reasoning ?? firstModelReasoning(models),
+    ...selected,
+    models: providerModels(type, catalog, selected.provider),
     language: preference?.language ?? "en",
   };
 }

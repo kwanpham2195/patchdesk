@@ -257,3 +257,22 @@ export function ModelListPrice({
     </p>
   );
 }
+
+/** Explains the opening replacement without changing the saved preference. */
+export function InsightSelectionNotice({
+  reason,
+  provider,
+}: {
+  readonly reason: "retired" | "unavailable" | null | undefined;
+  readonly provider: InsightProvider;
+}): React.JSX.Element | null {
+  if (reason == null) return null;
+  return (
+    <p role="note" className="text-xs text-muted-foreground">
+      {reason === "retired"
+        ? "Saved API key choice is retired"
+        : "Saved provider is unavailable"}
+      ; this run uses {INSIGHT_PROVIDER_LABELS[provider]}.
+    </p>
+  );
+}

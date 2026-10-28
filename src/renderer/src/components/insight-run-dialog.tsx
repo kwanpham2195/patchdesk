@@ -7,10 +7,14 @@ import {
 } from "#src/domain/insight-provider";
 import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
-import { insightNativeRunDisclosure } from "#src/renderer/src/insight-run-copy";
+import {
+  insightNativeRunDisclosure,
+  insightRunSelectionLabel,
+} from "#src/renderer/src/insight-run-copy";
 
 import {
   AccountModelsControl,
+  InsightSelectionNotice,
   InsightLanguageSelect,
   InsightProviderSelect,
   InsightReasoningSelect,
@@ -54,6 +58,7 @@ export function InsightRunDialog({
   model,
   reasoning,
   language,
+  selectionNotice,
   accountModelsPending,
   accountModelsFailure,
   pending,
@@ -75,6 +80,7 @@ export function InsightRunDialog({
   readonly model: string | null;
   readonly reasoning: InsightReasoning;
   readonly language: InsightLanguage;
+  readonly selectionNotice?: "retired" | "unavailable" | null;
   readonly accountModelsPending: AccountInsightProvider | null;
   readonly accountModelsFailure: AccountModelsFailure | null;
   readonly pending: boolean;
@@ -124,6 +130,7 @@ export function InsightRunDialog({
             <AlertDescription>{errorMessage}</AlertDescription>
           </Alert>
         )}
+        <InsightSelectionNotice reason={selectionNotice} provider={provider} />
         <div className="grid gap-4">
           {models.length === 0 && provider === "pi" ? (
             <Alert>
@@ -210,6 +217,7 @@ export function InsightRunDialog({
             Cancel
           </Button>
           <Button
+            className="h-auto min-w-0 shrink py-1.5 whitespace-normal wrap-anywhere"
             data-testid="insight-run-confirm"
             disabled={
               pending ||
@@ -225,7 +233,7 @@ export function InsightRunDialog({
                 Starting…
               </>
             ) : (
-              "Start run"
+              `Start with ${insightRunSelectionLabel(provider, models, model)}`
             )}
           </Button>
         </DialogFooter>

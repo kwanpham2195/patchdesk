@@ -595,7 +595,7 @@ describe("InsightsSlot run requests", () => {
     expect(language.textContent).toContain("English");
     await user.click(language);
     await user.click(await screen.findByRole("option", { name: "Vietnamese" }));
-    await user.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(screen.getByRole("button", { name: /^Start with / }));
     await waitFor(() => expect(runBodies).toHaveLength(1));
     expect(runBodies[0]).toMatchObject({ type: "analysis", language: "vi" });
 
@@ -664,7 +664,7 @@ describe("InsightsSlot run requests", () => {
     await user.click(
       await screen.findByRole("button", { name: "Generate analysis" }),
     );
-    await user.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(screen.getByRole("button", { name: /^Start with / }));
     const starting = screen.getByRole("button", { name: "Starting…" });
     expect(starting.getAttribute("disabled")).not.toBeNull();
     expect(starting.querySelector('[data-icon="inline-start"]')).toBeTruthy();
@@ -672,7 +672,7 @@ describe("InsightsSlot run requests", () => {
     start.resolve(failure({ message: "runtime unavailable" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Analysis could not start");
-    expect(screen.getByRole("button", { name: "Start run" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Start with / })).toBeTruthy();
   });
 
   it("shows a bounded status failure while retaining the active run", async () => {
@@ -953,7 +953,7 @@ describe("InsightsSlot Agent requests bar (ADR 0052)", () => {
     expect(
       screen.getByRole("combobox", { name: "Insight language" }).textContent,
     ).toContain("Vietnamese");
-    await user.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(screen.getByRole("button", { name: /^Start with / }));
 
     await waitFor(() =>
       expect(

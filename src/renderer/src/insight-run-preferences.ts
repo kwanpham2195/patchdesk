@@ -1,6 +1,8 @@
 import * as v from "valibot";
 
 import {
+  ACCOUNT_INSIGHT_PROVIDERS,
+  isAccountInsightProvider,
   INSIGHT_LANGUAGES,
   INSIGHT_PROVIDERS,
   type InsightLanguage,
@@ -62,4 +64,34 @@ export function saveInsightRunPreference(
   preference: InsightRunPreference,
 ): void {
   insightRunPreference.save({ profileId, type }, preference);
+  if (isAccountInsightProvider(preference.provider)) {
+    recentNativePreferences.save(profileId, [
+      { ...preference, provider: preference.provider },
+      ...recentNativePreferences
+        .load(profileId)
+        .filter((choice) => choice.provider !== preference.provider),
+    ]);
+  }
+}
+
+// Each account keeps its latest accepted choice, ordered most recent first.
+const recentNativePreferences = definePreference({
+  key: (profileId: string) => `patchdesk.insight-recent-native.v1.${profileId}`,
+  schema: v.pipe(
+    v.array(
+      v.object({
+        ...storedPreferenceSchema.entries,
+        provider: v.picklist(ACCOUNT_INSIGHT_PROVIDERS),
+      }),
+    ),
+    v.maxLength(ACCOUNT_INSIGHT_PROVIDERS.length),
+  ),
+  defaultValue: [],
+});
+
+/** Accepted starts order native choices within the active workspace profile. */
+export function loadRecentNativeInsightPreferences(
+  profileId: string,
+): ReadonlyArray<InsightRunPreference> {
+  return recentNativePreferences.load(profileId);
 }

@@ -59,7 +59,7 @@ Regenerate opens the shared Insight run dialog described in [Brief](brief.md#beg
 
 Run Insights… beside the tab strip starts the Walkthrough together with Brief and Analysis, from one dialog with a row per Insight; see [Brief](brief.md#begin-an-action). The Walkthrough row is seeded from the saved Walkthrough preference, is checked by default only when no current Walkthrough stands for this revision, and is disabled while a Walkthrough runs. Generate walkthrough, Regenerate, Try again, and Run for latest revision keep the single-Insight dialog.
 
-Both dialogs and agent-request approval offer Codex CLI account and pi CLI account for Walkthrough. A saved API-key preference stays visibly retired until the maintainer explicitly selects a native provider and model. Its API model is not carried over. Opening or cancelling the dialog saves nothing; only an accepted start saves the replacement selection. With no available native model, Start stays disabled. Run Insights derives common or Mixed shared values from selected editable rows, with optional per-row overrides, as described in [Brief](brief.md#begin-an-action).
+Both dialogs and agent-request approval offer Codex CLI account and pi CLI account for Walkthrough. Retired or unavailable saved providers use the [shared opening defaults and replacement notice](brief.md#begin-an-action). Opening or cancelling saves nothing; only an accepted start saves the replacement selection. With no available native model, Start stays disabled. Run Insights keeps each row's provider and model when another row is checked, and shows each choice before Start.
 
 ### While the action runs
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed Insight run dialogs to preselect a recent available native account for retired or unavailable saved providers, explain the replacement, and name the provider and model before starting. Batch rows keep their own choices when checked.
+
 - Changed Guide generation to report ungrouped files before finishing, so the model can group further changes or explicitly confirm the remaining Others. #830
 
 - Changed Brief, Guide, and Walkthrough to read captured diffs as plain files with recursive integrity checks. Guide and Walkthrough can inspect captured head files for surrounding code; Brief still uses only the patch.

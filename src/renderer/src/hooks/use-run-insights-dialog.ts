@@ -17,7 +17,10 @@ import {
   seedInsightRunOptions,
   type InsightRunOptions,
 } from "#src/renderer/src/insight-run-options";
-import type { InsightRunPreference } from "#src/renderer/src/insight-run-preferences";
+import {
+  loadRecentNativeInsightPreferences,
+  type InsightRunPreference,
+} from "#src/renderer/src/insight-run-preferences";
 import type { InsightStatus } from "#src/renderer/src/insight-status";
 import type { ReviewWorkbenchPatch } from "#src/renderer/src/flows/use-review-observation";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
@@ -71,6 +74,7 @@ export type RunInsightsDialogController = {
  * checked row through its own run controller.
  */
 export function useRunInsightsDialog({
+  profileId,
   catalog,
   preferencesRef,
   runs,
@@ -81,6 +85,7 @@ export function useRunInsightsDialog({
   rememberRunPreference,
   onWorkbenchPatch,
 }: {
+  readonly profileId: string;
   readonly catalog: InsightProviderCatalog | undefined;
   readonly preferencesRef: React.RefObject<
     Partial<Record<InsightRunType, InsightRunPreference>>
@@ -117,7 +122,12 @@ export function useRunInsightsDialog({
     const seed = (type: InsightRunType): RunInsightsRowOptions => {
       runs[type].dismissStartRefusal();
       return {
-        ...seedInsightRunOptions(type, preferencesRef.current[type], catalog),
+        ...seedInsightRunOptions(
+          type,
+          preferencesRef.current[type],
+          catalog,
+          loadRecentNativeInsightPreferences(profileId),
+        ),
         // A current result for this revision is not paid for again unless the reviewer checks it.
         checked: !isRunning(type) && statuses[type] !== "current",
       };
