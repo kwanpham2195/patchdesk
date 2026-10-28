@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CODEX_EXPLANATION_VERSION_MESSAGE } from "#src/domain/codex-explanation-version";
 import { EXPLANATION_FAILURE_DETAILS } from "#src/domain/insight-failure-diagnostic";
 
-import { History, Pause, Play } from "lucide-react";
+import { History, Pause, Play, TriangleAlert } from "lucide-react";
 
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -27,7 +27,9 @@ import { INSIGHT_NOUNS, type InsightRunDialogType } from "./insight-run-dialog";
 import type { WorkbenchResponse } from "#src/renderer/src/renderer-contracts";
 import type { InsightRunActivity } from "#src/renderer/src/insight-contracts";
 import type { InsightRunController } from "#src/renderer/src/hooks/use-insight-run";
-import { InsightAttemptDetails } from "./insight-attempt-details";
+import { CopyLoadedTextButton } from "./copy-loaded-text-button";
+import { loadInsightFailureDiagnostics } from "./insight-failure-diagnostics";
+import { RelativeTime } from "./relative-time";
 import type { NativeSessionAttemptPage } from "#src/domain/native-session-attempt";
 import { INSIGHT_STATUS_LABELS } from "#src/renderer/src/insight-status";
 import { INSIGHT_ICONS } from "#src/renderer/src/insight-icons";
@@ -384,9 +386,8 @@ export function InsightFailed({
   projection,
   onRetry,
   onReprepare,
-  retainedDescription,
-  activity,
   guideFailure,
+  retainedGeneratedAt,
   retainedHeadSha,
   nativeAttempts,
   detailsSource,
@@ -395,13 +396,10 @@ export function InsightFailed({
   /** Absent on a merged or closed Review, where the service refuses a run, so neither Try again nor Re-prepare Review is drawn. */
   readonly onRetry?: () => void;
   readonly onReprepare: () => Promise<WorkbenchResponse>;
-  readonly retainedDescription?: string;
-  /** The trace the run left, so a timed-out run still shows what it was doing. */
-  readonly activity?: InsightRunActivity | undefined;
   /** New Guide metadata does not require a legacy retained value. */
   readonly guideFailure?: NonNullable<GuideSummary["failure"]>;
-  /** Published Guide revision for the retained-document line. */
-  readonly retainedHeadSha?: string;
+  readonly retainedGeneratedAt?: string | undefined;
+  readonly retainedHeadSha?: string | undefined;
   readonly nativeAttempts?: NativeSessionAttemptPage | undefined;
   readonly detailsSource?:
     | {
@@ -414,7 +412,7 @@ export function InsightFailed({
 }): React.JSX.Element {
   const failure = guideFailure ?? projection.replacementFailure;
   const category = failure?.category;
-  const retainedHead = retainedHeadSha ?? projection.retained?.headSha;
+  const generatedAt = retainedGeneratedAt ?? projection.retained?.generatedAt;
   const [repreparing, setRepreparing] = useState(false);
   const [reprepareFailed, setReprepareFailed] = useState(false);
   const message = failureMessage(
@@ -441,14 +439,17 @@ export function InsightFailed({
   return (
     <Alert
       variant="warning"
-      className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-4"
+      className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-x-3 gap-y-2"
     >
-      <AlertDescription className="basis-full space-y-1">
-        <p>{message}</p>
-        {retainedHead === undefined ? (
-          <p>No retained result.</p>
+      <TriangleAlert aria-hidden="true" className="shrink-0" />
+      <AlertDescription className="min-w-48 flex-1">
+        {generatedAt === undefined ? (
+          message
         ) : (
-          <p>Showing the previous result.</p>
+          <>
+            New run failed: {message} Showing the result from{" "}
+            <RelativeTime iso={generatedAt} />.
+          </>
         )}
         {reprepareFailed ? <p>The Review could not be re-prepared.</p> : null}
       </AlertDescription>
@@ -465,39 +466,20 @@ export function InsightFailed({
             : "Try again"}
         </Button>
       )}
-      <details className="min-w-0 basis-full text-xs">
-        <summary className="cursor-pointer">Details</summary>
-        <div className="flex min-w-0 flex-col gap-2 pt-2">
-          <CodexVersionDetails diagnostic={guideFailure?.diagnostic} />
-          {retainedHead === undefined ? null : (
-            <p>
-              Published revision: {retainedHead}. {retainedDescription}
-            </p>
-          )}
-          {failure === undefined ? null : (
-            <p>
-              Run: {failure.runId ?? "unavailable"} · Failure:{" "}
-              {category ?? "unclassified"}
-            </p>
-          )}
-          {projection.replacementFailure === undefined ? null : (
-            <p>
-              Requested model: {projection.replacementFailure.model} ·
-              Reasoning: {projection.replacementFailure.reasoning}
-            </p>
-          )}
-          <InsightAttemptDetails
-            key={detailsSource?.runId ?? nativeAttempts?.attempts[0]?.runId}
-            page={nativeAttempts}
-            source={detailsSource}
-          />
-        </div>
-      </details>
-      {activity === undefined ? null : (
-        <div className="min-w-0 basis-full">
-          <InsightActivityTrace activity={activity} />
-        </div>
-      )}
+      <CopyLoadedTextButton
+        key={failure?.runId}
+        label="Copy diagnostics"
+        failure="Diagnostics could not be copied. Try again."
+        load={() =>
+          loadInsightFailureDiagnostics({
+            projection,
+            retainedHeadSha,
+            guideFailure,
+            nativeAttempts,
+            source: detailsSource,
+          })
+        }
+      />
     </Alert>
   );
 }
@@ -547,19 +529,6 @@ function failureMessage(
     default:
       return "This Insight run failed.";
   }
-}
-
-function CodexVersionDetails({
-  diagnostic,
-}: {
-  readonly diagnostic: NonNullable<GuideSummary["failure"]>["diagnostic"];
-}): React.JSX.Element | null {
-  return diagnostic === "unsupported_codex_version" ? (
-    <p>
-      This saved failure used an earlier release-based compatibility policy. New
-      runs validate the required Codex APIs instead.
-    </p>
-  ) : null;
 }
 
 export function InsightOutdated({

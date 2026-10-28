@@ -79,7 +79,7 @@ A failed, cancelled, or superseded replacement does not erase the prior retained
 
 Failed, cancelled, and superseded runs keep distinct messages after reopening. Try again appears only when the recorded failure permits a retry and the current Review can run one. Cancelling or superseding a run does not itself offer a retry button.
 
-A cancelled replacement with a readable result shows one short statement that the previous result is displayed. Its information button opens run details without shifting the reading area. Failure explanations and recovery actions remain visible. Run details show safe run and native attempt metadata, keeping the first host failure separate from history capture and cleanup outcomes. Readable history has unknown completeness. Missing history does not remove recovery, and run details do not expose private paths or native bodies. A retired API generation cannot resume through a native provider.
+A cancelled replacement with a readable result shows one short statement that the previous result is displayed. Its information button opens run details without shifting the reading area. A failed run uses the shared [compact warning and Copy diagnostics](brief.md#settle). It names the previous result's age. Failed runs have no Details or Activity disclosure. Safe copied metadata keeps the first host failure separate from history capture and cleanup outcomes, and readable history has unknown completeness. Cancelled and superseded run details stay available. A retired API generation cannot resume through a native provider.
 
 ## Variants
 
@@ -138,6 +138,10 @@ Reading progress belongs to the exact saved result. Reopening and returning from
 - The docked explanation can take keyboard focus and scroll with Page Up or Page Down. File expansion and information buttons remain keyboard accessible; Escape returns focus from an information popover to its button.
 
 ## Open questions and verification
+
+- The Guide summary lacks a generated or publication timestamp. Showing the previous result's age requires a reviewed contract change; the current failure warning omits that age.
+
+The compact failure warning and Copy diagnostics follow the current source change after `9bdbed9e`. Desktop screenshots and a real clipboard click remain pending because CDP reported a hidden document on 2026-10-28. No generation was started.
 
 - Captured-file generation and optional head snapshots follow the slice 2 source change after `5ac4d3c5`, under [ADR 0057](../../adr/0057-read-captured-insight-evidence-as-plain-files.md). On 2026-10-27, Codex CLI account runs published Guides grouping 53 of 53 files and 61 of 516 files. The latter regressed from 131 grouped files; coverage remains with #830. Result screenshots and Pi generation for this change remain unverified.
 - [Guide checklist](../verification/insights-and-cross-cutting.md#review-workbenchguidemd) records generation, retained evidence, navigation, restoration, and recovery checks.

@@ -286,6 +286,7 @@ export const guideSummarySchema = v.variant("_tag", [
       patchHash: insightArtifactHashSchema,
     }),
     digest: digestSchema,
+    generatedAt: v.string(),
     groups: insightArtifactUnsignedSchema,
     inventory: insightArtifactUnsignedSchema,
     others: insightArtifactUnsignedSchema,

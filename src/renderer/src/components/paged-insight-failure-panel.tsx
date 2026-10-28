@@ -29,8 +29,52 @@ export function PagedInsightFailurePanel({
   if (state.status !== "loaded") return null;
   const summary = state.summary;
   const failure = summary.failure;
-  const noun = INSIGHT_NOUNS[type];
   if (summary.run !== null || failure === null) return null;
+  if (failure.reason === "cancelled" || failure.reason === "superseded")
+    return (
+      <PagedInsightInterruption
+        type={type}
+        summary={summary}
+        failure={failure}
+        identity={identity}
+      />
+    );
+  return (
+    <InsightFailed
+      projection={{ status: "failed" }}
+      guideFailure={failure}
+      onReprepare={onReprepare}
+      nativeAttempts={summary.nativeAttempts}
+      detailsSource={{ ...identity, type, runId: failure.runId }}
+      {...definedProps({
+        retainedHeadSha:
+          summary._tag === "ready" ? summary.revision.headSha : undefined,
+        retainedGeneratedAt:
+          summary._tag === "ready" ? summary.generatedAt : undefined,
+        onRetry: failure.retryable && runEnabled ? onRetry : undefined,
+      })}
+    />
+  );
+}
+
+type LoadedSummary = Extract<
+  GuideSummaryState | WalkthroughSummaryState,
+  { readonly status: "loaded" }
+>["summary"];
+
+/** A cancelled or superseded run is not a failure: it keeps its run details beside the previous result. */
+function PagedInsightInterruption({
+  type,
+  summary,
+  failure,
+  identity,
+}: {
+  readonly type: "guide" | "walkthrough";
+  readonly summary: LoadedSummary;
+  readonly failure: NonNullable<LoadedSummary["failure"]>;
+  readonly identity: { readonly profileId: string; readonly reviewId: string };
+}): React.JSX.Element {
+  const noun = INSIGHT_NOUNS[type];
   const interruptionDetails = (
     <div className="flex min-w-0 flex-col gap-2 text-xs">
       <p>
@@ -68,40 +112,24 @@ export function PagedInsightFailurePanel({
         </Popover>
       </div>
     );
-  if (failure.reason === "cancelled" || failure.reason === "superseded")
-    return (
-      <Alert>
-        <AlertDescription>
-          <p>
-            {failure.reason === "cancelled"
-              ? `The ${noun} run was cancelled.`
-              : `The ${noun} run was superseded by a different Review revision.`}
-          </p>
-          <details className="text-xs">
-            <summary className="cursor-pointer">Run details</summary>
-            {interruptionDetails}
-          </details>
-          <p>
-            {summary._tag === "ready"
-              ? `The previous ${noun} is unchanged.`
-              : `No ${noun} was published.`}
-          </p>
-        </AlertDescription>
-      </Alert>
-    );
   return (
-    <InsightFailed
-      projection={{ status: "failed" }}
-      guideFailure={failure}
-      retainedDescription={`previous ${noun}`}
-      onReprepare={onReprepare}
-      nativeAttempts={summary.nativeAttempts}
-      detailsSource={{ ...identity, type, runId: failure.runId }}
-      {...definedProps({
-        retainedHeadSha:
-          summary._tag === "ready" ? summary.revision.headSha : undefined,
-        onRetry: failure.retryable && runEnabled ? onRetry : undefined,
-      })}
-    />
+    <Alert>
+      <AlertDescription>
+        <p>
+          {failure.reason === "cancelled"
+            ? `The ${noun} run was cancelled.`
+            : `The ${noun} run was superseded by a different Review revision.`}
+        </p>
+        <details className="text-xs">
+          <summary className="cursor-pointer">Run details</summary>
+          {interruptionDetails}
+        </details>
+        <p>
+          {summary._tag === "ready"
+            ? `The previous ${noun} is unchanged.`
+            : `No ${noun} was published.`}
+        </p>
+      </AlertDescription>
+    </Alert>
   );
 }

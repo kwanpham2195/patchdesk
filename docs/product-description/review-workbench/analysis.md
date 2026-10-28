@@ -95,6 +95,8 @@ A generation run follows the lifecycle described in [Brief](brief.md#while-the-a
 
 ### Settle
 
+A failed run uses the shared [compact warning and Copy diagnostics](brief.md#settle). A failed replacement names the plain reason and the previous result's age above the unchanged Analysis. Without a previous result, only the reason and available controls appear. Failed runs have no Details or Activity disclosure; running progress keeps Activity.
+
 An incomplete Analysis ends as a failed run with **Analysis incomplete**. It supplies no new merge verdict. A previous Analysis remains readable with its original revision; without one, no verdict card is created. A complete result can have low confidence and still pass validation. A completed pi CLI Analysis does not need to include unused failure details; its Findings, verdict, and citations still pass the same validation. An unread head snapshot does not make the Analysis incomplete.
 
 An exact pending-review projection updates the canonical workbench immediately without an advisory full Review load. A Finding becomes pending review only when the projection's unresolved Finding identity matches the run, Finding, session, head, patch, and pending-review node. It becomes published only from matching recent-write evidence. A suggestion is confirmed against the comment Patchdesk composed and returned, not against text the reader assembled, and its cited range is preserved whole whether the write started the pending review or appended to one. Once the review is submitted, GitHub renders that comment as a suggested change the pull request author can commit or add to a batch; Patchdesk neither applies it nor tracks what the author does with it.
@@ -170,6 +172,8 @@ Review activity retains the incomplete reason and a fixed summary of recognizabl
 - Replacement code containing a Markdown fence is refused rather than escaped, because a fence line would close the published suggestion block early.
 
 ## Open questions and verification
+
+The compact failure warning and Copy diagnostics follow the current source change after `9bdbed9e`. Desktop screenshots and a real clipboard click remain pending because CDP reported a hidden document on 2026-10-28. No generation was started.
 
 - A live pass confirmed the empty state and disabled Generate analysis on a merged Review. Reader layout, Finding actions, and outdated results still need live checks.
 - Confirm evidence expansion, highlighted range, Open in Analysis focus, dismissal navigation, provider cancellation and timeout, and error placement.

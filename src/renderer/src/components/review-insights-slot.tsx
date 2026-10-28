@@ -27,10 +27,7 @@ import {
   InsightRunning,
   type InsightProjection,
 } from "./insight-panels";
-import {
-  NOT_GENERATED_BRIEF,
-  type BriefInsight,
-} from "#src/renderer/src/brief-contracts";
+import { NOT_GENERATED_BRIEF } from "#src/renderer/src/brief-contracts";
 import { buildInsightReaders } from "./insight-readers";
 import { WalkthroughDiffAuthoringContext } from "./walkthrough-diff-authoring";
 import { useInsightResultEntrance } from "#src/renderer/src/hooks/use-insight-result-entrance";
@@ -234,20 +231,6 @@ function useParsedPatchFiles(
   );
 }
 
-/** The one line each reader shows under its heading, taken from the retained artifact it is reading. */
-function retainedInsightDescription(
-  workbench: WorkbenchResponse,
-  brief: BriefInsight,
-  selectedInsight: InsightRunDialogType,
-): string | undefined {
-  if (selectedInsight === "analysis")
-    return workbench.insights.analysis.retained?.value.summary;
-  if (selectedInsight === "walkthrough")
-    return workbench.insights.walkthrough.retained?.value.focus;
-  if (selectedInsight === "guide") return undefined;
-  return brief.retained?.value.flow?.trees[0]?.title;
-}
-
 export function InsightsSlot({
   workbench,
   initialDetail,
@@ -360,11 +343,6 @@ export function InsightsSlot({
     !(selectedInsight === "walkthrough" && walkthroughRun !== null) &&
     (selectedRunning?.busy === true ||
       selectedProjection?.status === "running");
-  const retainedDescription = retainedInsightDescription(
-    workbench,
-    brief,
-    selectedInsight,
-  );
   const currentRevision =
     workbench.revision.currentHeadSha ?? workbench.revision.reviewedHeadSha;
   const patchFiles = useParsedPatchFiles(workbench.fullPatch);
@@ -515,7 +493,6 @@ export function InsightsSlot({
           selectedBusy={selectedBusy}
           selectedRunning={selectedRunning}
           onReprepare={onReprepare}
-          retainedDescription={retainedDescription}
           retryRun={retryRun}
           selectedIsOutdated={
             selectedInsight === "guide" ? false : selectedIsOutdated
@@ -553,7 +530,6 @@ function InsightDocument({
   selectedBusy,
   selectedRunning,
   onReprepare,
-  retainedDescription,
   retryRun,
   selectedIsOutdated,
   currentRevision,
@@ -572,7 +548,6 @@ function InsightDocument({
   readonly selectedBusy: boolean;
   readonly selectedRunning: InsightRunController | undefined;
   readonly onReprepare: () => Promise<WorkbenchResponse>;
-  readonly retainedDescription: string | undefined;
   readonly retryRun: (() => void) | undefined;
   readonly selectedIsOutdated: boolean;
   readonly currentRevision: string;
@@ -630,7 +605,6 @@ function InsightDocument({
           selectedProjection?.status === "failed" ? (
           <InsightFailed
             projection={selectedProjection}
-            activity={selectedRunning?.activity}
             onReprepare={onReprepare}
             detailsSource={
               selectedProjection.replacementFailure?.runId === undefined
@@ -642,7 +616,6 @@ function InsightDocument({
                   }
             }
             {...definedProps({
-              retainedDescription,
               onRetry:
                 selectedProjection.replacementFailure?.retryable === false
                   ? undefined

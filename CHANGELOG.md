@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compacted failed Insights to a warning, recovery action, and Copy diagnostics, preserving previous results and moving safe debugging metadata out of the reader. Activity remains available while a run is active.
+
 - Changed Insight run dialogs to preselect a recent available native account for retired or unavailable saved providers, explain the replacement, and show each batch row's provider and model. Batch rows keep their own choices when checked.
 
 - Changed Guide generation to report ungrouped files before finishing, so the model can group further changes or explicitly confirm the remaining Others. #830

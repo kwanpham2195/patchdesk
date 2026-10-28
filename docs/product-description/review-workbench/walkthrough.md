@@ -85,7 +85,7 @@ A reviewed section shows "Section reviewed" on a pressed button and a "done" bad
 
 A validated replacement becomes the saved Walkthrough with empty reading progress. Failure, cancellation or pause preserves the previous readable result and its marks. A failure notice appears separately from that result and remains after reopening. Invalid stored result or progress data reports an error instead of silently clearing marks.
 
-The failure explanation, recovery action, and previous-result notice stay visible. Details contains safe run and native attempt metadata, including requested and observed settings, the first host failure, and separate capture and cleanup outcomes. Readable history has unknown completeness; missing history does not remove recovery. Details never reads native conversation bodies or exposes private storage paths. Cancelled and superseded notices keep their distinct outcomes.
+A failed run uses the shared [compact warning and Copy diagnostics](brief.md#settle). With a previous result, the warning names its age above the unchanged Walkthrough; without one, it shows the reason and available controls. Failed runs have no Details or Activity disclosure. Cancelled and superseded notices keep their distinct outcomes and run details.
 
 Reviewed indicators are projected for the exact Walkthrough revision. They do not submit a GitHub review, mark files viewed on GitHub, or change pending-review state.
 
@@ -149,6 +149,8 @@ Reviewed indicators are projected for the exact Walkthrough revision. They do no
 - A reviewed marker stays on screen even when its save fails.
 
 ## Open questions and verification
+
+The compact failure warning and Copy diagnostics follow the current source change after `9bdbed9e`. Desktop screenshots and a real clipboard click remain pending because CDP reported a hidden document on 2026-10-28. No generation was started.
 
 Captured-file generation and optional head snapshots follow the slice 2 source change after `5ac4d3c5`, under [ADR 0057](../../adr/0057-read-captured-insight-evidence-as-plain-files.md). On 2026-10-27, a Codex CLI account run on a 53-file Review published 2 chapters and 6 sections citing 31 of 127 hunks. Its result screenshot and Pi generation for this change remain unverified. Reader pagination is unchanged.
 
