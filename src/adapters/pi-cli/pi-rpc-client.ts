@@ -388,8 +388,6 @@ export class PiRpcClient {
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
         stdout.removeListener("data", onData);
-        child.removeListener("error", onError);
-        child.removeListener("close", onClose);
         if (stop) child.kill();
         resolve(output);
       };
@@ -398,9 +396,16 @@ export class PiRpcClient {
         text += chunk.toString();
         if (Buffer.byteLength(text) > 32_768) finish(undefined, true);
       };
-      const onError = (): void => finish(undefined);
-      const onClose = (code: number | null): void =>
+      // The child listeners outlive settlement: a spawn failure such as ENOENT
+      // arrives asynchronously, and an unhandled child error exits the app.
+      const onError = (): void => {
+        child.removeListener("close", onClose);
+        finish(undefined);
+      };
+      const onClose = (code: number | null): void => {
+        child.removeListener("error", onError);
         finish(code === 0 ? text : undefined);
+      };
       const timer = setTimeout(() => {
         finish(undefined, true);
       }, VERSION_TIMEOUT_MS);
