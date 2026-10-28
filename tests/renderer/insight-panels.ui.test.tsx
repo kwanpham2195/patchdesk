@@ -120,14 +120,13 @@ it("offers Review re-preparation for a missing worktree without duplicating the 
   expect(
     screen.getByText("This Review’s local files are unavailable."),
   ).not.toBeNull();
-  expect(screen.getAllByText("No retained result.")).toHaveLength(1);
+  expect(screen.queryByText("No retained result.")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Re-prepare Review" }));
   await waitFor(() => expect(onReprepare).toHaveBeenCalledOnce());
   expect(onRetry).toHaveBeenCalledOnce();
 });
 
-it("keeps a failed run's full untrusted command and duration in the trace", () => {
-  const command = `/bin/zsh -lc '${"printf diagnostic-output ".repeat(12)}'`;
+it("keeps failed-run diagnostics available without a Details or Activity disclosure", () => {
   render(
     <InsightFailed
       projection={{
@@ -139,22 +138,12 @@ it("keeps a failed run's full untrusted command and duration in the trace", () =
       }}
       onRetry={vi.fn()}
       onReprepare={vi.fn()}
-      activity={{
-        phase: "turn",
-        commands: [
-          {
-            id: "cmd-long",
-            command,
-            status: "failed",
-            exitCode: 1,
-            durationMs: 12_345,
-          },
-        ],
-        approvals: { accepted: 0, declined: 0 },
-      }}
     />,
   );
 
-  expect(screen.getByTitle(command).textContent).toBe(command);
-  expect(screen.queryByText("12.3s")).not.toBeNull();
+  expect(screen.queryByText("Activity")).toBeNull();
+  expect(screen.queryByText("Details")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Copy diagnostics" }),
+  ).not.toBeNull();
 });

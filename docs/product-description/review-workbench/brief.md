@@ -102,7 +102,9 @@ Shape groups files by directory and collapses a directory after twelve files int
 
 The Scope card shows the current revision's Scope, so its rows work on an outdated Brief too. Each bucket with files is a button, such as "Filter the Diff to Tests", that opens the Diff tab on Browse filtered to that bucket, leaving any commit, since-review, or other patch view. It applies the same Scope filter as the diff toolbar's Scope picker, so the picker then shows the bucket and Clear scope removes it; see [Files, diff, commits, and navigation](files-diff-and-navigation.md#begin-an-action). The filter is not saved.
 
-A failed run shows a concise explanation, its available recovery action, and whether the previous Brief remains readable. Most failures offer Try again. Missing or changed represented files offer Re-prepare Review instead; it rebuilds through the durable refresh lifecycle and then opens the run dialog for explicit confirmation. It never runs automatically when the Review opens. Details holds revision and run metadata and safe native attempt information. Load attempt details fetches a bounded page; More attempts replaces that page when available. The first host failure stays separate from capture and cleanup outcomes. Native bodies and private paths are not displayed, and missing history does not remove recovery. Available command activity remains behind its closed disclosure. An outdated Brief names both revisions and offers Run for latest revision. A merged or closed Review draws none of these run actions.
+A failed run shows a compact warning with the plain reason, its available recovery action, and Copy diagnostics. When a previous result exists, the warning reads "New run failed: <reason>. Showing the result from <age>." above the unchanged result. Without a previous result, it shows only the reason and controls. Most failures offer Try again. Missing or changed represented files offer Re-prepare Review instead; it rebuilds through the durable refresh lifecycle and then opens the run dialog for explicit confirmation. It never runs automatically when the Review opens. Failed runs have no Details or Activity disclosure. An outdated Brief names both revisions and offers Run for latest revision. A merged or closed Review draws none of these run actions.
+
+Copy diagnostics copies bounded plain-text fields for the run, failure category, published revision, requested model and reasoning, and up to two native attempts. Attempt fields include run, generation, attempt identity, evidence hash, requested and observed settings, first host failure, native history status and byte count with unknown completeness, and separate cleanup outcomes and scope. It excludes generated prose, prompts, native bodies, and private paths. Unavailable fields remain explicitly unavailable. The button briefly reads Copied after the clipboard accepts the text; a load or clipboard failure offers a retry. Activity remains available during preparation, running, and cancellation.
 
 ## Variants
 
@@ -140,7 +142,7 @@ A failed run shows a concise explanation, its available recovery action, and whe
 
 **Concurrent operations and locking.** One run identity owns its Insight slot. Provider polling and Cancel settle through the coordinator rather than competing component state.
 
-**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed start, failed run, cancelled run, timeout, and invalid result are separate outcomes. Activity and safe Details supplement the visible explanation. Prompts, command output, private history bodies, and raw provider events are not projected. [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md) owns the current history and diagnostic boundaries.
+**Feedback, errors, and diagnostics.** Progress, retained result, unavailable provider, failed start, failed run, cancelled run, timeout, and invalid result are separate outcomes. Activity supplements running progress; Copy diagnostics provides safe failed-run metadata. Prompts, command output, private history bodies, and raw provider events are not projected. [ADR 0056](../../adr/0056-run-insights-through-native-cli-accounts.md) owns the current history and diagnostic boundaries.
 
 **Preferences, keyboard commands, and desktop integration.** Saved provider, model, reasoning, and language values seed later Brief runs. No desktop menu shortcut generates Brief.
 
@@ -168,6 +170,8 @@ A failed run shows a concise explanation, its available recovery action, and whe
 - In the Run Insights dialog, a row left unchecked starts nothing and keeps its saved preference; only an accepted start saves a row's options.
 
 ## Open questions and verification
+
+The compact failure warning and Copy diagnostics follow the current source change after `9bdbed9e`. Desktop screenshots and a real clipboard click remain pending because CDP reported a hidden document on 2026-10-28. No generation was started.
 
 Run-dialog defaults and Start labels follow the current source change after `6142b92a`. On 2026-10-28, CDP screenshots confirmed the single Analysis dialog and the batch dialog with all four Insights checked. Cancelling preserved saved preferences. No run was started, and no retired saved choice was available in the checked workspace. Retired-choice replacement and accepted-start persistence remain unverified live.
 

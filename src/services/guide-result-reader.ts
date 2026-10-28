@@ -37,6 +37,7 @@ export type GuideResultView = {
   /** The result root's SHA-256: every read, cursor and progress save binds this exact digest. */
   readonly digest: InsightArtifactReference["hash"];
   readonly runId: string;
+  readonly generatedAt: string;
   readonly rootReference: InsightArtifactReference;
   readonly root: GuideResultRoot;
   readonly store: InsightResultStore;
@@ -160,6 +161,7 @@ export class GuideResultReader {
       reviewId,
       digest: retained.root.hash,
       runId: publication.value.runId,
+      generatedAt: publication.value.publishedAt,
       rootReference: retained.root,
       root: root.value,
       store: new InsightResultStore(this.artifacts, profileId, reviewId),

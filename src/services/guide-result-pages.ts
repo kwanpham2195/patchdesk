@@ -80,6 +80,7 @@ export class GuidePageService {
       runId: view.runId,
       ...session.value,
       digest: view.digest,
+      generatedAt: view.generatedAt,
       groups: view.root.groups.count,
       inventory: view.root.inventory.count,
       others: view.root.others.count,
