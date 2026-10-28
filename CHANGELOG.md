@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.20 - 2026-10-28
+
 - Changed all four Insights to run through Codex CLI account or pi CLI account. The bundled API-key runtime is removed; a saved API-key choice opens on your most recent native account instead. #821 #831
 - Added Guide in Insights: behavior groups beside complete file diffs, with saved Reviewed groups and reading position. Guide reports files it did not group before finishing, and Others explains them with changed code first. #816 #830
 - Changed Insights to read captured evidence as plain files, so the model opens only what it needs on large pull requests. Analysis reads the whole change instead of stopping early. #821
