@@ -175,7 +175,7 @@ describe("Run Insights dialog", () => {
     );
 
     await user.click(
-      within(dialog).getByRole("button", { name: "Start runs" }),
+      within(dialog).getByRole("button", { name: /^Start \d+ Insights?$/ }),
     );
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -226,7 +226,7 @@ describe("Run Insights dialog", () => {
     expect(walkthroughCheckbox.getAttribute("aria-disabled")).toBe("true");
 
     await user.click(
-      within(dialog).getByRole("button", { name: "Start runs" }),
+      within(dialog).getByRole("button", { name: /^Start \d+ Insights?$/ }),
     );
 
     expect(await row(dialog, "Brief").findByRole("alert")).toBeTruthy();
@@ -275,7 +275,7 @@ describe("Run Insights dialog", () => {
 
     const dialog = await openRunInsights(user);
     await user.click(
-      within(dialog).getByRole("button", { name: "Start runs" }),
+      within(dialog).getByRole("button", { name: /^Start \d+ Insights?$/ }),
     );
 
     expect(

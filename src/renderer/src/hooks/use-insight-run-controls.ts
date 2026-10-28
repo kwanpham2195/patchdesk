@@ -18,6 +18,7 @@ import {
 } from "#src/renderer/src/renderer-contracts";
 import {
   saveInsightRunPreference,
+  loadRecentNativeInsightPreferences,
   type InsightRunPreference,
 } from "#src/renderer/src/insight-run-preferences";
 import { seedInsightRunOptions } from "#src/renderer/src/insight-run-options";
@@ -321,6 +322,7 @@ export function useInsightRunControls({
         dialogType,
         preferencesRef.current[dialogType],
         catalog,
+        loadRecentNativeInsightPreferences(profileId),
       ),
       runDialogType: dialogType,
       runDialogAction: action,
@@ -366,6 +368,7 @@ export function useInsightRunControls({
     });
   };
   const runInsights = useRunInsightsDialog({
+    profileId,
     catalog,
     preferencesRef,
     runs,

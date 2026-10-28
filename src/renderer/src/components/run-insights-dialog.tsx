@@ -7,6 +7,7 @@ import type { InsightRunType } from "#src/renderer/src/hooks/use-insight-run";
 import { INSIGHT_NOUNS } from "./insight-run-dialog";
 import {
   AccountModelsControl,
+  InsightSelectionNotice,
   InsightLanguageSelect,
   InsightProviderSelect,
   InsightReasoningSelect,
@@ -14,15 +15,15 @@ import {
 } from "./insight-run-option-controls";
 import { modelReasoningOptions } from "#src/renderer/src/insight-run-options";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
-import { insightNativeRunDisclosure } from "#src/renderer/src/insight-run-copy";
+import {
+  insightNativeRunDisclosure,
+  insightRunSelectionLabel,
+} from "#src/renderer/src/insight-run-copy";
 import {
   isAccountInsightProvider,
   type AccountInsightProvider,
 } from "#src/domain/insight-provider";
-import {
-  INSIGHT_LANGUAGE_LABELS,
-  INSIGHT_PROVIDER_LABELS,
-} from "#src/renderer/src/insight-contracts";
+import { INSIGHT_LANGUAGE_LABELS } from "#src/renderer/src/insight-contracts";
 import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { ModelCombobox } from "./model-combobox";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -142,7 +143,7 @@ export function RunInsightsDialog({
                 Starting…
               </>
             ) : (
-              "Start runs"
+              `Start ${startable.length} ${startable.length === 1 ? "Insight" : "Insights"}`
             )}
           </Button>
         </DialogFooter>
@@ -354,10 +355,13 @@ function RunInsightsRowFields({
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        {INSIGHT_PROVIDER_LABELS[row.provider]} ·{" "}
-        {row.model ?? "No model selected"} · {row.reasoning} ·{" "}
-        {INSIGHT_LANGUAGE_LABELS[row.language]}
+        {insightRunSelectionLabel(row.provider, row.models, row.model)} ·{" "}
+        {row.reasoning} · {INSIGHT_LANGUAGE_LABELS[row.language]}
       </p>
+      <InsightSelectionNotice
+        reason={row.selectionNotice}
+        provider={provider}
+      />
       {!row.running &&
       row.checked &&
       (!isAccountInsightProvider(row.provider) ||

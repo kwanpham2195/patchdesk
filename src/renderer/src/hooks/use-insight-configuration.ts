@@ -16,6 +16,7 @@ import {
 import {
   INSIGHT_PREFERENCE_TYPES,
   loadInsightRunPreference,
+  loadRecentNativeInsightPreferences,
   type InsightPreferenceType,
   type InsightRunPreference,
 } from "#src/renderer/src/insight-run-preferences";
@@ -63,6 +64,7 @@ export type InsightRunConfiguration = {
   readonly language: InsightLanguage;
   readonly runDialogType: InsightRunDialogType | null;
   readonly runDialogAction: "run" | "retry" | "regenerate";
+  readonly selectionNotice?: "retired" | "unavailable" | null;
   readonly catalogError: boolean;
   /** The account provider whose explicit model load is in flight; one runs at a time. */
   readonly accountModelsPending: AccountInsightProvider | null;
@@ -184,6 +186,7 @@ export function useInsightConfiguration(input: {
             initialInsight,
             initialPreference,
             catalogWithCache,
+            loadRecentNativeInsightPreferences(profileId),
           ),
           catalogError: false,
         });

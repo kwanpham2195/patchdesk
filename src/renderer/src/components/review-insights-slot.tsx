@@ -812,7 +812,10 @@ function InsightRunControls({
       onConfirm={confirmRun}
       pending={dialogRun.starting}
       runsOnCombined={runsOnCombined}
-      {...definedProps({ errorMessage: runErrorMessage })}
+      {...definedProps({
+        errorMessage: runErrorMessage,
+        selectionNotice: configuration.selectionNotice,
+      })}
     />
   );
 }
