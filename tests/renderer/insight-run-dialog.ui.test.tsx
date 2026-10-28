@@ -201,7 +201,7 @@ describe("InsightRunDialog account model loading", () => {
     expect(onLoadAccountModels).toHaveBeenCalledWith("pi-cli-account");
     expect(
       screen
-        .getByRole("button", { name: /^Start with / })
+        .getByRole("button", { name: "Start run" })
         .hasAttribute("disabled"),
     ).toBe(true);
   });

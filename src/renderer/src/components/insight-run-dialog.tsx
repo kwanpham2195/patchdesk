@@ -7,10 +7,7 @@ import {
 } from "#src/domain/insight-provider";
 import type { AccountModelsFailure } from "#src/renderer/src/hooks/use-insight-configuration";
 import { supportedInsightProviders } from "#src/domain/insight-provider-capabilities";
-import {
-  insightNativeRunDisclosure,
-  insightRunSelectionLabel,
-} from "#src/renderer/src/insight-run-copy";
+import { insightNativeRunDisclosure } from "#src/renderer/src/insight-run-copy";
 
 import {
   AccountModelsControl,
@@ -217,7 +214,6 @@ export function InsightRunDialog({
             Cancel
           </Button>
           <Button
-            className="h-auto min-w-0 shrink py-1.5 whitespace-normal wrap-anywhere"
             data-testid="insight-run-confirm"
             disabled={
               pending ||
@@ -233,7 +229,7 @@ export function InsightRunDialog({
                 Starting…
               </>
             ) : (
-              `Start with ${insightRunSelectionLabel(provider, models, model)}`
+              "Start run"
             )}
           </Button>
         </DialogFooter>

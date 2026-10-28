@@ -45,7 +45,7 @@ Reading a retained Guide starts no provider work or GitHub write. Scrolling save
 
 Generate Guide, Regenerate, or the Guide row in Run Insights opens the run controls. Only confirming the run starts generation. The run uses the represented revision and its complete changed-file inventory.
 
-Every entry point, including Try again and agent-request approval, offers the two native CLI accounts. Retired or unavailable saved providers use the [shared opening defaults and replacement notice](brief.md#begin-an-action). The single Start button names the provider and model, and batch rows show each choice. Opening or cancelling saves nothing; only an accepted start saves the replacement. Unavailable models keep Start disabled.
+Every entry point, including Try again and agent-request approval, offers the two native CLI accounts. Retired or unavailable saved providers use the [shared opening defaults and replacement notice](brief.md#begin-an-action). Batch rows show each choice beside its Insight. Opening or cancelling saves nothing; only an accepted start saves the replacement. Unavailable models keep Start disabled.
 
 Hovering or focusing the desktop rail opens a preview. Arrow keys, Home, and End preview groups before Enter or Space selects one. The preview has no focusable actions. Escape closes it and returns focus to the rail or compact Preview control. The opened narrow group list wraps long names; its closed trigger can truncate them.
 

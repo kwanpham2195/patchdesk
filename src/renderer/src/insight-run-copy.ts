@@ -17,7 +17,7 @@ export function insightNativeRunDisclosure(
     : undefined;
 }
 
-/** The visible account and model identity shared by Start and batch row summaries. */
+/** The visible account and model identity shown in batch row summaries. */
 export function insightRunSelectionLabel(
   provider: InsightProvider,
   models: ReadonlyArray<Pick<InsightProviderCatalogModel, "id" | "label">>,
