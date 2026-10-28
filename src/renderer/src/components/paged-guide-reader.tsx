@@ -157,7 +157,9 @@ export function PagedGuideReader({
       <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <p>
-            {guide.summary.groups} groups · {guide.summary.inventory} files
+            {guide.summary.groups} groups ·{" "}
+            {guide.summary.inventory - guide.summary.others} of{" "}
+            {guide.summary.inventory} files in groups
             {reading === undefined
               ? null
               : ` · ${guide.groups.filter((group) => reviewed.has(group.id)).length}/${guide.summary.groups} reviewed`}

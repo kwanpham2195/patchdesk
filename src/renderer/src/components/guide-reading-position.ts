@@ -24,6 +24,7 @@ export function useGuideReadingPosition(
     )
       return;
     let restoring = false;
+    let initialRestore = true;
     let frame: number | undefined;
     let layout = "";
     const currentLayout = (): string =>
@@ -31,8 +32,7 @@ export function useGuideReadingPosition(
     const restore = (): void => {
       const anchor = latest.current?.progress.anchor;
       if (anchor === undefined) return;
-      layout = currentLayout();
-      const target =
+      let target =
         anchor.kind === "top"
           ? undefined
           : content.querySelector<HTMLElement>(
@@ -40,6 +40,15 @@ export function useGuideReadingPosition(
                 ? `[data-guide-group='${anchor.groupId}']`
                 : `[data-guide-file='${anchor.groupId}/${anchor.fileId}']`,
             );
+      if (target !== null && target !== undefined) {
+        const disclosure = target.closest("details");
+        if (disclosure !== null && !disclosure.open) {
+          if (initialRestore) disclosure.open = true;
+          else target = disclosure.querySelector("summary");
+        }
+      }
+      initialRestore = false;
+      layout = currentLayout();
       restoring = true;
       if (anchor.kind === "top") viewport.scrollTop = 0;
       else if (target !== null && target !== undefined)
@@ -68,7 +77,11 @@ export function useGuideReadingPosition(
         ),
       ];
       const target = nodes
-        .filter((node) => node.getBoundingClientRect().top <= top + 1)
+        .filter(
+          (node) =>
+            node.getClientRects().length > 0 &&
+            node.getBoundingClientRect().top <= top + 1,
+        )
         .at(-1);
       let anchor: GuideReadingContent["anchor"] = { kind: "top" };
       if (viewport.scrollTop > 0 && target !== undefined) {

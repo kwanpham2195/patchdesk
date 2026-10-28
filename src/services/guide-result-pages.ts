@@ -1,3 +1,7 @@
+import {
+  compareGuideOthers,
+  guideOtherSection,
+} from "#src/domain/guide-others";
 import { definedProps } from "#src/domain/defined-props";
 import type {
   GuidePage,
@@ -38,9 +42,19 @@ const MAX_REPLY_BYTES = 32 * 1024;
 /**
  * Bounded reading of the published Guide: a digest and count summary, then pages of groups, members, Others, long
  * text and progress marks. Nothing here rebuilds the whole result, embeds the patch or the complete inventory, or
- * computes Others: the worker already derived and stored it.
+ * computes membership: the worker already derived and stored Others. The reader orders that list for triage.
  */
+type OthersPage = Extract<GuidePage, { kind: "others" }>;
+type OthersOrder = Pick<OthersPage, "items" | "counts">;
+
 export class GuidePageService {
+  private othersOrder:
+    | {
+        readonly key: string;
+        readonly value: Promise<Result<OthersOrder, GuideReadFailure>>;
+      }
+    | undefined;
+
   constructor(
     private readonly reader: GuideResultReader,
     private readonly progress: GuideProgressService,
@@ -310,20 +324,18 @@ export class GuidePageService {
     });
     if (at === undefined || at.p > view.root.others.count)
       return err("invalid_cursor");
-    const window = await view.store.readIndex(
-      "GuideInventoryEntry1",
-      view.root.others,
-      at.p,
-      GUIDE_PAGE_MAX_ITEMS,
-    );
-    if (window._tag === "err") return err("invalid_result");
+    const key = JSON.stringify([view.profileId, view.reviewId, view.digest]);
+    if (this.othersOrder?.key !== key)
+      this.othersOrder = { key, value: this.orderOthers(view) };
+    const ordered = await this.othersOrder.value;
+    if (ordered._tag === "err") {
+      if (this.othersOrder?.key === key) this.othersOrder = undefined;
+      return ordered;
+    }
+    const { items: files, counts } = ordered.value;
     const items: Extract<GuidePage, { kind: "others" }>["items"] = [];
     let size = 0;
-    for (const entry of window.value) {
-      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- a page is at most ten entries
-      const file = await fileSummaryOf(view, entry.value);
-      if (file === undefined) return err("invalid_result");
-      const item = { fileId: file.fileId, file: file.summary };
+    for (const item of files.slice(at.p, at.p + GUIDE_PAGE_MAX_ITEMS)) {
       size += encodedBytes(item) + 1;
       if (items.length > 0 && size > GUIDE_PAGE_BUDGET_BYTES) break;
       items.push(item);
@@ -331,12 +343,45 @@ export class GuidePageService {
     const consumed = at.p + items.length;
     return ok({
       kind: "others",
+      counts,
       items,
       next:
         consumed < view.root.others.count
           ? encodeCursor({ d: view.digest, k: "others", s: "", p: consumed })
           : null,
     });
+  }
+
+  /** Retain only the last result's metadata order; all index and entry reads stay bounded. */
+  private async orderOthers(
+    view: GuideResultView,
+  ): Promise<Result<OthersOrder, GuideReadFailure>> {
+    const ordered: Extract<GuidePage, { kind: "others" }>["items"] = [];
+    const counts = { changed: 0, renamed: 0, deleted: 0 };
+    for (
+      let offset = 0;
+      offset < view.root.others.count;
+      offset += GUIDE_PAGE_MAX_ITEMS
+    ) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- index reads stay bounded while ordering the stored Others list
+      const window = await view.store.readIndex(
+        "GuideInventoryEntry1",
+        view.root.others,
+        offset,
+        GUIDE_PAGE_MAX_ITEMS,
+      );
+      if (window._tag === "err") return err("invalid_result");
+      const files = await Promise.all(
+        window.value.map((entry) => fileSummaryOf(view, entry.value)),
+      );
+      for (const file of files) {
+        if (file === undefined) return err("invalid_result");
+        ordered.push({ fileId: file.fileId, file: file.summary });
+        counts[guideOtherSection(file.summary)] += 1;
+      }
+    }
+    ordered.sort((left, right) => compareGuideOthers(left.file, right.file));
+    return ok({ items: ordered, counts });
   }
 
   /** The inventory record for `fN` is at position N - 1: identities are assigned in patch order. */

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clarified Guide coverage and files it did not explain. Others now puts changed code first by lines changed, with renamed and deleted files in folded sections.
+
 - Compacted failed Insights to a warning, recovery action, and Copy diagnostics, preserving previous results and moving safe debugging metadata out of the reader. Activity remains available while a run is active.
 
 - Changed Insight run dialogs to preselect a recent available native account for retired or unavailable saved providers, explain the replacement, and show each batch row's provider and model. Batch rows keep their own choices when checked.

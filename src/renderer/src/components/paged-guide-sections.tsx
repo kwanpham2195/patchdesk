@@ -1,3 +1,4 @@
+import { GuideOthersSections } from "./guide-others-sections";
 import type { PagedGuideControls } from "#src/renderer/src/hooks/use-paged-guide";
 import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
 import type { ReviewViewPreferences } from "@/review-view-preferences";
@@ -109,10 +110,12 @@ export function PagedGuideSections({
         <div className="min-w-0 space-y-2">
           <h3 id="guide-others" className="text-base font-semibold">
             Others · {guide.summary.others}{" "}
-            {guide.summary.others === 1 ? "file" : "files"}
+            {guide.summary.others === 1 ? "file" : "files"} Guide did not
+            explain
           </h3>
           <p className="text-sm text-muted-foreground">
-            Changed files outside the Guide's groups.
+            Check changed code first; renames and deletions are usually
+            mechanical.
           </p>
         </div>
         {guide.summary.others === 0 ? (
@@ -121,8 +124,11 @@ export function PagedGuideSections({
           </p>
         ) : (
           <div className="min-w-0 space-y-2">
-            <ul aria-label="Others files" className="min-w-0 space-y-2">
-              {guide.others.map((other) => (
+            <GuideOthersSections
+              items={guide.others}
+              counts={guide.othersCounts}
+              fileOf={(other) => other.file}
+              renderFile={(other) => (
                 <PagedGuideFileRow
                   key={other.fileId}
                   fileId={other.fileId}
@@ -140,8 +146,8 @@ export function PagedGuideSections({
                     ? {}
                     : { disabledReason: openDisabled })}
                 />
-              ))}
-            </ul>
+              )}
+            />
             {guide.othersNext === null ? null : (
               <Button
                 size="xs"
