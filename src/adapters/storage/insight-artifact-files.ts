@@ -155,25 +155,67 @@ export async function installImmutableInsightArtifactFile(
     );
     if (installed._tag === "err") return installed;
     const beforeVerification = await lstat(path);
-    const verified = await readArtifactFile(ownedRoot, path, bytes);
-    if (verified._tag === "err")
-      return artifactWriteFailure(
-        verified.error.reason === "not_found" ? "io" : verified.error.reason,
-      );
-    // Sync every namespace entry even on reuse after another writer's uncertain fsync.
-    for (const directory of [objects, namespace, resolve(reviewDirectory)]) {
-      const synced = await syncOwnedDirectory(directory);
-      if (synced._tag === "err") return synced;
-    }
-    const checked = await readOwnedParents(ownedRoot, path);
-    return checked._tag === "ok" &&
-      sameParents(parents.value, checked.value) &&
-      sameFile(beforeVerification, await lstat(path))
-      ? ok(undefined)
-      : artifactWriteFailure("io");
+    const verified = await verifyInstalledImmutableFile(
+      ownedRoot,
+      reviewDirectory,
+      path,
+      bytes,
+      parents.value,
+      beforeVerification,
+    );
+    if (verified._tag === "ok") return verified;
+    const afterVerification = await lstat(path);
+    if (
+      beforeVerification.nlink !== 2 ||
+      afterVerification.nlink !== 1 ||
+      beforeVerification.dev !== afterVerification.dev ||
+      beforeVerification.ino !== afterVerification.ino ||
+      beforeVerification.size !== afterVerification.size ||
+      beforeVerification.mtimeMs !== afterVerification.mtimeMs ||
+      !isOwnedRegularFile(afterVerification)
+    )
+      return verified;
+    return await verifyInstalledImmutableFile(
+      ownedRoot,
+      reviewDirectory,
+      path,
+      bytes,
+      parents.value,
+      afterVerification,
+    );
   } catch {
     return artifactWriteFailure("io");
   }
+}
+
+async function verifyInstalledImmutableFile(
+  ownedRoot: string,
+  reviewDirectory: string,
+  path: string,
+  bytes: Uint8Array,
+  parents: ReadonlyArray<Stats>,
+  beforeVerification: Stats,
+): Promise<Result<void, StorageFailure>> {
+  const verified = await readArtifactFile(ownedRoot, path, bytes);
+  if (verified._tag === "err")
+    return artifactWriteFailure(
+      verified.error.reason === "not_found" ? "io" : verified.error.reason,
+    );
+  // Sync every namespace entry even on reuse after another writer's uncertain fsync.
+  for (const directory of [
+    dirname(path),
+    dirname(dirname(path)),
+    resolve(reviewDirectory),
+  ]) {
+    const synced = await syncOwnedDirectory(directory);
+    if (synced._tag === "err") return synced;
+  }
+  const checked = await readOwnedParents(ownedRoot, path);
+  return checked._tag === "ok" &&
+    sameParents(parents, checked.value) &&
+    sameFile(beforeVerification, await lstat(path))
+    ? ok(undefined)
+    : artifactWriteFailure("io");
 }
 
 async function stageImmutableFile(

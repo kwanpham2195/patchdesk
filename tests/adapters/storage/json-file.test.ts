@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import {
+  type FileHandle,
+  lstat,
   mkdir,
   mkdtemp,
   open,
   readFile,
   readdir,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { writeAtomicFile } from "#src/adapters/storage/json-file";
+import { installImmutableInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 
 /**
  * The one member of a `FileHandle` the fsync-ordering test calls through to:
@@ -27,6 +32,93 @@ afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
+});
+
+describe("installImmutableInsightArtifactFile", () => {
+  it(
+    "installs the same object from two concurrent writers reliably",
+    { timeout: 30_000 },
+    async () => {
+      // #824: the winner's temporary-link cleanup must not fail the other writer.
+      const root = await tempDirectory();
+      const bytes = Buffer.from("same immutable artifact");
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      for (let iteration = 0; iteration < 200; iteration++) {
+        const review = join(root, String(iteration));
+        await mkdir(review, { mode: 0o700 });
+        const path = join(
+          review,
+          "insight-artifacts-v2",
+          "objects",
+          `${hash}.json`,
+        );
+
+        const results = await Promise.all([
+          installImmutableInsightArtifactFile(root, review, path, bytes),
+          installImmutableInsightArtifactFile(root, review, path, bytes),
+        ]);
+
+        expect(results).toEqual([
+          { _tag: "ok", value: undefined },
+          { _tag: "ok", value: undefined },
+        ]);
+        expect(await readFile(path)).toEqual(bytes);
+      }
+    },
+  );
+
+  it("rejects an in-place modification with forged size and mtime", async () => {
+    // #824: matching inode, size and mtime must not conceal changed bytes.
+    const root = await tempDirectory();
+    const bytes = Buffer.from("same immutable artifact");
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const path = join(root, "insight-artifacts-v2", "objects", `${hash}.json`);
+    await mkdir(join(path, ".."), { recursive: true, mode: 0o700 });
+    await writeFile(path, bytes, { mode: 0o600 });
+    const pinnedTime = new Date("2026-10-01T00:00:00.000Z");
+    await utimes(path, pinnedTime, pinnedTime);
+    const before = await lstat(path);
+    const probe = await open(path, "r");
+    const prototype: FileHandle = Object.getPrototypeOf(probe);
+    await probe.close();
+    const realSync = prototype.sync;
+    let modified = false;
+    // oxlint-disable-next-line patchdesk/no-method-spying -- The real FileHandle has no injection seam; mutate the verified inode after its bytes have been read.
+    vi.spyOn(prototype, "sync").mockImplementation(
+      async function (this: FileHandle): Promise<void> {
+        await realSync.call(this);
+        const metadata = await this.stat();
+        if (
+          !modified &&
+          metadata.dev === before.dev &&
+          metadata.ino === before.ino
+        ) {
+          modified = true;
+          await writeFile(path, "fake immutable artifact", { flag: "r+" });
+          await utimes(path, before.atime, before.mtime);
+        }
+      },
+    );
+
+    const installed = await installImmutableInsightArtifactFile(
+      root,
+      root,
+      path,
+      bytes,
+    );
+
+    expect(modified).toBe(true);
+    expect(await lstat(path)).toMatchObject({
+      dev: before.dev,
+      ino: before.ino,
+      size: before.size,
+      mtimeMs: before.mtimeMs,
+    });
+    expect(installed).toMatchObject({
+      _tag: "err",
+      error: { operation: "write", reason: "invalid_stored_value" },
+    });
+  });
 });
 
 async function tempDirectory(): Promise<string> {
