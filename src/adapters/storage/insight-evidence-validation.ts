@@ -151,12 +151,14 @@ async function withEvidenceFile<T>(
     try {
       await file.close();
     } catch {
-      if (observed._tag === "ok")
-        return err({
-          _tag: "InsightEvidenceFailure",
-          reason: "evidence_unavailable",
-          detail: "file_unreadable",
-        });
+      return err({
+        _tag: "InsightEvidenceFailure",
+        reason: "evidence_unavailable",
+        detail:
+          observed._tag === "err"
+            ? (observed.error.detail ?? "file_unreadable")
+            : "file_unreadable",
+      });
     }
     return observed;
   } catch (cause) {

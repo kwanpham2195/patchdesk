@@ -290,7 +290,9 @@ export class CodexAppServerClient {
           if (
             discoveryFailureRecorded ||
             stopping ||
-            event[0] !== "rpc_detail" ||
+            options.signal?.aborted ||
+            (event[0] !== "rpc_detail" && event[0] !== "transport_lost") ||
+            (event[0] === "rpc_detail" && event[1] === "request_aborted") ||
             fields.discoveryStep === undefined
           )
             return;

@@ -1,3 +1,5 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
+import { logInsightEvidenceFailure } from "./insight-evidence-diagnostic";
 import {
   insightFailureDiagnostic,
   insightEvidenceFailureCategory,
@@ -35,7 +37,10 @@ import type { InsightActivitySink } from "#src/adapters/codex/codex-activity";
 import type { InsightStore } from "#src/adapters/storage/insight-store";
 import { InsightEvidenceStore } from "#src/adapters/storage/insight-evidence-store";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
-import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
+import type {
+  InsightEvidenceFailure,
+  InsightEvidenceBundle,
+} from "#src/domain/insight-evidence";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
 import type { ReviewSession } from "#src/domain/review-session";
 import type { PreparedGuide } from "./guide-operation";
@@ -95,6 +100,7 @@ export class InsightRunExecutor {
     /** Counts a completed Brief's Reach block; absent leaves the block off. */
     private readonly reach?: BriefReachComputer,
     private readonly notifications?: InsightSettledNotifier,
+    private readonly diagnostic?: (entry: LogEntryInput) => void,
   ) {}
 
   /** Preparation owns the Review lock; provider work starts only after a fresh admission check. */
@@ -243,6 +249,7 @@ export class InsightRunExecutor {
         : err({
             _tag: "InsightEvidenceFailure" as const,
             reason: "evidence_mismatch" as const,
+            detail: "identity_mismatch" as const,
           });
       const invocation = controller.signal.aborted
         ? err({
@@ -265,6 +272,7 @@ export class InsightRunExecutor {
           runId,
           insightEvidenceFailureCategory(after.error.reason),
           after.error.reason,
+          after.error,
         );
         return;
       }
@@ -369,6 +377,14 @@ export class InsightRunExecutor {
               timestamp.value,
             ),
           "invocation",
+          cancelled
+            ? undefined
+            : before._tag === "err"
+              ? before.error
+              : invocation._tag === "err" &&
+                  "evidenceFailure" in invocation.error
+                ? invocation.error.evidenceFailure
+                : undefined,
         );
         if (
           category !== undefined ||
@@ -586,6 +602,7 @@ export class InsightRunExecutor {
       record: InsightRecord<unknown>,
     ) => Result<InsightRecord<unknown>, "superseded">,
     detail: string,
+    evidenceFailure?: InsightEvidenceFailure,
   ): Promise<boolean> {
     try {
       const changed = await this.operations.withReviewLock(
@@ -612,6 +629,7 @@ export class InsightRunExecutor {
                   input.evidence,
                 )
               : undefined;
+          let settledEvidenceFailure: InsightEvidenceFailure | undefined;
           const mutated = await this.insights.mutate({
             profileId: input.profileId,
             reviewId: input.reviewId,
@@ -656,6 +674,7 @@ export class InsightRunExecutor {
                 );
               }
               if (evidence?._tag === "err") {
+                settledEvidenceFailure = evidence.error;
                 return failInsightRun(
                   record,
                   runId,
@@ -671,11 +690,24 @@ export class InsightRunExecutor {
                   at,
                 );
               }
+              settledEvidenceFailure = evidenceFailure;
               return operation(record);
             },
           });
           // Posted inside the lock but outside the record transition, so only a persisted settlement is announced.
           if (mutated._tag === "ok") {
+            if (
+              settledEvidenceFailure !== undefined &&
+              mutated.value.replacementFailure?.runId === runId &&
+              mutated.value.replacementFailure.reason === "failed" &&
+              mutated.value.replacementFailure.category ===
+                insightEvidenceFailureCategory(settledEvidenceFailure.reason)
+            )
+              logInsightEvidenceFailure(
+                this.diagnostic,
+                runId,
+                settledEvidenceFailure.detail ?? "tree_invalid",
+              );
             const outcome = settledOutcome(mutated.value, runId);
             if (outcome !== undefined)
               await this.announceSettled(review.value, type, runId, outcome);
@@ -752,6 +784,7 @@ export class InsightRunExecutor {
       | "evidence_unavailable"
       | "evidence_mismatch"
       | "invalid_input",
+    evidenceFailure?: InsightEvidenceFailure,
   ): Promise<void> {
     const timestamp = parseIsoTimestamp(this.now());
     if (timestamp._tag === "ok") {
@@ -774,6 +807,7 @@ export class InsightRunExecutor {
             timestamp.value,
           ),
         detail,
+        evidenceFailure,
       );
     }
     await this.recordDiagnostic(input, type, detail);

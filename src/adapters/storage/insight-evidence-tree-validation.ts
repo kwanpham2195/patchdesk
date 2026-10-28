@@ -82,7 +82,7 @@ export async function validateInsightEvidenceTree(
           ...file,
         });
         if (checked._tag === "err") {
-          firstFailure ??= checked.error;
+          firstFailure ??= { ...checked.error, reason: "evidence_mismatch" };
           return false;
         }
         foundFiles.add(child);

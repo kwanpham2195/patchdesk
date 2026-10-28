@@ -244,6 +244,7 @@ export function insightCoordinatorFactory({
         now,
         (run, event) => coordinator.recordExplanationActivity(run, event),
       ),
+      resources.diagnostic,
     );
     return coordinator;
   };

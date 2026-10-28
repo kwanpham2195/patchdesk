@@ -25,10 +25,7 @@ const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
 export async function explanationEvidenceReference(
   artifacts: InsightArtifactStore,
   destination: PatchdeskPaths,
-  prepared: {
-    readonly evidenceManifest: InsightTextRootDescriptor;
-    readonly evidenceBundleId: string;
-  },
+  prepared: { readonly evidenceManifest: InsightTextRootDescriptor },
   sessionId: ReviewSessionId,
   run: {
     readonly profileId: WorkspaceProfileId;
@@ -89,15 +86,6 @@ export async function explanationEvidenceReference(
       },
     });
     if (!reference.success) return refuse("manifest_invalid");
-    const identity = reference.output.identity;
-    if (
-      identity.profileId !== run.profileId ||
-      identity.reviewId !== run.reviewId ||
-      identity.sessionId !== sessionId ||
-      identity.runId !== runId.value ||
-      reference.output.bundleId !== prepared.evidenceBundleId
-    )
-      return refuse("identity_mismatch");
     return reference.output;
   } catch {
     return refuse("manifest_invalid");
