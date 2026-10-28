@@ -8,6 +8,7 @@ import type {
 } from "./ids";
 import {
   sameInsightRevision,
+  type InsightFailure,
   type InsightFailureCategory,
   type AnalysisVerification,
   type InsightRecord,
@@ -70,6 +71,7 @@ export type InsightProjection<T> = {
   readonly replacementFailure?: {
     /** Run identity doubles as the safe, user-visible correlation ID. */
     readonly runId?: InsightRunId;
+    readonly reason: InsightFailure["reason"];
     readonly category?: InsightFailureCategory;
     readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
     readonly model: string;
@@ -160,6 +162,7 @@ export function projectStoredInsight<T>(
       ...(retained !== undefined && { retained }),
       replacementFailure: {
         runId: record.replacementFailure.runId,
+        reason: record.replacementFailure.reason,
         ...(record.replacementFailure.category !== undefined && {
           category: record.replacementFailure.category,
         }),

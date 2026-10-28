@@ -56,6 +56,12 @@ export const insightFields = {
   replacementFailure: v.optional(
     v.strictObject({
       runId: v.optional(v.pipe(v.string(), v.minLength(1))),
+      reason: v.picklist([
+        "cancelled",
+        "failed",
+        "invalid_result",
+        "superseded",
+      ]),
       category: v.optional(v.picklist(INSIGHT_FAILURE_CATEGORIES)),
       incompleteReason: v.optional(
         v.picklist(["insufficient_evidence", "unable_to_complete"]),
