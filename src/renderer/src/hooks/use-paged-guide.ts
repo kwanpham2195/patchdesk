@@ -36,6 +36,7 @@ type PagedGuide =
       readonly groups: ReadonlyArray<PagedGuideGroup>;
       readonly groupsComplete: boolean;
       readonly others: ReadonlyArray<OtherItem>;
+      readonly othersCounts: Extract<GuidePage, { kind: "others" }>["counts"];
       readonly othersNext: string | null;
       readonly othersLoaded: boolean;
     };
@@ -125,6 +126,7 @@ export function usePagedGuide(
           groups: [],
           groupsComplete: false,
           others: [],
+          othersCounts: { changed: 0, renamed: 0, deleted: 0 },
           othersNext: null,
           othersLoaded: false,
         });
@@ -173,6 +175,7 @@ export function usePagedGuide(
           patch((ready) => ({
             ...ready,
             others: [...loadedOthers],
+            othersCounts: others.counts,
             othersNext: others.next,
             othersLoaded: true,
           }));

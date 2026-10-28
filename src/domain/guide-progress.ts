@@ -324,6 +324,11 @@ export const guidePageSchema = v.variant("kind", [
   }),
   v.strictObject({
     kind: v.literal("others"),
+    counts: v.strictObject({
+      changed: insightArtifactUnsignedSchema,
+      renamed: insightArtifactUnsignedSchema,
+      deleted: insightArtifactUnsignedSchema,
+    }),
     items: v.array(
       v.strictObject({
         fileId: guideFileIdSchema,

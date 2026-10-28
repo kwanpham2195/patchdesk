@@ -119,7 +119,15 @@ export function GuideFixture(): React.JSX.Element {
     "guide-navigation",
   )
     ? navigationGuide
-    : guide;
+    : new URLSearchParams(window.location.search).has("guide-others")
+      ? {
+          ...guide,
+          groups: guide.groups.map((group) => ({
+            ...group,
+            files: group.files.filter((file) => file.fileId !== "f3"),
+          })),
+        }
+      : guide;
   return (
     <div className="h-full overflow-auto p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b pb-3">

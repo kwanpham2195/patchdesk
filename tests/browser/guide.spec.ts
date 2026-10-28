@@ -65,7 +65,8 @@ test("Guide expands complete retained files independently and preserves evidence
     await expect(
       second.getByRole("group", { name: "Guide evidence src/new.ts" }),
     ).toContainText("rename from src/old.ts");
-    const others = page.getByRole("list", { name: "Others files" });
+    const others = page.getByRole("region", { name: /^Others ·/ });
+    await others.getByText("Deleted · 1", { exact: true }).click();
     await others.getByRole("button", { name: "File src/deleted.ts" }).click();
     await expect(
       others.getByText("obsoleteSnapshot()", { exact: true }),
@@ -376,6 +377,11 @@ for (const width of [560, 960]) {
       await page
         .getByRole("button", { name: "Show outdated revision" })
         .click();
+      for (const section of await page
+        .locator("[data-guide-minimap-group='others'] summary")
+        .all()) {
+        await section.click();
+      }
       const rows = page.locator("[data-guide-file]");
       expect(await rows.count()).toBeGreaterThan(0);
       for (const row of await rows.all()) {

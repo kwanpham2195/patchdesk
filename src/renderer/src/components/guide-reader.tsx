@@ -1,3 +1,5 @@
+import { GuideOthersSections } from "./guide-others-sections";
+import { compareGuideOthers } from "#src/domain/guide-others";
 import { useMemo, useRef, useState } from "react";
 import type { GuideReadingControls } from "#src/renderer/src/hooks/use-guide-reading-state";
 import { useGuideReadingPosition } from "./guide-reading-position";
@@ -82,7 +84,10 @@ export function GuideReader({
     [guide],
   );
   const evidence = useMemo(() => decomposeGuidePatch(guide), [guide]);
-  const others = useMemo(() => guideOthers(guide), [guide]);
+  const others = useMemo(
+    () => [...guideOthers(guide)].sort(compareGuideOthers),
+    [guide],
+  );
   const reviewed = useMemo(
     () => new Set(reading?.progress.reviewedGroupIds),
     [reading?.progress.reviewedGroupIds],
@@ -110,7 +115,8 @@ export function GuideReader({
             {
               id: "others",
               title: "Others",
-              explanation: "Changed files outside the Guide's groups.",
+              explanation:
+                "Check changed code first; renames and deletions are usually mechanical.",
               files: others.map((file) => ({
                 id: file.id,
                 path: file.status === "removed" ? file.oldPath : file.newPath,
@@ -138,7 +144,9 @@ export function GuideReader({
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-semibold">Review Guide</h2>
           <p className="text-xs text-muted-foreground">
-            {guide.groups.length} groups · {guide.inventory.length} files
+            {guide.groups.length} groups ·{" "}
+            {guide.inventory.length - others.length} of {guide.inventory.length}{" "}
+            files in groups
             {reading === undefined
               ? null
               : ` · ${guide.groups.filter((group) => reviewed.has(group.id)).length}/${guide.groups.length} reviewed`}
@@ -263,10 +271,11 @@ export function GuideReader({
               <div className="min-w-0 space-y-2">
                 <h3 id="guide-others" className="text-base font-semibold">
                   Others · {others.length}{" "}
-                  {others.length === 1 ? "file" : "files"}
+                  {others.length === 1 ? "file" : "files"} Guide did not explain
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Changed files outside the Guide's groups.
+                  Check changed code first; renames and deletions are usually
+                  mechanical.
                 </p>
               </div>
               {others.length === 0 ? (
@@ -274,8 +283,10 @@ export function GuideReader({
                   Every changed file appears in a group.
                 </p>
               ) : (
-                <ul aria-label="Others files" className="min-w-0 space-y-2">
-                  {others.map((file) => {
+                <GuideOthersSections
+                  items={others}
+                  fileOf={(file) => file}
+                  renderFile={(file) => {
                     const fileEvidence = evidence.get(file.id);
                     return fileEvidence === undefined ? null : (
                       <GuideFileRow
@@ -295,8 +306,8 @@ export function GuideReader({
                           : { disabledReason })}
                       />
                     );
-                  })}
-                </ul>
+                  }}
+                />
               )}
             </section>
           </div>
