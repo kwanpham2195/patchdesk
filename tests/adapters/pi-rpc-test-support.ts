@@ -22,6 +22,7 @@ class FakePiProcess extends EventEmitter {
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
   readonly received: Array<JsonRecord> = [];
+  killed = false;
 
   constructor(
     private readonly answer: (
@@ -49,6 +50,7 @@ class FakePiProcess extends EventEmitter {
   }
 
   kill(): boolean {
+    this.killed = true;
     this.emit("exit", 0, null);
     this.emit("close", 0, null);
     return true;

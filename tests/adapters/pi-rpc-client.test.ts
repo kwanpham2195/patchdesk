@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
+import type { ChildProcess } from "node:child_process";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +51,7 @@ beforeEach(async () => {
   attempt = created.value;
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await rm(attemptRoot, { recursive: true, force: true });
 });
 const runInput = {
@@ -355,34 +358,62 @@ describe("PiRpcClient", () => {
     });
   });
 
-  it("cancels a run whose cancel arrives while pi --version is still running", async () => {
-    let releaseVersion: () => void = () => undefined;
-    const pi = fakePi({
-      versionReleased: new Promise((resolve) => {
+  // #814
+  it.each(["run", "listModels"] as const)(
+    "cancels %s during the version lookup without starting RPC",
+    async (operation) => {
+      vi.useFakeTimers();
+      let versionChild: ChildProcess | undefined;
+      let releaseVersion!: () => void;
+      const versionReleased = new Promise<void>((resolve) => {
         releaseVersion = resolve;
-      }),
-      rpc: runScript((write) => {
-        write(assistantAnswer('{"title":"Fixture"}'));
-        write({ type: "agent_settled" });
-      }),
-    });
-    const client = new PiRpcClient("/usr/local/bin/pi", {
-      processFactory: pi.processFactory,
-    });
-    const controller = new AbortController();
+      });
+      const pi = fakePi({
+        versionReleased,
+        rpc: runScript((write) => {
+          write(assistantAnswer('{"title":"Fixture"}'));
+          write({ type: "agent_settled" });
+        }),
+      });
+      const client = new PiRpcClient("/usr/local/bin/pi", {
+        processFactory: (file, args, options) => {
+          const child = pi.processFactory(file, args, options);
+          if (args[0] === "--version") versionChild = child;
+          return child;
+        },
+      });
+      const controller = new AbortController();
 
-    const running = client.run(runInput, { signal: controller.signal });
-    controller.abort();
-    releaseVersion();
+      const running =
+        operation === "run"
+          ? client.run(runInput, { signal: controller.signal })
+          : client.listModels({ signal: controller.signal });
+      expect(versionChild).toBeDefined();
+      if (versionChild === undefined) throw new Error("expected version child");
+      let settled = false;
+      void running.then(() => {
+        settled = true;
+      });
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
 
-    await expect(running).resolves.toMatchObject({
-      _tag: "err",
-      error: { reason: "cancelled" },
-    });
-    expect(pi.children[0]?.received ?? []).not.toContainEqual(
-      expect.objectContaining({ type: "prompt" }),
-    );
-  });
+      await expect(running).resolves.toMatchObject({
+        _tag: "err",
+        error: { reason: "cancelled" },
+      });
+      expect(versionChild.killed).toBe(true);
+      expect(versionChild.listenerCount("error")).toBe(0);
+      expect(versionChild.listenerCount("close")).toBe(0);
+      expect(versionChild.stdout?.listenerCount("data")).toBe(0);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+      releaseVersion();
+      await vi.runAllTimersAsync();
+      expect(pi.children).toHaveLength(0);
+      expect(pi.spawned.map((spawn) => spawn.args)).toEqual([["--version"]]);
+    },
+  );
 
   it("refuses a run whose resolved thinking level is not the one requested", async () => {
     const pi = fakePi({

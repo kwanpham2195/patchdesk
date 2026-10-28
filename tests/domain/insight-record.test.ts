@@ -75,6 +75,40 @@ function runInput(recordValue: InsightRecord<unknown>) {
 }
 
 describe("InsightRecord", () => {
+  // #813
+  it("settles completion of a cancelling run as cancelled and preserves the retained result", () => {
+    const previousInput = runInput(record());
+    const retained = {
+      runId: previousInput.id,
+      revision: previousInput.revision,
+      generatedAt: now,
+      provenance,
+      value: { summary: "previous" },
+    };
+    const previous = { ...record(), nextToken: 2, retained };
+    const input = runInput(previous);
+    const started = must(beginInsightRun(previous, input));
+    const cancelling = must(
+      requestInsightCancellation(started, input.id, later),
+    );
+    const completed = must(
+      completeInsightRun(
+        cancelling,
+        input.id,
+        { ...retained, runId: input.id, value: { summary: "replacement" } },
+        later,
+      ),
+    );
+    expect(completed.activeRun).toBeUndefined();
+    expect(completed.retained).toEqual(retained);
+    expect(completed.replacementFailure).toMatchObject({
+      runId: input.id,
+      reason: "cancelled",
+      model: input.model,
+      failedAt: later,
+    });
+  });
+
   it("begins one run and rejects a concurrent run", () => {
     const started = beginInsightRun(record(), runInput(record()));
     expect(started._tag).toBe("ok");
@@ -365,7 +399,9 @@ describe("InsightRecord", () => {
     );
     expect(completed._tag).toBe("ok");
     if (completed._tag === "ok")
-      expect(completed.value.retained?.value).toEqual({ summary: "new" });
+      expect(completed.value.retained).toMatchObject({
+        value: { summary: "new" },
+      });
   });
 });
 

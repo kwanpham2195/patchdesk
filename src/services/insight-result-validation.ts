@@ -1,6 +1,7 @@
 import { hashReviewArtifactContent } from "./review-artifact-hash";
 import { retainGuide } from "#src/domain/guide";
 import { readFile } from "node:fs/promises";
+import { definedProps } from "#src/domain/defined-props";
 
 import {
   briefManifest,
@@ -45,6 +46,7 @@ export async function validateInsightResult(
    * Brief is then retained with neither `reach` nor `reachUnavailable`.
    */
   reach?: BriefReachComputer,
+  signal?: AbortSignal,
 ): Promise<Result<unknown, ValidateResultReason>> {
   if (type === "walkthrough") return err("invalid_result");
   if (type === "guide") {
@@ -61,7 +63,9 @@ export async function validateInsightResult(
     return err("invalid_result");
   const patch =
     tree === undefined
-      ? await readFile(input.patchPath, "utf8").catch(() => undefined)
+      ? await readFile(input.patchPath, { encoding: "utf8", signal }).catch(
+          () => undefined,
+        )
       : diffTexts?.join("");
   if (
     patch === undefined ||
@@ -143,6 +147,7 @@ export async function validateInsightResult(
         input,
         revision,
         reach,
+        signal,
       ),
     );
   }
@@ -199,6 +204,7 @@ async function withBriefReach(
   input: InsightInvocationInput,
   revision: InsightRevision,
   reach: BriefReachComputer | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<NormalizedBrief> {
   if (reach === undefined) return brief;
   const parsed = parseBriefOutput(raw);
@@ -211,6 +217,7 @@ async function withBriefReach(
     headSha: revision.headSha,
     patch,
     proposed,
+    ...definedProps({ signal }),
   });
   return outcome._tag === "ok"
     ? { ...brief, reach: outcome.value }

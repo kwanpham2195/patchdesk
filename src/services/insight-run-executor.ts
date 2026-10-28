@@ -431,6 +431,7 @@ export class InsightRunExecutor {
           patchHash: latestHash.value,
         },
         this.reach,
+        controller.signal,
       );
       if (validated._tag === "err") {
         await this.failAsInvalidResult(

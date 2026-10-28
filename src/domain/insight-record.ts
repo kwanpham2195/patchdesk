@@ -327,8 +327,15 @@ export function completeInsightRun<T>(
   runId: InsightRunId,
   retained: RetainedInsight<T>,
   at: IsoTimestamp,
-): Result<InsightRecord<RetainedInsight<T>>, "superseded"> {
+): Result<InsightRecord<unknown>, "superseded"> {
   if (record.activeRun?.id !== runId) return err("superseded");
+  if (record.activeRun.status === "cancelling")
+    return failInsightRun(
+      record,
+      runId,
+      { runId, reason: "cancelled", retryable: true, failedAt: at },
+      at,
+    );
   const {
     activeRun: _activeRun,
     replacementFailure: _replacementFailure,

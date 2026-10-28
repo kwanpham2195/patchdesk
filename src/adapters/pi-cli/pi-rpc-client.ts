@@ -145,7 +145,7 @@ export class PiRpcClient {
       PiRpcFailure
     >
   > {
-    const version = await this.readVersion();
+    const version = await this.readVersion(signal);
     if (version._tag === "err") return version;
     const opened = await this.open(
       [
@@ -213,10 +213,10 @@ export class PiRpcClient {
       )
     )
       return err({ reason: "invalid_result", phase: "prompt" });
-    const version = await this.readVersion();
+    const version = await this.readVersion(options.signal);
     if (version._tag === "err") return version;
     attempt.record.observed.version = version.value;
-    const helpText = await this.readCliOutput("--help");
+    const helpText = await this.readCliOutput("--help", options.signal);
     if (options.signal?.aborted)
       return err({ reason: "cancelled", phase: "start" });
     if (
@@ -247,7 +247,7 @@ export class PiRpcClient {
     const controller = new AbortController();
     const onAbort = (): void => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
-    // A cancel while `open` awaited `pi --version` fired before the listener existed.
+    // Cancellation can arrive between opening the channel and registering this listener.
     if (options.signal?.aborted === true) controller.abort();
     const timer = setTimeout(
       () => controller.abort("timed_out"),
@@ -300,9 +300,9 @@ export class PiRpcClient {
     },
   ): Promise<Result<PiRpcChannel, PiRpcFailure>> {
     if (signal?.aborted) return err({ reason: "cancelled", phase: "start" });
-    const version = await this.readVersion();
+    const version = await this.readVersion(signal);
     if (version._tag === "err") return version;
-    const helpText = await this.readCliOutput("--help");
+    const helpText = await this.readCliOutput("--help", signal);
     if (signal?.aborted) return err({ reason: "cancelled", phase: "start" });
     if (
       helpText === undefined ||
@@ -345,12 +345,15 @@ export class PiRpcClient {
       : err({ reason: "runtime_unavailable", phase: "start" });
   }
 
-  private async readVersion(): Promise<Result<string, PiRpcFailure>> {
+  private async readVersion(
+    signal?: AbortSignal,
+  ): Promise<Result<string, PiRpcFailure>> {
     const unavailable = err({
       reason: "runtime_unavailable" as const,
       phase: "version" as const,
     });
-    const output = await this.readCliOutput("--version");
+    const output = await this.readCliOutput("--version", signal);
+    if (signal?.aborted) return err({ reason: "cancelled", phase: "version" });
     const match = output?.match(/(\d+)\.(\d+)\.(\d+)/u);
     if (match === null || match === undefined) return unavailable;
     return ok(match[0]);
@@ -358,7 +361,9 @@ export class PiRpcClient {
 
   private async readCliOutput(
     argument: "--version" | "--help",
+    signal?: AbortSignal,
   ): Promise<string | undefined> {
+    if (signal?.aborted) return undefined;
     let child: ChildProcess;
     try {
       child = this.processFactory(this.executablePath, [argument], {
@@ -376,26 +381,34 @@ export class PiRpcClient {
     }
     return await new Promise<string | undefined>((resolve) => {
       let text = "";
-      const timer = setTimeout(() => {
-        child.kill();
-        resolve(undefined);
-      }, VERSION_TIMEOUT_MS);
-      stdout.on("data", (chunk: Buffer | string) => {
+      let settled = false;
+      const finish = (output: string | undefined, stop = false): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        stdout.removeListener("data", onData);
+        child.removeListener("error", onError);
+        child.removeListener("close", onClose);
+        if (stop) child.kill();
+        resolve(output);
+      };
+      const onAbort = (): void => finish(undefined, true);
+      const onData = (chunk: Buffer | string): void => {
         text += chunk.toString();
-        if (Buffer.byteLength(text) > 32_768) {
-          child.kill();
-          clearTimeout(timer);
-          resolve(undefined);
-        }
-      });
-      child.once("error", () => {
-        clearTimeout(timer);
-        resolve(undefined);
-      });
-      child.once("close", (code: number | null) => {
-        clearTimeout(timer);
-        resolve(code === 0 ? text : undefined);
-      });
+        if (Buffer.byteLength(text) > 32_768) finish(undefined, true);
+      };
+      const onError = (): void => finish(undefined);
+      const onClose = (code: number | null): void =>
+        finish(code === 0 ? text : undefined);
+      const timer = setTimeout(() => {
+        finish(undefined, true);
+      }, VERSION_TIMEOUT_MS);
+      stdout.on("data", onData);
+      child.once("error", onError);
+      child.once("close", onClose);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
   }
 }

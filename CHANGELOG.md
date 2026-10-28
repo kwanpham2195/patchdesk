@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Fixed Analysis omitting "Ran without a change intent" after a Change intent is added to a local Review. #499
+- Fixed cancelled Insights replacing a previous result after provider completion, and forwarded cancellation through Brief Reach calculation. #813
+- Fixed pi startup and model loading waiting for the version check after cancellation; cancellation stops that check without starting an RPC child. #814
 
 ## 0.0.20 - 2026-10-28
 

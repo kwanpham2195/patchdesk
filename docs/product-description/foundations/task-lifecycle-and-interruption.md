@@ -65,6 +65,8 @@ A confirmed failure shows an action-local error and retains the prior confirmed 
 
 Cancellation settles only when the owner confirms the cancelled state. Requesting cancellation is still pending; the Stop control can change to Cancelling… while the child or service shuts down.
 
+An Insight whose saved state is Cancelling keeps its previous result when late provider output finishes validation or waits for the Review lock. Brief Reach calculation receives the same cancellation request. A pi version check stops on cancellation during Insight startup or model loading, without starting an RPC child.
+
 An uncertain GitHub write settles differently from a failure. Patchdesk locks related writes and offers an explicit GitHub check or manual resolution. It never repeats the original write automatically.
 
 ## Variants
@@ -130,3 +132,5 @@ After an interrupt, Patchdesk stays on the current surface unless navigation was
 - Confirm app shutdown messaging while an Insight cancellation is in progress; the durable cancellation path is documented in code, but the visible shutdown timing is not.
 
 Baseline drafted from Patchdesk application source commit `3100615`; revised and verified against `737c515c`.
+
+Cancellation boundaries for #813 and #814 are covered by local lifecycle and fake-process regressions; desktop and live-provider behavior for these fixes is not verified.
