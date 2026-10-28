@@ -225,7 +225,8 @@ export class CodexExplanationDiagnostics {
   ): void {
     if (this.final) return;
     if (
-      event[0] === "rpc_detail" &&
+      (event[0] === "rpc_detail" || event[0] === "transport_lost") &&
+      !(event[0] === "rpc_detail" && event[1] === "request_aborted") &&
       fields.discoveryStep !== undefined &&
       phase !== "cleanup"
     )

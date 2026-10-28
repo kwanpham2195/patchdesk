@@ -1,3 +1,4 @@
+import type { LogEntryInput } from "#src/domain/log-entry";
 import type { InsightActivityEvent } from "#src/adapters/codex/codex-activity";
 import { readNativeSessionAttempts } from "#src/adapters/storage/native-session-attempt-store";
 import type { NativeSessionAttemptPage } from "#src/domain/native-session-attempt";
@@ -261,6 +262,7 @@ export class InsightRunCoordinator {
       WalkthroughGenerationService,
       "start" | "resume" | "recover"
     >,
+    diagnostic?: (entry: LogEntryInput) => void,
   ) {
     this.active = owned;
     this.explanation = new ExplanationRunAdmission(
@@ -304,6 +306,7 @@ export class InsightRunCoordinator {
       this.diagnostics,
       this.reach,
       this.notifications,
+      diagnostic,
     );
     this.findings = new InsightFindingCommands(
       this.reviews,

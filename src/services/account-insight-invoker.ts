@@ -136,11 +136,11 @@ export class AccountInsightInvoker implements InsightInvoker {
     const nativeInstructions = await accountInsightEvidenceInstructions(
       input.evidence,
       this.paths,
-      this.diagnostic,
     );
     if (nativeInstructions._tag === "err")
       return err({
         reason: insightEvidenceFailureCategory(nativeInstructions.error.reason),
+        evidenceFailure: nativeInstructions.error,
         ...insightFailureDiagnostic(
           insightEvidenceFailureCategory(nativeInstructions.error.reason),
           "evidence",

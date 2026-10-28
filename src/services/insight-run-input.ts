@@ -7,7 +7,10 @@ import type {
   ReviewSessionId,
   WorkspaceProfileId,
 } from "#src/domain/ids";
-import type { InsightEvidenceBundle } from "#src/domain/insight-evidence";
+import type {
+  InsightEvidenceBundle,
+  InsightEvidenceFailure,
+} from "#src/domain/insight-evidence";
 import type {
   InsightFailureCategory,
   InsightType,
@@ -42,6 +45,7 @@ export type InsightInvocationInput = {
 /** Provider-classified failure; cancellation remains distinct from failure. */
 type InsightInvocationFailure = {
   readonly reason: InsightFailureCategory | "cancelled";
+  readonly evidenceFailure?: InsightEvidenceFailure;
   readonly incompleteReason?: "insufficient_evidence" | "unable_to_complete";
   readonly phase?: string;
   readonly code?: string;

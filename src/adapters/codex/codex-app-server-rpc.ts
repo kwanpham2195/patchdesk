@@ -470,11 +470,18 @@ export class RpcChild {
     code: Extract<CodexDiagnostic, readonly ["transport_lost", string]>[1],
     fields: CodexDiagnosticFields = {},
   ): void {
-    this.diagnostic?.(
-      ["transport_lost", code],
-      fields,
-      this.diagnosticStopping,
-    );
+    const discoveryStep = [...this.pending.values()].find(
+      (pending) => pending.discoveryStep !== undefined,
+    )?.discoveryStep;
+    try {
+      this.diagnostic?.(
+        ["transport_lost", code],
+        { ...fields, discoveryStep },
+        this.diagnosticStopping,
+      );
+    } catch {
+      // Diagnostic delivery cannot prevent pending requests from settling.
+    }
     this.broken = true;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
