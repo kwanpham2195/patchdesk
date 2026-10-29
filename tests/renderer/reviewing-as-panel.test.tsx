@@ -50,7 +50,7 @@ describe("Reviewing as panel", () => {
       ],
     }));
     const user = userEvent.setup();
-    renderSettings();
+    await renderSettings();
 
     // The statement's wording is the panel's to change; what a maintainer
     // acts on is which account and host it names.
@@ -75,7 +75,7 @@ describe("Reviewing as panel", () => {
       ],
     }));
     const user = userEvent.setup();
-    renderSettings();
+    await renderSettings();
 
     await screen.findByRole("button", { name: "Use a different account" });
 
@@ -101,7 +101,7 @@ describe("Reviewing as panel", () => {
       ],
     }));
     const user = userEvent.setup();
-    renderSettings();
+    await renderSettings();
 
     const select = await screen.findByRole("combobox", {
       name: "Reviewing as account",
@@ -144,7 +144,7 @@ describe("Reviewing as panel", () => {
       ghAccount: "carol",
       githubHost: "github.com",
     });
-    renderSettings(configured);
+    await renderSettings(configured);
 
     await screen.findByRole("button", { name: "Use a different account" });
     await user.click(
@@ -173,7 +173,7 @@ describe("Reviewing as panel", () => {
       ghAccount: "carol",
       githubHost: "github.com",
     });
-    renderSettings(configured);
+    await renderSettings(configured);
 
     await screen.findByRole("combobox", { name: "Reviewing as account" });
     await user.click(
@@ -198,7 +198,7 @@ describe("Reviewing as panel", () => {
       ghAccount: "bob",
       githubHost: "github.com",
     });
-    renderSettings(configured);
+    await renderSettings(configured);
 
     await screen.findByText("Configured account not authenticated");
     const description = document.querySelector(
@@ -224,7 +224,7 @@ describe("Reviewing as panel", () => {
       ghAccount: "carol",
       githubHost: "github.com",
     });
-    renderSettings(configured);
+    await renderSettings(configured);
 
     await screen.findByText("Configured account not authenticated");
     const description = document.querySelector(
@@ -248,7 +248,7 @@ describe("Reviewing as panel", () => {
       githubAuth: "unavailable",
       githubAccounts: [],
     }));
-    renderSettings();
+    await renderSettings();
 
     expect(await screen.findAllByRole("alert")).toHaveLength(1);
     expect(
@@ -266,7 +266,7 @@ describe("Reviewing as panel", () => {
       githubAuth: "authentication_required",
       githubAccounts: [],
     }));
-    renderSettings();
+    await renderSettings();
 
     expect(await screen.findAllByRole("alert")).toHaveLength(1);
     expect(
@@ -279,7 +279,7 @@ describe("Reviewing as panel", () => {
 
   it("falls back to manual account/host fields directly when the environment check does not parse", async () => {
     installDesktopApi(() => ({}));
-    renderSettings();
+    await renderSettings();
 
     expect(await screen.findByLabelText("GitHub account")).toBeTruthy();
     expect(screen.getByLabelText("GitHub host")).toBeTruthy();
@@ -294,9 +294,11 @@ describe("Reviewing as panel", () => {
         { host: "github.com", login: "patchdesk", active: true },
       ],
     }));
-    // A reload with Settings open: `gh` answers while the workspace is still
-    // loading, so nothing says which profile the account belongs to yet.
+    // A reload with Settings open waits for the configured workspace.
     const { rerender } = render(settingsFlow({ profiles: [] }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Connect GitHub" }),
+    );
     expect(await screen.findByText("patchdesk")).toBeTruthy();
 
     const personal = makeProfile({ ghAccount: "patchdesk" });
@@ -321,10 +323,12 @@ describe("Reviewing as panel", () => {
       ],
     }));
     const { rerender } = render(settingsFlow({ profiles: [] }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Connect GitHub" }),
+    );
     expect(await screen.findByText("patchdesk")).toBeTruthy();
 
-    // Main holds this profile in memory until an account is saved. No
-    // workspace loads for it, so it arrives on its own, after `gh` answered.
+    // Main holds this profile in memory until an account is saved.
     const unsavedDefault: Profile = {
       id: "default",
       label: "Default",
@@ -333,6 +337,9 @@ describe("Reviewing as panel", () => {
       rulePaths: [],
     };
     rerender(settingsFlow({ profiles: [], unsavedProfile: unsavedDefault }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Connect GitHub" }),
+    );
 
     await waitFor(() => expect(profileWrites()).toHaveLength(1));
     expect(profileWrites()).toEqual([
@@ -371,7 +378,7 @@ describe("Reviewing as panel", () => {
           };
     });
     const user = userEvent.setup();
-    renderSettings();
+    await renderSettings();
 
     // Unauthenticated: no account is resolved, so manual entry is offered
     // directly rather than behind the disclosure.
@@ -390,15 +397,20 @@ describe("Reviewing as panel", () => {
   });
 });
 
-function renderSettings(
+async function renderSettings(
   activeProfile: ReturnType<typeof makeProfile> = profile,
-): void {
+): Promise<void> {
   render(
     settingsFlow({
       dashboard: { profile: activeProfile, dashboard: { repos: [] } },
       profiles: [activeProfile],
     }),
   );
+  // #817: disconnected workspaces require an explicit connection request.
+  if (activeProfile.ghAccount === "")
+    await userEvent.click(
+      screen.getByRole("button", { name: "Connect GitHub" }),
+    );
 }
 
 /** Settings → Workspace over the given workspace; `dashboard` is absent until one has loaded. */

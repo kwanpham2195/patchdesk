@@ -31,6 +31,7 @@ import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import {
   useWorkspaceProfileEditor,
   type FieldStatus,
+  type WorkspaceProfileEditorHook,
 } from "./settings-workspace-profile-editor";
 import { FieldSaveStatus } from "./settings-workspace-field-status";
 import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
@@ -82,12 +83,6 @@ export function WorkspaceProfileSection({
   // and keeps its `GET /v1/environment` probe off until the user asks for it.
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const probe = useReviewingAsProbe(
-    editor.scalars.ghAccount,
-    editor.profileLoaded,
-    editor.selectAccount,
-  );
-
   // A switch the user is waiting on, or one that failed, reports itself
   // inside the Workspace card — which must therefore be open to be read.
   const workspaceSwitchVisible =
@@ -96,7 +91,7 @@ export function WorkspaceProfileSection({
 
   return (
     <div className="flex flex-col gap-6">
-      <ReviewingAsCard editor={editor} probe={probe} />
+      <WorkspaceReviewingAsCard key={editor.persisted.id} editor={editor} />
       <RepositoriesCard
         dashboard={dashboard}
         onWorkspaceReload={onWorkspaceReload}
@@ -196,6 +191,37 @@ export function WorkspaceProfileSection({
       ) : null}
     </div>
   );
+}
+
+/** Mounts the account probe only after a disconnected workspace asks to connect. */
+function WorkspaceReviewingAsCard({
+  editor,
+}: {
+  readonly editor: WorkspaceProfileEditorHook;
+}): React.JSX.Element {
+  const [connecting, setConnecting] = useState(false);
+  if (editor.persisted.ghAccount !== "" || connecting)
+    return <ProbedReviewingAsCard editor={editor} />;
+  return (
+    <Card>
+      <CardContent>
+        <Button onClick={() => setConnecting(true)}>Connect GitHub</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProbedReviewingAsCard({
+  editor,
+}: {
+  readonly editor: WorkspaceProfileEditorHook;
+}): React.JSX.Element {
+  const probe = useReviewingAsProbe(
+    editor.scalars.ghAccount,
+    editor.profileLoaded,
+    editor.selectAccount,
+  );
+  return <ReviewingAsCard editor={editor} probe={probe} />;
 }
 
 /**
