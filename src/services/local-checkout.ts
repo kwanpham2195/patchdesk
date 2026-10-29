@@ -2,6 +2,8 @@ import type {
   RepositoryIdentityKey,
   GitHubRepositoryKey,
 } from "#src/domain/local-repository";
+import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import { sameRepositoryIdentityKey } from "#src/domain/local-repository";
 import { realpath, stat } from "node:fs/promises";
 
 import { isNotFound } from "#src/adapters/storage/json-file";
@@ -97,14 +99,60 @@ export async function missingCheckout(
 }
 
 /** The profile's configured checkout of a repository, if it gives one. */
-export function configuredLocalPath(
+export async function configuredLocalPath(
   profile: WorkspaceProfileConfig,
   repository: RepositoryIdentityKey,
-): AbsolutePath | undefined {
-  if (repository.kind !== "github") return undefined;
-  return profile.repos.find((candidate) =>
-    sameRepositoryIdentity(candidate, repository),
-  )?.localPath;
+  profiles: Pick<ProfileStore, "loadRepositories">,
+  git: GitReadExecutor,
+): Promise<AbsolutePath | undefined> {
+  const catalog = await profiles.loadRepositories(profile.id);
+  if (catalog._tag === "err") return undefined;
+  const registration = catalog.value.repositories.find((entry) =>
+    sameRepositoryIdentityKey(entry.identityKey, repository),
+  );
+  if (
+    registration?.state === "unresolved" ||
+    registration?.configuredRoot === undefined
+  )
+    return undefined;
+  if (await missingCheckout(registration.configuredRoot))
+    return registration.configuredRoot;
+  const common = await readCanonicalGitCommonDirectory(
+    git,
+    registration.configuredRoot,
+  );
+  return common !== undefined &&
+    common === registration.canonicalCommonDirectory
+    ? registration.configuredRoot
+    : undefined;
+}
+
+export async function readCanonicalGitCommonDirectory(
+  git: GitReadExecutor,
+  folder: string,
+): Promise<AbsolutePath | undefined> {
+  const read = await git.run([
+    "git",
+    "-C",
+    folder,
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
+  if (read._tag === "err") return undefined;
+  const canonical = await realpath(read.value.stdout.trim()).catch(
+    () => undefined,
+  );
+  const parsed = parseAbsolutePath(canonical);
+  return parsed._tag === "ok" ? parsed.value : undefined;
+}
+
+export function repositoryIdentityKey(
+  repository:
+    | RepositoryIdentityKey
+    | Pick<GitHubRepositoryKey, "host" | "owner" | "repo">,
+): RepositoryIdentityKey {
+  return "kind" in repository ? repository : { kind: "github", ...repository };
 }
 
 /** Why a chosen folder cannot become a watched repository's checkout. */
@@ -305,13 +353,18 @@ async function readCheckoutListing(
 export async function resolveLocalReviewCheckout(
   reads: LocalCheckoutReads,
   profile: WorkspaceProfileConfig,
-  repository: Pick<GitHubRepositoryKey, "host" | "owner" | "repo">,
+  repository:
+    | RepositoryIdentityKey
+    | Pick<GitHubRepositoryKey, "host" | "owner" | "repo">,
   checkout: string | undefined,
+  profiles: Pick<ProfileStore, "loadRepositories">,
 ): Promise<Result<LocalReviewCheckout, LocalCheckoutFailure>> {
-  const localPath = configuredLocalPath(profile, {
-    kind: "github",
-    ...repository,
-  });
+  const localPath = await configuredLocalPath(
+    profile,
+    repositoryIdentityKey(repository),
+    profiles,
+    reads.git,
+  );
   if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
   const missing = await missingCheckout(localPath);
   if (missing !== undefined) return err(missing);
@@ -328,63 +381,4 @@ export async function resolveLocalReviewCheckout(
       ? configured
       : { ...configured, checkoutPath: match.path, checkout: match.path },
   );
-}
-
-/**
- * The profile repository with a live checkout whose worktree top-level
- * contains `directory`, and that checkout with its `HEAD` and whether it is
- * the configured one (ADR 0052 `review_local`, `list_local_reviews`). A
- * repository git cannot list is skipped, so one broken `localPath` does not
- * hide the others. A directory whose `origin` names a repository with a
- * missing `localPath` is refused `CheckoutMissing`: the repository moved (#488).
- */
-export async function findProfileCheckout(
-  reads: LocalCheckoutReads,
-  profile: WorkspaceProfileConfig,
-  directory: AbsolutePath,
-): Promise<
-  Result<
-    {
-      readonly repository: WorkspaceProfileConfig["repos"][number];
-      readonly checkout: AbsolutePath;
-    } & Pick<RepositoryCheckout, "head" | "configured">,
-    LocalCheckoutFailure
-  >
-> {
-  const root = await resolveCheckoutRoot(reads.git, directory);
-  if (root === undefined) return err({ _tag: "CheckoutNotInRepository" });
-  for (const repository of profile.repos) {
-    if (repository.localPath === undefined) continue;
-    const checkouts = await listRepositoryCheckouts(
-      reads,
-      repository.localPath,
-    );
-    const match = checkouts?.find((candidate) => candidate.path === root);
-    if (match !== undefined)
-      return ok({
-        repository,
-        checkout: match.path,
-        head: match.head,
-        configured: match.configured,
-      });
-  }
-  const origin = await reads.git.run([
-    "git",
-    "-C",
-    root,
-    "config",
-    "--get",
-    "remote.origin.url",
-  ]);
-  const moved = profile.repos.find((repository) =>
-    sameRepositoryIdentity(
-      repository,
-      origin._tag === "ok"
-        ? parseGitHubOrigin(origin.value.stdout.trim())
-        : undefined,
-    ),
-  )?.localPath;
-  const missing =
-    moved === undefined ? undefined : await missingCheckout(moved);
-  return err(missing ?? { _tag: "CheckoutNotInRepository" });
 }

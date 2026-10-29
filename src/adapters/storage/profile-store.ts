@@ -27,6 +27,10 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 export class ProfileStore {
   constructor(private readonly paths: PatchdeskPaths) {}
 
+  async loadRepositories(profileId: WorkspaceProfileId) {
+    return new LocalRepositoryStore(this.paths).load(profileId);
+  }
+
   async saveConfig(config: unknown): Promise<Result<void, StorageFailure>> {
     const parsed = parsePatchdeskConfig(config);
     if (parsed._tag === "err") {

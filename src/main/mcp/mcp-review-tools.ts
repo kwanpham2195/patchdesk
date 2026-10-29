@@ -86,7 +86,10 @@ export type ReviewLocalResult = LocalReviewOpened & {
   readonly intentMessage?: string;
 };
 
+import type { LocalRepositoryService } from "#src/services/local-repository-service";
+
 export type McpReviewToolServices = {
+  readonly localRepositories: Pick<LocalRepositoryService, "list">;
   readonly dashboard: Pick<DashboardController, "savedProfiles">;
   readonly localReviewOpening: Pick<
     LocalReviewOpening,
@@ -133,13 +136,13 @@ type ServiceReason =
 
 const refusalMessages = {
   no_profile:
-    "No workspace profile is saved in Patchdesk. Open Patchdesk and set up a profile first.",
+    "No workspace profile is saved. Run patchdesk setup add-checkout --cwd <path> to create one.",
   invalid_input: "The arguments are not valid for this tool.",
   not_found: "The active Patchdesk profile has no Review with that reviewId.",
   repository_not_local:
-    "The repository has no local checkout in the active Patchdesk profile.",
+    "The checkout is not registered in the active workspace. Run patchdesk setup add-checkout --cwd <path> to register it.",
   checkout_not_found:
-    "The directory is not inside a checkout of a repository in the active Patchdesk profile. Call list_repositories to see the checkouts, or ask the maintainer to add the repository with its local path.",
+    "The directory is not inside a registered checkout in the active workspace. Run patchdesk setup add-checkout --cwd <path> to register it, then retry. Listing never registers a checkout.",
   base_required:
     "The checkout has no other local branch behind HEAD to compare with, and no Review of this branch is open. Pass base, the local branch this change should be compared with.",
   revision_not_found:
@@ -335,10 +338,9 @@ export async function reviewLocal(
   if (found._tag === "err") return err(localReviewRefusal(found.error));
   const request = agentSourceRequest(input, found.value.checkout);
   if (request === undefined) return err(refusal("invalid_input"));
-  const { host, owner, repo } = found.value.repository;
   const opened = await services.localReviewOpening.openForAgent({
     profileId,
-    repository: { host, owner, repo },
+    repository: found.value.repository,
     request,
   });
   if (opened._tag === "err") return err(localReviewRefusal(opened.error));

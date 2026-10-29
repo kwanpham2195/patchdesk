@@ -144,7 +144,7 @@ type RemoteWriteRecoveryProjection = {
 export type ReviewWorkbenchProjection = {
   readonly state: "review";
   /** Configured GitHub account identity used to verify self-assignment receipts. */
-  readonly viewerLogin: string;
+  readonly viewerLogin?: string;
   readonly review: {
     readonly id: ReviewId;
     readonly status: "open" | "merged" | "closed";
@@ -542,10 +542,11 @@ export class ReviewWorkbenchProjectionService {
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const viewerLogin = parseGitHubLogin(
-      profile.github.kind === "connected" ? profile.github.account : undefined,
-    );
-    if (viewerLogin._tag === "err")
+    const viewerLogin =
+      profile.github.kind === "connected"
+        ? parseGitHubLogin(profile.github.account)
+        : undefined;
+    if (viewerLogin?._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     const [hashedPatch, storedInsights, viewed, walkthroughSummary] =
       await Promise.all([
@@ -761,7 +762,7 @@ export class ReviewWorkbenchProjectionService {
 
     const projection: ReviewWorkbenchProjection = {
       state: "review",
-      viewerLogin: viewerLogin.value,
+      ...definedProps({ viewerLogin: viewerLogin?.value }),
       review: {
         id: reviewId,
         status: reviewStatus,

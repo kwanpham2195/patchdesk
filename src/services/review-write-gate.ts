@@ -64,6 +64,8 @@ export async function requireCurrentHead(
   profile: WorkspaceProfileConfig,
   session: Pick<PullRequestReviewSession, "key">,
 ): Promise<Result<PullRequestSummary, CurrentHeadFailure>> {
+  if (profile.github.kind !== "connected")
+    return err({ reason: "github_read" });
   const current = await github.getPullRequest({
     profile,
     pr: {
@@ -129,7 +131,7 @@ export type ReviewWriteExpectation = {
 /** Shared precondition for every operation that can mutate GitHub or review state. */
 export class ReviewWriteGate {
   constructor(
-    private readonly profiles: Pick<ProfileStore, "load">,
+    private readonly profiles: Pick<ProfileStore, "load" | "loadRepositories">,
     private readonly reviews: Pick<ReviewStore, "load">,
     private readonly sessions: Pick<ReviewSessionStore, "load">,
     private readonly remote: Pick<ReviewRemoteStore, "load">,
@@ -162,6 +164,8 @@ export class ReviewWriteGate {
       return err({ reason: "stale" });
     if (review.value.status._tag === "Terminal")
       return err({ reason: "terminal" });
+    if (profile.value.github.kind !== "connected")
+      return err({ reason: "not_fresh" });
     // Pull request metadata writes have no local Review counterpart (ADR 0050).
     if (!isPullRequestReview(review.value)) return err({ reason: "stale" });
     const session = await this.sessions.load(
@@ -204,6 +208,8 @@ export class ReviewWriteGate {
     if (profile._tag === "err" || review._tag === "err")
       return err({ reason: "storage" });
     const value = review.value;
+    if (profile.value.github.kind !== "connected" && isPullRequestReview(value))
+      return err({ reason: "not_fresh" });
     if (value.status._tag === "Terminal") return err({ reason: "terminal" });
     // A local Review is Fresh only by recomputing its source: `requireFreshLocal`.
     if (!isPullRequestReview(value)) return err({ reason: "not_fresh" });
@@ -308,13 +314,12 @@ export class ReviewWriteGate {
       return err({ reason: "stale" });
     const request = reopenLocalSourceRequest(value.identity.source);
     if (request === undefined) return err({ reason: "storage" });
-    if (value.identity.identityKey.kind !== "github")
-      return err({ reason: "checkout_unavailable" });
     const checkout = await resolveLocalReviewCheckout(
       this.localSources,
       profile.value,
       value.identity.identityKey,
       request.checkout,
+      this.profiles,
     );
     if (checkout._tag === "err") return err({ reason: "checkout_unavailable" });
     const { checkoutPath } = checkout.value;

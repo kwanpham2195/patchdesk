@@ -59,7 +59,7 @@ import {
   isPullRequestReviewSession,
   type PullRequestReviewSession,
 } from "#src/domain/review-session";
-import { ok, type Result } from "#src/domain/result";
+import { err, ok, type Result } from "#src/domain/result";
 import type {
   WorkspaceProfileConfig,
   WatchedRepoConfig,
@@ -177,7 +177,7 @@ export type MaintainerInbox = {
 
 export type InboxClock = { readonly now: () => IsoTimestamp };
 /** A supplied opaque inbox page token is malformed or does not match the requested repository. */
-export type InboxPageRequestFailure = "invalid_page";
+export type InboxPageRequestFailure = "invalid_page" | "github_disconnected";
 
 type SessionReader = Pick<ReviewSessionStore, "listSessions">;
 type CacheReader = Pick<MaintainerInboxCacheStore, "read" | "save">;
@@ -332,6 +332,7 @@ export class MaintainerInboxService {
       pageSize: DEFAULT_INBOX_PAGE_SIZE,
     },
   ): Promise<Result<MaintainerInbox, InboxPageRequestFailure>> {
+    if (profile.github.kind !== "connected") return err("github_disconnected");
     const filter: NormalizedInboxFilter = {
       ...request.filter,
       labels: normalizeInboxLabels(request.filter.labels),

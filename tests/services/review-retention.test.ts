@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { localRepositoryFixture } from "./local-repository-fixture";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import {
   createLocalNoteId,
@@ -480,6 +481,7 @@ describe("ReviewRetention", () => {
       }),
     );
 
+    await localRepositoryFixture(harness.paths);
     value(await harness.retention.sweepProfile(profileId));
 
     expect(await reviewKept(harness, workbench)).toBe(false);
@@ -640,6 +642,7 @@ describe("ReviewRetention", () => {
       }),
     );
 
+    await localRepositoryFixture(harness.paths);
     value(await harness.retention.sweepProfile(profileId));
 
     expect(await reviewKept(harness, workbench)).toBe(true);

@@ -1,3 +1,4 @@
+import { localRepositoryFixture } from "#tests/services/local-repository-fixture";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -247,6 +248,7 @@ export async function localApplyHarness(
   });
   const preparation = new LocalReviewSessionPreparation({
     profiles,
+    repositories: await localRepositoryFixture(paths),
     sessions,
     revisions,
     worktrees,

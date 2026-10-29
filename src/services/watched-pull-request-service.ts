@@ -155,6 +155,8 @@ export class WatchedPullRequestService {
    * from the list with its final notification.
    */
   async poll(profile: WorkspaceProfileConfig): Promise<WatchedPullRequestPoll> {
+    if (profile.github.kind !== "connected")
+      return { _tag: "failed", reason: "GitHubAuthenticationFailed" };
     const before = await this.dependencies.store.load(profile.id);
     if (before._tag === "err")
       return { _tag: "failed", reason: before.error.reason };

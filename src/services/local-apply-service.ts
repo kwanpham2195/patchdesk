@@ -105,7 +105,7 @@ type LocalApplyDependencies = {
   >;
   readonly insights: Pick<InsightStore, "loadTyped">;
   readonly reviews: Pick<ReviewStore, "load" | "save">;
-  readonly profiles: Pick<ProfileStore, "load" | "list">;
+  readonly profiles: Pick<ProfileStore, "load" | "list" | "loadRepositories">;
   readonly opening: Pick<LocalReviewOpening, "openLocked">;
   readonly coordinator: Pick<
     ReviewOperationCoordinator,
@@ -352,17 +352,13 @@ export class LocalApplyService {
     // The same branch and base, read again: the written files land in the next session.
     const request = reopenLocalSourceRequest(review.identity.source);
     const next =
-      request === undefined || review.identity.identityKey.kind !== "github"
+      request === undefined
         ? undefined
         : await this.dependencies.opening
             .openLocked(
               {
                 profileId: operation.profileId,
-                repository: {
-                  host: review.identity.identityKey.host,
-                  owner: review.identity.identityKey.owner,
-                  repo: review.identity.identityKey.repo,
-                },
+                repository: review.identity.identityKey,
                 request,
               },
               operation.reviewId,
@@ -409,13 +405,12 @@ export class LocalApplyService {
     )
       return err({ reason: "storage" });
     const localReview = review.value;
-    if (localReview.identity.identityKey.kind !== "github")
-      return err({ reason: "storage" });
     const checkout = await resolveLocalReviewCheckout(
       this.dependencies,
       profile.value,
       localReview.identity.identityKey,
       localReview.identity.source.checkout,
+      this.dependencies.profiles,
     );
     const root =
       checkout._tag === "err"

@@ -33,14 +33,16 @@ export function useSinceReviewMode({
   const headSha = model.revision.reviewedHeadSha;
   const baseline = useMemo(
     () =>
-      selectSinceReviewBaseline({
-        reviews: model.conversation.entries.flatMap((entry) =>
-          entry._tag === "ReviewSummary" ? [entry.review] : [],
-        ),
-        viewerLogin: model.viewerLogin,
-        headSha,
-        commits: model.commits,
-      }),
+      model.viewerLogin === undefined
+        ? { _tag: "NoReview" as const }
+        : selectSinceReviewBaseline({
+            reviews: model.conversation.entries.flatMap((entry) =>
+              entry._tag === "ReviewSummary" ? [entry.review] : [],
+            ),
+            viewerLogin: model.viewerLogin,
+            headSha,
+            commits: model.commits,
+          }),
     [headSha, model.commits, model.conversation.entries, model.viewerLogin],
   );
   const baseSha =

@@ -1,3 +1,4 @@
+import type { RegisteredCheckout } from "#src/services/local-repository-service";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -11,6 +12,7 @@ import { callPatchdeskApp } from "./socket-client";
 const setupSubcommands = {
   status: "setup_status",
   "add-repo": "setup_add_repo",
+  "add-checkout": "setup_add_checkout",
   "set-checkout": "setup_set_checkout",
 } as const satisfies Record<string, SetupCommandName>;
 
@@ -22,7 +24,7 @@ type SetupCliIo = {
 };
 
 /**
- * `patchdesk setup <status|add-repo|set-checkout> [--cwd <path>] [--json]`
+ * `patchdesk setup <status|add-checkout|add-repo|set-checkout> [--cwd <path>] [--json]`
  * (#702). Returns the exit code, or undefined when the arguments name no
  * setup command, so the caller prints its usage.
  */
@@ -69,7 +71,9 @@ export async function runSetupCommand(
   io.out(
     command === "setup_status"
       ? describeStatus(call.reply.result as WorkspaceSetupStatus)
-      : describeRepositorySet(call.reply.result as WorkspaceRepositorySet),
+      : command === "setup_add_checkout"
+        ? describeRegisteredCheckout(call.reply.result as RegisteredCheckout)
+        : describeRepositorySet(call.reply.result as WorkspaceRepositorySet),
   );
   return 0;
 }
@@ -80,9 +84,13 @@ export function describeStatus(status: WorkspaceSetupStatus): string {
   const lines = [
     `git: ${status.git}`,
     `gh: ${status.gh}`,
-    `GitHub: ${account === undefined ? "not signed in" : `${account.login} on ${account.host}`}`,
-    `Workspace: ${status.profile === undefined ? "none" : `${status.profile.label} (${status.profile.ghAccount})`}`,
+    `GitHub: ${status.github.kind === "disconnected" ? "not connected" : account === undefined ? "not signed in" : `${account.login} on ${account.host}`}`,
+    `Workspace: ${status.profile === undefined ? "none" : status.profile.ghAccount === undefined ? status.profile.label : `${status.profile.label} (${status.profile.ghAccount})`}`,
   ];
+  for (const registration of status.localRepositories)
+    lines.push(
+      `Checkout: ${registration.displayName} (${registration.id}, ${registration.state})`,
+    );
   if (status.repositories.length > 0) lines.push("Repositories:");
   for (const repository of status.repositories)
     lines.push(
@@ -112,11 +120,13 @@ function repositoryCheckout(
 function nextSteps(status: WorkspaceSetupStatus): ReadonlyArray<string> {
   const steps: string[] = [];
   if (status.git === "missing") steps.push("Install git.");
-  if (status.gh === "missing") steps.push("Install the GitHub CLI (gh).");
-  if (status.githubAuth !== "ready") steps.push("The user runs gh auth login.");
-  if (status.repositories.length === 0)
+  if (status.github.kind === "connected" && status.gh === "missing")
+    steps.push("Install the GitHub CLI (gh).");
+  if (status.github.kind === "connected" && status.githubAuth !== "ready")
+    steps.push("The user runs gh auth login.");
+  if (status.localRepositories.length === 0 && status.repositories.length === 0)
     steps.push(
-      "Run patchdesk setup add-repo in a checkout of a repository to review.",
+      "Run patchdesk setup add-checkout --cwd <path> to register a checkout.",
     );
   for (const repository of status.repositories) {
     const name = `${repository.owner}/${repository.repo}`;
@@ -128,6 +138,10 @@ function nextSteps(status: WorkspaceSetupStatus): ReadonlyArray<string> {
       steps.push(`Run patchdesk setup add-repo in a checkout of ${name}.`);
   }
   return steps;
+}
+
+function describeRegisteredCheckout(set: RegisteredCheckout): string {
+  return `Registered ${set.registration.displayName} (${set.registration.id}) in ${set.profile.label}.\nCheckout: ${set.checkout}\n`;
 }
 
 function describeRepositorySet(set: WorkspaceRepositorySet): string {

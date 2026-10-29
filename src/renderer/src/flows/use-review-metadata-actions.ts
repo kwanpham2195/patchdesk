@@ -278,7 +278,7 @@ export function useReviewMetadataActions({
       matches: (value) =>
         value._tag === "AssigneesAdded" &&
         value.added.length === 1 &&
-        value.added[0]?.toLowerCase() === workbench.viewerLogin.toLowerCase(),
+        value.added[0]?.toLowerCase() === workbench.viewerLogin?.toLowerCase(),
       recentWrite: (value) => ({
         _tag: "AssigneeChange",
         added: value._tag === "AssigneesAdded" ? value.added : [],

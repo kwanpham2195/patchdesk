@@ -1,3 +1,4 @@
+import { localRepositoryFixture } from "#tests/services/local-repository-fixture";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import {
@@ -161,6 +162,7 @@ async function opening(
   const readOnlyGit = seams.git?.(productionGit) ?? productionGit;
   const preparation = new LocalReviewSessionPreparation({
     profiles,
+    repositories: await localRepositoryFixture(paths),
     sessions,
     revisions: new LocalReviewRevisionService(
       readOnlyGit,

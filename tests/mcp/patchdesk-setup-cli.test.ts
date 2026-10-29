@@ -83,13 +83,15 @@ describe("patchdesk setup", () => {
       gh: "ready",
       githubAuth: "authentication_required",
       githubAccounts: [],
+      github: { kind: "disconnected" },
+      localRepositories: [],
       repositories: [],
     });
 
     expect(text).toContain("Workspace: none");
-    expect(text).toContain("  - The user runs gh auth login.");
+    expect(text).not.toContain("gh auth login");
     expect(text).toContain(
-      "  - Run patchdesk setup add-repo in a checkout of a repository to review.",
+      "  - Run patchdesk setup add-checkout --cwd <path> to register a checkout.",
     );
   });
 });

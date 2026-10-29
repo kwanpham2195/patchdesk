@@ -1,3 +1,4 @@
+import { localRepositoryFixture } from "#tests/services/local-repository-fixture";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -122,6 +123,7 @@ export async function startAppWithLinkedWorktree(
       id: "other",
       label: "Other",
     });
+  await localRepositoryFixture(paths);
   const socketPath = join(root, "app", "mcp", "patchdesk.sock");
   const started = await startLocalApiServer({
     insightResources: createInProcessInsightResourceBundle(),

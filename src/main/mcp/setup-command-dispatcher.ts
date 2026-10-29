@@ -1,3 +1,4 @@
+import type { RegisteredCheckout } from "#src/services/local-repository-service";
 import { safeParse } from "valibot";
 
 import { parseAbsolutePath } from "#src/domain/ids";
@@ -18,15 +19,21 @@ import type {
 } from "#src/services/workspace-setup-service";
 
 export type SetupCommandReply = Result<
-  WorkspaceSetupStatus | WorkspaceRepositorySet,
+  WorkspaceSetupStatus | WorkspaceRepositorySet | RegisteredCheckout,
   McpToolRefusal
 >;
 
 const setupRefusalMessages = {
+  repository_not_local:
+    "Run patchdesk setup add-checkout --cwd <path> to register this checkout.",
+  checkout_missing:
+    "The configured checkout is missing. Restore it before retrying.",
+  registration_conflict:
+    "This checkout has conflicting registrations. Resolve the catalog conflict before retrying.",
   no_github_account:
     "No GitHub account is signed in to gh. Run gh auth login, then run this command again.",
   no_profile:
-    "Patchdesk has no workspace yet. Run patchdesk setup add-repo in a checkout to create one.",
+    "Patchdesk has no workspace yet. Run patchdesk setup add-checkout --cwd <path> to create one.",
   not_watched:
     "The active workspace does not watch this repository. Run patchdesk setup add-repo to add it.",
   checkout_not_a_repository: "The folder is not inside a git checkout.",
@@ -68,8 +75,10 @@ export async function dispatchSetupCommand(
   const folder = parseAbsolutePath(parsed.output.cwd);
   if (folder._tag === "err") return refused("invalid_input");
   const set =
-    request.tool === "setup_add_repo"
-      ? await setup.addRepository(folder.value)
-      : await setup.setCheckout(folder.value);
+    request.tool === "setup_add_checkout"
+      ? await setup.addCheckout(folder.value)
+      : request.tool === "setup_add_repo"
+        ? await setup.addRepository(folder.value)
+        : await setup.setCheckout(folder.value);
   return set._tag === "ok" ? set : refused(set.error.reason);
 }

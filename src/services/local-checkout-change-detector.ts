@@ -21,7 +21,7 @@ import type { GitReadExecutor } from "./review-worktree-service";
 type LocalCheckoutChangeDependencies = {
   readonly git: GitReadExecutor;
   readonly paths: Pick<PatchdeskPaths, "cacheDirectory">;
-  readonly profiles: Pick<ProfileStore, "load">;
+  readonly profiles: Pick<ProfileStore, "load" | "loadRepositories">;
   readonly sessions: Pick<ReviewSessionStore, "load">;
   readonly logs?: Pick<AppLogService, "write">;
 };
@@ -75,13 +75,12 @@ export class LocalCheckoutChangeDetector {
     if (profile._tag === "err") return failed("profile_unreadable");
     if (session._tag === "err" || isPullRequestReviewSession(session.value))
       return failed("session_unreadable");
-    if (identity.identityKey.kind !== "github")
-      return failed("profile_unreadable");
     const checkout = await resolveLocalReviewCheckout(
       { git: this.git, paths: this.dependencies.paths },
       profile.value,
       identity.identityKey,
       source.checkout,
+      this.dependencies.profiles,
     );
     if (checkout._tag === "err") return failed(checkout.error._tag);
     const { checkoutPath } = checkout.value;

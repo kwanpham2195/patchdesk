@@ -1,3 +1,5 @@
+import { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
+import { LocalRepositoryService } from "#src/services/local-repository-service";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
@@ -80,15 +82,23 @@ async function setUp(gh: CommandExecution = signedIn) {
   const commands = new CommandRunner({
     execute: () => Promise.resolve(gh),
   });
+  const dashboard = new DashboardController(
+    store,
+    new FakeGitHubAdapter({}),
+    git,
+    paths,
+    readBoundedInsightArtifactFile,
+  );
   const setup = new WorkspaceSetupService({
-    dashboard: new DashboardController(
-      store,
-      new FakeGitHubAdapter({}),
+    dashboard,
+    repositories: new LocalRepositoryService({
+      profiles: store,
+      catalog: new LocalRepositoryStore(paths),
+      dashboard,
       git,
       paths,
-      readBoundedInsightArtifactFile,
-      commands,
-    ),
+      logs: { write: () => undefined },
+    }),
     git,
     commands,
     environment: { read: () => Promise.resolve(environment) },

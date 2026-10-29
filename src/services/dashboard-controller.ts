@@ -1,7 +1,6 @@
 import * as v from "valibot";
 
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
-import { CommandRunner } from "#src/adapters/github/command-runner";
 import { systemNow } from "#src/adapters/process/system-clock";
 import { InsightStore } from "#src/adapters/storage/insight-store";
 import type { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
@@ -43,13 +42,12 @@ import type { AvatarRailDependencies } from "./avatar-sync-service";
 import { InboxRefreshCoordinator } from "./inbox-refresh-coordinator";
 import {
   addWatchedRepo,
-  detectDefaultWorkspaceProfile,
   ProfileSettingsService,
   removeWatchedRepo,
   updateWatchedRepoPath,
 } from "./profile-service";
 import { sameRepositoryIdentity } from "#src/domain/repository-identity";
-import type { ProfileMutationFailure, WatchedRepoRef } from "./profile-service";
+import type { WatchedRepoRef } from "./profile-service";
 import { chosenRepositoryCheckout } from "./local-checkout";
 import type { GitReadExecutor } from "./review-worktree-service";
 
@@ -112,18 +110,6 @@ export class DashboardController {
   private readonly settings: ProfileSettingsService;
   private readonly inbox: MaintainerInboxService;
   private readonly inboxRefresh: InboxRefreshCoordinator;
-  /**
-   * Memoized first-run detection, kept for this controller instance's
-   * lifetime (one per process; see `local-api.ts`). Detection is only ever
-   * consulted while unpersisted (`listProfiles` short-circuits on a
-   * non-empty store), and a successful detection immediately persists and
-   * selects the profile, so the memo naturally stops mattering the moment a
-   * real account is found. Storing the in-flight promise (not just its
-   * resolved value) also coalesces concurrent callers onto one `gh` probe.
-   */
-  private detectionMemo:
-    | Promise<Result<WorkspaceProfileConfig, ProfileMutationFailure>>
-    | undefined;
 
   constructor(
     private readonly profiles: ProfileStore,
@@ -132,7 +118,6 @@ export class DashboardController {
     private readonly git: GitReadExecutor,
     paths: PatchdeskPaths,
     insightArtifactReader: typeof readBoundedInsightArtifactFile,
-    private readonly commands: CommandRunner = new CommandRunner(),
     /** Optional: without it inbox rows carry no author avatar and fall back to initials. */
     avatars?: AvatarRailDependencies,
   ) {
@@ -151,37 +136,27 @@ export class DashboardController {
     this.inboxRefresh = new InboxRefreshCoordinator(this.inbox);
   }
 
-  /**
-   * Lists the saved profiles, falling back to a one-time `gh` detection when
-   * the store is empty. Every caller (inbox/dashboard polling,
-   * `GET /v1/profiles`) shares the same memoized detection for the life of
-   * this controller; nothing re-probes on demand.
-   */
+  /** Lists saved profiles or an unsaved disconnected first-run workspace. */
   async listProfiles(): Promise<
     Result<ReadonlyArray<WorkspaceProfileConfig>, DashboardControllerFailure>
   > {
     const existing = await this.profiles.list();
     if (existing._tag === "err") return failure("storage");
     if (existing.value.length > 0) return ok(existing.value);
-    if (this.detectionMemo === undefined) {
-      this.detectionMemo = detectDefaultWorkspaceProfile(this.commands);
-    }
-    const detected = await this.detectionMemo;
-    if (detected._tag === "err") return failure("invalid_input");
-    if (detected.value.github.kind === "disconnected") {
-      // Detection found no real account on this machine. The persisted-profile
-      // schema requires a non-empty ghAccount (see workspace-profile.ts), so
-      // there is nothing valid to save yet; hand the renderer this ephemeral,
-      // neutral profile so it can prompt for an account instead of writing an
-      // unusable record or auto-selecting a profile that was never saved.
-      // The negative reading is memoized (see `detectionMemo`) until a real
-      // profile is saved.
-      return ok([detected.value]);
-    }
-    const saved = await this.settings.saveProfile(detected.value);
-    if (saved._tag === "err") return failure("storage");
-    const selected = await this.settings.selectProfile(detected.value.id);
-    return selected._tag === "ok" ? ok([detected.value]) : failure("storage");
+    const id = parseWorkspaceProfileId("default");
+    if (id._tag === "err") return failure("invalid_input");
+    return ok([
+      {
+        schemaVersion: 1,
+        localRepositoryCatalogGeneration: crypto.randomUUID(),
+        id: id.value,
+        label: "Default",
+        github: { kind: "disconnected" },
+        rulePaths: [],
+        repos: [],
+        analysisMergePolicy: "require_acknowledgement",
+      },
+    ]);
   }
 
   async selectProfile(

@@ -414,6 +414,7 @@ describe("MCP tool dispatcher", () => {
       });
     const table = createMcpToolTable({
       dashboard: { savedProfiles: unavailable },
+      localRepositories: { list: unavailable },
       localReviewOpening: {
         listCheckouts: unavailable,
         findCheckout: unavailable,
@@ -448,9 +449,20 @@ describe("MCP tool dispatcher", () => {
         profile: { id: "acme", label: "ACME" },
         repositories: [
           {
-            host: "github.com",
-            owner: "octo-org",
-            repo: "patchdesk",
+            id: expect.any(String),
+            displayName: "repo",
+            state: "resolved",
+            identityKey: {
+              kind: "github",
+              host: "github.com",
+              owner: "octo-org",
+              repo: "patchdesk",
+            },
+            github: {
+              host: "github.com",
+              owner: "octo-org",
+              repo: "patchdesk",
+            },
             localPath: app.repositoryPath,
             checkouts: [
               {

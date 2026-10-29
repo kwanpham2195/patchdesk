@@ -1,3 +1,8 @@
+import type {
+  RepositoryIdentityKey,
+  GitHubRepositoryKey,
+} from "#src/domain/local-repository";
+import type { LocalRepositoryService } from "./local-repository-service";
 import { writeAtomicFile } from "#src/adapters/storage/json-file";
 import type { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
@@ -9,9 +14,6 @@ import {
   parseContentHash,
   type AbsolutePath,
   type ContentHash,
-  type GitHubHost,
-  type GitHubOwner,
-  type GitHubRepoName,
   type GitSha,
   type IsoTimestamp,
   type RepoRelativePath,
@@ -49,7 +51,7 @@ import type {
 import {
   configuredLocalPath,
   listRepositoryCheckouts,
-  findProfileCheckout,
+  repositoryIdentityKey,
   missingCheckout,
   resolveLocalReviewCheckout,
   type LocalCheckoutFailure,
@@ -68,11 +70,9 @@ import type {
 /** A refined request to open a local Review on one profile repository. */
 export type LocalReviewOpenRequest = {
   readonly profileId: WorkspaceProfileId;
-  readonly repository: {
-    readonly host: GitHubHost;
-    readonly owner: GitHubOwner;
-    readonly repo: GitHubRepoName;
-  };
+  readonly repository:
+    | RepositoryIdentityKey
+    | Pick<GitHubRepositoryKey, "host" | "owner" | "repo">;
   readonly request: LocalReviewSourceRequest;
 };
 
@@ -96,7 +96,8 @@ export type LocalReviewPreparationFailure =
   | { readonly _tag: "PreparationCleanupUnavailable" };
 
 type LocalPreparationDependencies = {
-  readonly profiles: Pick<ProfileStore, "load">;
+  readonly profiles: Pick<ProfileStore, "load" | "loadRepositories">;
+  readonly repositories: Pick<LocalRepositoryService, "resolve">;
   readonly sessions: ReviewSessionStore;
   readonly revisions: LocalReviewRevisionService;
   readonly worktrees: ReviewWorktreeService;
@@ -125,10 +126,12 @@ export class LocalReviewSessionPreparation {
   > {
     const profile = await this.loadProfile(profileId);
     if (profile._tag === "err") return profile;
-    const localPath = configuredLocalPath(profile.value, {
-      kind: "github",
-      ...repository,
-    });
+    const localPath = await configuredLocalPath(
+      profile.value,
+      repositoryIdentityKey(repository),
+      this.dependencies.profiles,
+      this.dependencies.git,
+    );
     if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
     const missing = await missingCheckout(localPath);
     if (missing !== undefined) return err(missing);
@@ -145,7 +148,25 @@ export class LocalReviewSessionPreparation {
   async findCheckout(profileId: WorkspaceProfileId, directory: AbsolutePath) {
     const profile = await this.loadProfile(profileId);
     if (profile._tag === "err") return profile;
-    return findProfileCheckout(this.dependencies, profile.value, directory);
+    const resolved = await this.dependencies.repositories.resolve(
+      profileId,
+      directory,
+    );
+    if (resolved._tag === "ok") return resolved;
+    if (
+      resolved.error.reason === "checkout_missing" &&
+      resolved.error.localPath !== undefined
+    )
+      return err({
+        _tag: "CheckoutMissing" as const,
+        localPath: resolved.error.localPath,
+      });
+    return err({
+      _tag:
+        resolved.error.reason === "storage"
+          ? ("ProfileUnavailable" as const)
+          : ("RepositoryNotLocal" as const),
+    });
   }
 
   /**
@@ -173,6 +194,7 @@ export class LocalReviewSessionPreparation {
       profile.value,
       repository,
       checkout,
+      this.dependencies.profiles,
     );
     if (resolved._tag === "err") return resolved;
     const listing = await listLocalBranches(
@@ -198,6 +220,7 @@ export class LocalReviewSessionPreparation {
       profile.value,
       input.repository,
       input.request.checkout,
+      this.dependencies.profiles,
     );
     if (checkout._tag === "err") return checkout;
     const resolved = await this.dependencies.revisions.resolve(
@@ -210,12 +233,7 @@ export class LocalReviewSessionPreparation {
       ...checkout.value,
       identity: {
         profileId: input.profileId,
-        identityKey: {
-          kind: "github",
-          host: input.repository.host,
-          owner: input.repository.owner,
-          repo: input.repository.repo,
-        },
+        identityKey: repositoryIdentityKey(input.repository),
         source: {
           ...resolved.value.source,
           ...definedProps({ checkout: checkout.value.checkout }),

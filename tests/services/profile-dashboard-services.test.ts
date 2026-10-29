@@ -264,61 +264,17 @@ describe("profile settings and dashboard services", () => {
     });
   });
 
-  it("persists and selects the derived first-run default profile once gh detection succeeds", async () => {
+  it("lists an unsaved disconnected workspace before local setup", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
       const store = new ProfileStore(paths);
-      const commands = new CommandRunner(
-        new FakeCommandExecutor(activeGitHubAccount),
-      );
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
         git,
         paths,
         readBoundedInsightArtifactFile,
-        commands,
-      );
-
-      const listed = await controller.listProfiles();
-      expect(listed).toMatchObject({
-        _tag: "ok",
-        value: [
-          { id: "default", github: { kind: "connected", account: "octocat" } },
-        ],
-      });
-
-      expect(await store.list()).toMatchObject({
-        _tag: "ok",
-        value: [
-          { id: "default", github: { kind: "connected", account: "octocat" } },
-        ],
-      });
-      expect(await store.loadConfig()).toMatchObject({
-        _tag: "ok",
-        value: { lastSelectedProfileId: "default" },
-      });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("never persists a first-run profile when gh detection cannot find a real account", async () => {
-    const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-empty-`);
-    try {
-      const paths = PatchdeskPaths.forTest(root);
-      const store = new ProfileStore(paths);
-      const commands = new CommandRunner(
-        new FakeCommandExecutor({ _tag: "Unavailable" }),
-      );
-      const controller = new DashboardController(
-        store,
-        new FakeGitHubAdapter({}),
-        git,
-        paths,
-        readBoundedInsightArtifactFile,
-        commands,
       );
 
       const listed = await controller.listProfiles();
@@ -327,7 +283,35 @@ describe("profile settings and dashboard services", () => {
         value: [{ id: "default", github: { kind: "disconnected" } }],
       });
 
-      // Account detection alone does not opt the maintainer into a local workspace.
+      expect(await store.list()).toEqual({ _tag: "ok", value: [] });
+      expect(await store.loadConfig()).toMatchObject({
+        _tag: "err",
+        error: { reason: "not_found" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the first-run workspace unsaved until setup", async () => {
+    const root = await mkdtemp(`${tmpdir()}/patchdesk-m5-empty-`);
+    try {
+      const paths = PatchdeskPaths.forTest(root);
+      const store = new ProfileStore(paths);
+      const controller = new DashboardController(
+        store,
+        new FakeGitHubAdapter({}),
+        git,
+        paths,
+        readBoundedInsightArtifactFile,
+      );
+
+      const listed = await controller.listProfiles();
+      expect(listed).toMatchObject({
+        _tag: "ok",
+        value: [{ id: "default", github: { kind: "disconnected" } }],
+      });
+
       expect(await store.list()).toEqual({ _tag: "ok", value: [] });
       expect(await store.loadConfig()).toEqual({
         _tag: "err",

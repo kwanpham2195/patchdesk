@@ -278,7 +278,7 @@ describe("MCP read tool refusals", () => {
     ).rejects.toThrow();
   });
 
-  it("refuses a directory outside every profile checkout with checkout_not_found and lists it in diagnostics", async () => {
+  it("refuses an unregistered checkout and lists it in diagnostics", async () => {
     app = await startAppWithLinkedWorktree();
     const outside = await shortTemporaryDirectory();
     directories.push(outside);
@@ -289,18 +289,25 @@ describe("MCP read tool refusals", () => {
 
     expect(refused).toMatchObject({
       isError: true,
-      content: { error: "checkout_not_found" },
+      content: {
+        error: "repository_not_local",
+        message: expect.stringContaining(
+          "patchdesk setup add-checkout --cwd <path>",
+        ),
+      },
     });
     await expect
       .poll(
         async () => (await app?.route("v1/diagnostics?profileId=acme"))?.body,
       )
       .toMatchObject({
-        events: [{ category: "mcp", phase: "review_local checkout_not_found" }],
+        events: [
+          { category: "mcp", phase: "review_local repository_not_local" },
+        ],
       });
   });
 
-  it("refuses a cwd in a repository moved away from its configured path with checkout_missing naming that path (#488)", async () => {
+  it("refuses a moved unregistered checkout without inferring its identity from origin (#488)", async () => {
     app = await startAppWithLinkedWorktree();
     execFileSync("git", [
       "-C",
@@ -319,9 +326,9 @@ describe("MCP read tool refusals", () => {
     expect(refused).toMatchObject({
       isError: true,
       content: {
-        error: "checkout_missing",
+        error: "repository_not_local",
         message: expect.stringContaining(
-          `checkout at ${app.repositoryPath} no longer exists`,
+          "patchdesk setup add-checkout --cwd <path>",
         ),
       },
     });

@@ -42,7 +42,7 @@ describe.each(mcpProtocolEras)(
         profile: { id: "acme" },
         repositories: [
           {
-            repo: "patchdesk",
+            github: { repo: "patchdesk" },
             checkouts: JSON.parse(await app.routeCheckouts()),
           },
         ],

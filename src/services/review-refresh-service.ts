@@ -179,6 +179,8 @@ export class ReviewRefreshService {
     const loaded = await this.loadReview(input.profileId, input.reviewId);
     if (loaded._tag === "err") return loaded;
     const { review, profile } = loaded.value;
+    if (profile.github.kind !== "connected")
+      return err({ reason: "github_read" });
     if (review.status._tag === "Terminal") return err({ reason: "terminal" });
     const currentSession = await this.dependencies.sessions.load(
       input.profileId,

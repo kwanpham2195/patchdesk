@@ -125,6 +125,8 @@ export class ReviewSessionPreparation {
             ? "ProfileNotFound"
             : "ProfileUnavailable",
       });
+    if (profile.value.github.kind !== "connected")
+      return err({ _tag: "GitHubReadUnavailable" });
     const current = await this.dependencies.github.getPullRequest({
       profile: profile.value,
       pr: input.pullRequest,
@@ -272,6 +274,8 @@ export class ReviewSessionPreparation {
     sessionId: ReviewSessionId,
     journal: ReviewPreparationJournal,
   ): Promise<Result<PreparedReviewSession, PrepareReviewSessionFailure>> {
+    if (profile.github.kind !== "connected")
+      return err({ _tag: "GitHubReadUnavailable" });
     const current = await this.dependencies.github.getPullRequest({
       profile,
       pr: input.pullRequest,

@@ -233,7 +233,17 @@ function preparationService(
   return new ReviewSessionPreparation(
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
-      profiles: { load: async () => ok({ id: profileId }) },
+      profiles: {
+        load: async () =>
+          ok({
+            id: profileId,
+            github: {
+              kind: "connected",
+              host: "github.com",
+              account: "fixture",
+            },
+          }),
+      },
       sessions: {
         load: async () => err({ reason: "io" }),
       },
@@ -277,7 +287,10 @@ function reviewRetention(
   return new ReviewRetention(
     // SAFETY: This test-only fixture supplies the fields exercised by the behavior under test; the cast stays at the test seam and does not weaken production parsing.
     {
-      profiles: { load: async () => ok({ id: profileId, repos: [] }) },
+      profiles: {
+        load: async () => ok({ id: profileId, repos: [] }),
+        loadRepositories: async () => ok({ repositories: [] }),
+      },
       reviews: {
         list: async () =>
           ok({ reviews: [localReview], unreadable: 0, invalid: [] }),
@@ -405,8 +418,8 @@ describe("global lock order: Review lock outer, profile lock inner", () => {
 
     await reviewRetention(gate, coordinator).sweepProfile(profileId);
 
-    // The Review's prune nests inside its Review lock; the orphan-ref pass takes the profile lock alone.
-    expect(recorder.chains).toEqual(["review", "review>profile", "profile"]);
+    // An unregistered checkout is retained before pruning; the orphan-ref pass takes only the profile lock.
+    expect(recorder.chains).toEqual(["review", "profile"]);
     expect(recorder.violations).toEqual([]);
   });
 

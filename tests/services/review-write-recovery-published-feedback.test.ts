@@ -236,7 +236,13 @@ describe("published-feedback recovery evidence", () => {
         requireCurrentSession: vi.fn(),
         requireFresh: vi.fn(async () =>
           ok({
-            profile: {},
+            profile: {
+              github: {
+                kind: "connected",
+                host: "github.com",
+                account: "reviewer",
+              },
+            },
             session: {
               key: {
                 identityKey: {
@@ -301,7 +307,13 @@ describe("published-feedback recovery evidence", () => {
         requireCurrentSession: vi.fn(),
         requireFresh: vi.fn(async () =>
           ok({
-            profile: {},
+            profile: {
+              github: {
+                kind: "connected",
+                host: "github.com",
+                account: "reviewer",
+              },
+            },
             session: {
               key: {
                 identityKey: {

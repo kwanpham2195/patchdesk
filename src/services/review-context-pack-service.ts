@@ -1,3 +1,6 @@
+import { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
+import type { RepositoryIdentityKey } from "#src/domain/local-repository";
+import type { WorkspaceProfileId } from "#src/domain/ids";
 import { readFile } from "node:fs/promises";
 
 import * as v from "valibot";
@@ -87,6 +90,24 @@ const packIdentitySchema = v.looseObject({
  * An interrupted pack fails `isUsable` and is rebuilt without a journal.
  */
 export class ReviewContextPackService {
+  private async repositoryLabel(
+    profileId: WorkspaceProfileId,
+    identityKey: RepositoryIdentityKey,
+  ): Promise<Result<string, ReviewContextPackFailure>> {
+    if (identityKey.kind === "github")
+      return ok(`${identityKey.owner}/${identityKey.repo}`);
+    const catalog = await new LocalRepositoryStore(
+      this.dependencies.paths,
+    ).load(profileId);
+    if (catalog._tag === "err") return err({ _tag: "ContextPackUnavailable" });
+    const registration = catalog.value.repositories.find(
+      (entry) => entry.id === identityKey.localRepositoryId,
+    );
+    return registration === undefined
+      ? err({ _tag: "ContextPackUnavailable" })
+      : ok(registration.displayName);
+  }
+
   constructor(
     private readonly dependencies: {
       readonly profiles: Pick<ProfileStore, "load">;
@@ -151,6 +172,11 @@ export class ReviewContextPackService {
       return provenance;
     const profile = await this.dependencies.profiles.load(profileId);
     if (profile._tag === "err") return err({ _tag: "ContextPackUnavailable" });
+    const repositoryLabel = await this.repositoryLabel(
+      profileId,
+      input.session.key.identityKey,
+    );
+    if (repositoryLabel._tag === "err") return repositoryLabel;
     const patch = await readFile(input.session.patchPath, "utf8").catch(
       () => undefined,
     );
@@ -166,10 +192,7 @@ export class ReviewContextPackService {
         sessionId,
       ),
       pr: {
-        repository:
-          input.session.key.identityKey.kind === "github"
-            ? `${input.session.key.identityKey.owner}/${input.session.key.identityKey.repo}`
-            : input.session.key.identityKey.localRepositoryId,
+        repository: repositoryLabel.value,
         source: reviewSourceTitle(input.session.key.source),
         headSha: input.session.key.headSha,
       },
@@ -219,11 +242,13 @@ export class ReviewContextPackService {
       : ok(undefined);
     if (evidence._tag === "err") return evidence;
     if (options.signal?.aborted) return aborted;
+    const repositoryLabel = await this.repositoryLabel(
+      session.key.profileId,
+      session.key.identityKey,
+    );
+    if (repositoryLabel._tag === "err") return repositoryLabel;
     const pr = {
-      repository:
-        session.key.identityKey.kind === "github"
-          ? `${session.key.identityKey.owner}/${session.key.identityKey.repo}`
-          : session.key.identityKey.localRepositoryId,
+      repository: repositoryLabel.value,
       source: reviewSourceTitle(session.key.source),
       headSha: session.key.headSha,
     };
@@ -319,6 +344,8 @@ export class ReviewContextPackService {
     profile: WorkspaceProfileConfig,
     session: PullRequestReviewSession,
   ) {
+    if (profile.github.kind !== "connected")
+      return err({ _tag: "ContextPackUnavailable" as const });
     const pullRequest = {
       host: session.key.identityKey.host,
       owner: session.key.identityKey.owner,

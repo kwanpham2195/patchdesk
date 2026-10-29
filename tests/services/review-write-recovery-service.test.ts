@@ -343,7 +343,13 @@ describe("ReviewWriteRecoveryService", () => {
         requireCurrentSession: vi.fn(),
         requireFresh: vi.fn(async () =>
           ok({
-            profile: {},
+            profile: {
+              github: {
+                kind: "connected",
+                host: "github.com",
+                account: "reviewer",
+              },
+            },
             session: {
               key: {
                 identityKey: {
@@ -391,7 +397,13 @@ describe("ReviewWriteRecoveryService", () => {
         requireCurrentSession: vi.fn(),
         requireFresh: vi.fn(async () =>
           ok({
-            profile: {},
+            profile: {
+              github: {
+                kind: "connected",
+                host: "github.com",
+                account: "reviewer",
+              },
+            },
             session: {
               key: {
                 identityKey: {

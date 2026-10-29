@@ -175,7 +175,12 @@ class RecordingReviewWriteGate extends ReviewWriteGate {
     snapshot: ReviewRemoteSnapshot,
   ) {
     super(
-      { load: async () => ok(profile) },
+      {
+        load: async () => ok(profile),
+        loadRepositories: async () => {
+          throw new Error("Merge never reads the local catalog");
+        },
+      },
       { load: async () => ok(review) },
       { load: async () => ok(session) },
       { load: async () => ok(snapshot) },

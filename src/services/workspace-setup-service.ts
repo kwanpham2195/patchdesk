@@ -1,5 +1,13 @@
+import type {
+  LocalRepositoryService,
+  LocalRepositoryFailure,
+  RegisteredCheckout,
+} from "./local-repository-service";
+import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
+import type { GitHubConnection } from "#src/domain/workspace-profile";
 import type { CommandRunner } from "#src/adapters/github/command-runner";
 import type { AbsolutePath, WorkspaceProfileId } from "#src/domain/ids";
+import { definedProps } from "#src/domain/defined-props";
 import { err, ok, type Result } from "#src/domain/result";
 import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type {
@@ -23,11 +31,18 @@ type RepositoryRef = Omit<WatchedRepoConfig, "localPath">;
 type ProfileSummary = {
   readonly id: WorkspaceProfileId;
   readonly label: string;
-  readonly ghAccount: string;
+  readonly ghAccount?: string;
 };
 
 /** What `patchdesk setup status` reports: the environment, the active profile, and each repository's checkout. */
-export type WorkspaceSetupStatus = GitHubEnvironmentSnapshot & {
+export type WorkspaceSetupStatus = Omit<
+  GitHubEnvironmentSnapshot,
+  "gh" | "githubAuth"
+> & {
+  readonly gh: GitHubEnvironmentSnapshot["gh"] | "not_checked";
+  readonly githubAuth: GitHubEnvironmentSnapshot["githubAuth"] | "not_checked";
+  readonly github: GitHubConnection;
+  readonly localRepositories: ReadonlyArray<LocalRepositoryRegistration>;
   readonly profile?: ProfileSummary;
   readonly repositories: ReadonlyArray<
     RepositoryRef & {
@@ -59,7 +74,8 @@ export type WorkspaceSetupFailure = {
     | "checkout_other_host"
     | "checkout_origin_mismatch"
     | "invalid_input"
-    | "storage";
+    | "storage"
+    | LocalRepositoryFailure["reason"];
 };
 
 type SetupDashboard = Pick<
@@ -81,6 +97,10 @@ export class WorkspaceSetupService {
   constructor(
     private readonly dependencies: {
       readonly dashboard: SetupDashboard;
+      readonly repositories: Pick<
+        LocalRepositoryService,
+        "register" | "list" | "setWatchedCheckout"
+      >;
       readonly git: GitReadExecutor;
       readonly commands: CommandRunner;
       readonly environment: Pick<GitHubEnvironmentProbe, "read">;
@@ -88,30 +108,69 @@ export class WorkspaceSetupService {
   ) {}
 
   async status(): Promise<Result<WorkspaceSetupStatus, WorkspaceSetupFailure>> {
-    const [environment, profiles] = await Promise.all([
-      this.dependencies.environment.read({ recheck: false }),
-      this.dependencies.dashboard.savedProfiles(),
-    ]);
+    const profiles = await this.dependencies.dashboard.savedProfiles();
+    const github =
+      profiles._tag === "ok"
+        ? profiles.value.active.github
+        : ({ kind: "disconnected" } as const);
+    const environment =
+      github.kind === "connected"
+        ? await this.dependencies.environment.read({ recheck: false })
+        : {
+            git:
+              (
+                await this.dependencies.commands.runText({
+                  argv: ["git", "--version"],
+                  timeoutMs: 5_000,
+                })
+              )._tag === "ok"
+                ? ("ready" as const)
+                : ("missing" as const),
+            gh: "not_checked" as const,
+            githubAuth: "not_checked" as const,
+            githubAccounts: [],
+          };
     if (profiles._tag === "err")
       return profiles.error.reason === "no_profile"
-        ? ok({ ...environment, repositories: [] })
+        ? ok({
+            ...environment,
+            github,
+            localRepositories: [],
+            repositories: [],
+          })
         : err({ reason: "storage" });
     const active = profiles.value.active;
-    const repositories = await Promise.all(
-      active.repos.map(async ({ localPath, ...repository }) =>
-        localPath === undefined
-          ? { ...repository, checkout: "not_chosen" as const }
-          : {
-              ...repository,
-              localPath,
-              checkout:
-                (await missingCheckout(localPath)) === undefined
-                  ? ("chosen" as const)
-                  : ("missing" as const),
-            },
+    const [repositories, local] = await Promise.all([
+      Promise.all(
+        active.repos.map(async ({ localPath, ...repository }) =>
+          localPath === undefined
+            ? { ...repository, checkout: "not_chosen" as const }
+            : {
+                ...repository,
+                localPath,
+                checkout:
+                  (await missingCheckout(localPath)) === undefined
+                    ? ("chosen" as const)
+                    : ("missing" as const),
+              },
+        ),
       ),
-    );
-    return ok({ ...environment, profile: summary(active), repositories });
+      this.dependencies.repositories.list(active.id),
+    ]);
+    if (local._tag === "err") return local;
+    return ok({
+      ...environment,
+      github,
+      localRepositories: local.value,
+      profile: summary(active),
+      repositories,
+    });
+  }
+
+  async addCheckout(
+    folder: AbsolutePath,
+  ): Promise<Result<RegisteredCheckout, WorkspaceSetupFailure>> {
+    return this.dependencies.repositories.register(folder);
   }
 
   /**
@@ -194,6 +253,17 @@ export class WorkspaceSetupService {
       localPath: root,
     });
     if (chosen._tag === "err") return err(fromDashboard(chosen.error));
+    const registered = await this.dependencies.repositories.setWatchedCheckout(
+      profile.id,
+      {
+        kind: "github",
+        host: repository.host,
+        owner: repository.owner,
+        repo: repository.repo,
+      },
+      root,
+    );
+    if (registered._tag === "err") return registered;
     return ok({
       profile: summary(chosen.value),
       ...outcome,
@@ -252,8 +322,12 @@ function summary(profile: WorkspaceProfileConfig): ProfileSummary {
   return {
     id: profile.id,
     label: profile.label,
-    ghAccount:
-      profile.github.kind === "connected" ? profile.github.account : "",
+    ...definedProps({
+      ghAccount:
+        profile.github.kind === "connected"
+          ? profile.github.account
+          : undefined,
+    }),
   };
 }
 

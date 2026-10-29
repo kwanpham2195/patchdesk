@@ -68,6 +68,8 @@ export async function mergePullRequest(input: {
     MergeFailure
   >
 > {
+  if (input.profile.github.kind !== "connected")
+    return err({ _tag: "GitHubMergeReadFailed" });
   const pr = sessionPr(input.session);
   const revision = await new GitHubRevisionIdentityReader(input.gateway).read({
     profile: input.profile,

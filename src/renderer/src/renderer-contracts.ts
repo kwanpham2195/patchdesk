@@ -808,7 +808,7 @@ const patchViewSchema = v.strictObject({
 
 const workbenchProjectionSchema = v.strictObject({
   state: v.literal("review"),
-  viewerLogin: viewerLoginSchema,
+  viewerLogin: v.optional(viewerLoginSchema),
   review: v.strictObject({
     id: v.pipe(v.string(), v.minLength(1)),
     status: v.picklist(["open", "merged", "closed"]),

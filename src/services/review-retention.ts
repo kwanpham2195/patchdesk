@@ -23,7 +23,11 @@ import type { ReviewSession } from "#src/domain/review-session";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { ReviewLifecycleGate } from "./review-lifecycle-gate";
 import type { ReviewOperationCoordinator } from "./review-operation-coordinator";
-import { configuredLocalPath } from "./local-checkout";
+import {
+  configuredLocalPath,
+  missingCheckout,
+  readCanonicalGitCommonDirectory,
+} from "./local-checkout";
 import { isLocalSourceGone } from "./local-source-presence";
 import { exists, ReviewPreparationJournal } from "./review-preparation-journal";
 import type {
@@ -39,7 +43,7 @@ import {
 export type ReviewRetentionFailure = { readonly _tag: "StorageUnavailable" };
 
 type Dependencies = SessionRunningStateDependencies & {
-  readonly profiles: Pick<ProfileStore, "load">;
+  readonly profiles: Pick<ProfileStore, "load" | "loadRepositories">;
   readonly reviews: Pick<ReviewStore, "load" | "list" | "delete">;
   readonly sessions: Pick<ReviewSessionStore, "load" | "listSessions">;
   readonly insights: Pick<InsightStore, "load" | "hasProtectedSlots">;
@@ -152,10 +156,13 @@ export class ReviewRetention {
       const pruned = await this.pruneSuperseded(profileId, reviewId);
       return pruned._tag === "ok" ? "kept" : "failed";
     }
-    const localPath = configuredLocalPath(
+    const localPath = await configuredLocalPath(
       profile.value,
       review.value.identity.identityKey,
+      this.dependencies.profiles,
+      this.dependencies.git,
     );
+    if (localPath === undefined) return "kept";
     const sourceKind = review.value.identity.source.kind;
     if (
       localPath !== undefined &&
@@ -264,14 +271,29 @@ export class ReviewRetention {
   ): Promise<number | undefined> {
     const profile = await this.dependencies.profiles.load(profileId);
     if (profile._tag === "err") return undefined;
+    const catalog =
+      await this.dependencies.profiles.loadRepositories(profileId);
+    if (catalog._tag === "err") return undefined;
     const localPaths = [
       ...new Set(
-        profile.value.repos.flatMap((repository) =>
-          repository.localPath === undefined ? [] : [repository.localPath],
+        catalog.value.repositories.flatMap((repository) =>
+          repository.state === "resolved" ? [repository.configuredRoot] : [],
         ),
       ),
     ];
     const deleted = await mapConcurrent(localPaths, 1, async (localPath) => {
+      const registration = catalog.value.repositories.find(
+        (entry) => entry.configuredRoot === localPath,
+      );
+      if (
+        registration === undefined ||
+        (await missingCheckout(localPath)) !== undefined ||
+        (await readCanonicalGitCommonDirectory(
+          this.dependencies.git,
+          localPath,
+        )) !== registration.canonicalCommonDirectory
+      )
+        return 0;
       if (!(await exists(localPath))) return 0;
       const refs = await this.dependencies.worktrees.listManagedRefs(
         profileId,
@@ -378,10 +400,14 @@ export class ReviewRetention {
     );
     // A locked pending-review or summary write keeps every session for its recovery (ADR 0035).
     if (owned.some(hasLockedGitHubWrite)) return ok(undefined);
-    const localPath = configuredLocalPath(
+    const localPath = await configuredLocalPath(
       profile.value,
       review.value.identity.identityKey,
+      this.dependencies.profiles,
+      this.dependencies.git,
     );
+    if (isLocalReview(review.value) && localPath === undefined)
+      return ok(undefined);
     // One session at a time: `git update-ref` and `git worktree` contend on the repository's locks.
     const outcomes = await mapConcurrent(owned, 1, (session) =>
       this.pruneSession(

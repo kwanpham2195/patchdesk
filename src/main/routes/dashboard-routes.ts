@@ -25,6 +25,7 @@ import {
   type NotificationSettings,
 } from "#src/domain/contracts";
 import {
+  parseAbsolutePath,
   parseGitHubHost,
   parseGitHubOwner,
   parseGitHubRepoName,
@@ -52,6 +53,38 @@ export function registerDashboardRoutes(
     parsedConfiguration,
     recordProfileReloadFailure,
   } = container;
+  app.post("/v1/local-repositories", async (context) => {
+    const folder = parseAbsolutePath(
+      readObjectField(await jsonBody(context), "cwd"),
+    );
+    if (folder._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await container.workspaceSetup.addCheckout(folder.value),
+    );
+  });
+  app.get("/v1/local-repositories", async (context) => {
+    const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return response(
+      context,
+      await container.localRepositories.list(profileId.value),
+    );
+  });
+  app.get("/v1/workspace/connection", async (context) => {
+    const profiles = await dashboard.savedProfiles();
+    return profiles._tag === "ok"
+      ? response(
+          context,
+          ok({
+            profileId: profiles.value.active.id,
+            github: profiles.value.active.github,
+          }),
+        )
+      : response(context, profiles);
+  });
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();
     if (result._tag === "err")

@@ -17,6 +17,8 @@ import { isLocalReview, type Review } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
 import type { AppLogService } from "./app-log-service";
 import type { RepositoryCheckout } from "./local-checkout";
+import { sameRepositoryIdentityKey } from "#src/domain/local-repository";
+import { repositoryIdentityKey } from "./local-checkout";
 import type { LocalReviewOpenRequest } from "./local-review-session-preparation";
 import {
   describeCurrentSession,
@@ -98,15 +100,12 @@ export async function listOpenSharedReviews(
   for (const review of listed.value.reviews) {
     if (!isLocalReview(review) || review.status._tag === "Terminal") continue;
     const { identityKey, source } = review.identity;
-    if (identityKey.kind !== "github") continue;
-    const { host, owner, repo } = identityKey;
+
     if (
       source.kind === "local_branch" &&
       (branch === undefined || source.branch === branch) &&
       source.checkout === checkout &&
-      host === repository.host &&
-      owner === repository.owner &&
-      repo === repository.repo
+      sameRepositoryIdentityKey(identityKey, repositoryIdentityKey(repository))
     )
       shared.push({ review, source });
   }

@@ -60,6 +60,8 @@ export class GitHubRevisionIdentityReader {
     readonly session: PullRequestReviewSession;
     readonly current?: PullRequestSummary;
   }): Promise<Result<RevisionComparison, never>> {
+    if (input.profile.github.kind !== "connected")
+      return ok({ _tag: "Unavailable", reason: "github_read" });
     if (input.session.pr.baseSha === undefined) {
       return ok({ _tag: "Unavailable", reason: "base_missing" });
     }
@@ -137,6 +139,8 @@ export class GitHubRevisionIdentityReader {
     readonly pr: PullRequestRef;
     readonly identity: ObservedRevisionIdentity;
   }): Promise<Result<RevisionRecheck, never>> {
+    if (input.profile.github.kind !== "connected")
+      return ok({ _tag: "Unavailable", reason: "github_read" });
     const current = await this.github.getPullRequest({
       profile: input.profile,
       pr: input.pr,

@@ -1,3 +1,5 @@
+import { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
+import { LocalRepositoryService } from "#src/services/local-repository-service";
 import { LocalRepositoryUpgrade } from "#src/services/local-repository-upgrade";
 import { randomUUID } from "node:crypto";
 
@@ -112,6 +114,7 @@ export type LocalApiContainer = {
   /** One per local API start, which is one per launch: the window its ready answer is held for. Settings and `patchdesk setup status` share it. */
   readonly githubEnvironment: GitHubEnvironmentProbe;
   readonly workspaceSetup: WorkspaceSetupService;
+  readonly localRepositories: LocalRepositoryService;
   readonly recovery: ReviewRecoveryService;
   readonly reviewWorkbench: ReviewWorkbenchSeam;
   readonly localReviewOpening: LocalReviewOpening;
@@ -273,9 +276,16 @@ export async function buildLocalApiContainer(
     readOnlyGit,
     paths,
     configuration.insightResources.uiReader,
-    commands,
     avatarRailDependencies,
   );
+  const localRepositories = new LocalRepositoryService({
+    profiles,
+    catalog: new LocalRepositoryStore(paths),
+    dashboard,
+    git: readOnlyGit,
+    paths,
+    logs,
+  });
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,
     sessions,
@@ -590,6 +600,7 @@ export async function buildLocalApiContainer(
   const localReviewOpening = new LocalReviewOpening(
     new LocalReviewSessionPreparation({
       profiles,
+      repositories: localRepositories,
       sessions,
       revisions: localRevisions,
       worktrees,
@@ -697,7 +708,9 @@ export async function buildLocalApiContainer(
       configuredProfiles: configuredProfiles.value,
       dashboard,
       githubEnvironment,
+      localRepositories,
       workspaceSetup: new WorkspaceSetupService({
+        repositories: localRepositories,
         dashboard,
         git: readOnlyGit,
         commands,

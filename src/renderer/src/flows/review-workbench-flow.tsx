@@ -111,7 +111,7 @@ export function ReviewWorkbenchFlow({
     workbench.review.status === "open" &&
     !writeRecovery.githubWritesLocked &&
     workbench.pullRequest?.author.toLowerCase() ===
-      workbench.viewerLogin.toLowerCase();
+      workbench.viewerLogin?.toLowerCase();
   const metadata = useReviewMetadataActions({
     workbench,
     runDirectCommand,

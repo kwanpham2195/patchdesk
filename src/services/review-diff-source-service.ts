@@ -167,9 +167,11 @@ export class ReviewDiffSourceService {
       profileId: profileId.value,
       sessionId: sessionId.value,
       sourceKind: pullRequest ? "pull_request" : "local",
-      localPath: configuredLocalPath(
+      localPath: await configuredLocalPath(
         profile.value,
         session.value.key.identityKey,
+        this.profiles,
+        this.git,
       ),
     });
     if (restored._tag === "err")

@@ -1,5 +1,3 @@
-import { minLength, pipe, strictObject, string } from "valibot";
-
 import type { ReviewArtifactStorage } from "#src/adapters/storage/review-artifact-storage";
 import type { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import type { ReviewStore } from "#src/adapters/storage/review-store";
@@ -31,7 +29,6 @@ import {
 import { definedProps } from "#src/domain/defined-props";
 import type { FailureKinds } from "#src/domain/failure-kind";
 import {
-  localReviewSourceRequestSchema,
   reopenLocalSourceRequest,
   type LocalReviewSource,
   type LocalReviewSourceRequest,
@@ -173,17 +170,6 @@ export type LocalReviewPrepared = {
   readonly baseSha: GitSha;
   readonly patchHash: ContentHash;
 };
-
-const nonEmpty = pipe(string(), minLength(1));
-
-/** The wire form of `open`'s request; the route parses each id and the source from it. */
-export const localReviewOpenRequestSchema = strictObject({
-  profileId: nonEmpty,
-  host: nonEmpty,
-  owner: nonEmpty,
-  repo: nonEmpty,
-  source: localReviewSourceRequestSchema,
-});
 
 /** How each open and Refresh refusal is classified (ADR 0052 "Error model"). */
 export const localReviewFailureKinds = {
@@ -618,14 +604,13 @@ export class LocalReviewOpening {
     review: Review<LocalReviewSource>,
   ): Promise<LocalBranchMismatch | undefined> {
     const { profileId, identityKey, source } = review.identity;
-    if (identityKey.kind !== "github") return undefined;
-    const { host, owner, repo } = identityKey;
+
     if (source.kind !== "local_branch") return undefined;
     const request = reopenLocalSourceRequest(source);
     if (request === undefined) return undefined;
     const resolved = await this.preparation.resolve({
       profileId,
-      repository: { host, owner, repo },
+      repository: identityKey,
       request,
     });
     return resolved._tag === "ok"
@@ -653,8 +638,7 @@ export class LocalReviewOpening {
       });
     if (!isLocalReview(stored.value)) return err({ reason: "not_applicable" });
     const { identityKey, source } = stored.value.identity;
-    if (identityKey.kind !== "github") return err({ reason: "not_applicable" });
-    const { host, owner, repo } = identityKey;
+
     // A working-tree or branch Review stored before the shared Review (#555) is not read again.
     if (source.kind === "working_tree" || source.kind === "branch")
       return err({ reason: "not_applicable" });
@@ -662,7 +646,7 @@ export class LocalReviewOpening {
     if (request === undefined) return err({ reason: "storage" });
     const resolved = await this.preparation.resolve({
       profileId,
-      repository: { host, owner, repo },
+      repository: identityKey,
       request,
     });
     if (resolved._tag === "err")

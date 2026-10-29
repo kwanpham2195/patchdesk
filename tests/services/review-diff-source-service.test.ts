@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
+import { localRepositoryFixture } from "./local-repository-fixture";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
@@ -762,7 +763,9 @@ describe("ReviewDiffSourceService on a shared local Review's patch views (#556)"
         await sessions.load(localProfileId, opened.session.id),
       );
       expect(calls.length).toBeGreaterThan(0);
-      for (const argv of calls) {
+      for (const argv of calls.filter(
+        (call) => !call.includes("--git-common-dir"),
+      )) {
         expect(argv.slice(0, 3)).toEqual(["git", "-C", session.worktree.path]);
       }
       expect(session.worktree.path).not.toBe(repositoryPath);
@@ -856,6 +859,7 @@ describe("ReviewDiffSourceService when the Review worktree is missing (#616)", (
         }),
       ),
     );
+    await localRepositoryFixture(paths);
     const key = {
       profileId,
       identityKey: githubRepositoryKeyFixture(),

@@ -18,6 +18,7 @@ const usage = `Usage: patchdesk mcp [--check]
   patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
   patchdesk mcp --check         Call list_repositories on the running app and print the result.
   patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
+  patchdesk setup add-checkout Register the checkout at --cwd (default: here), without GitHub.
   patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
                                 checkout. Creates the workspace from the active gh account if there is none.
   patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.

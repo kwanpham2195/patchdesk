@@ -251,7 +251,7 @@ describe("list_local_reviews (#558)", () => {
     expect(listed.reviews).toHaveLength(2);
   });
 
-  it("refuses checkout_not_found for a directory outside every checkout", async () => {
+  it("refuses an unregistered directory with the setup instruction", async () => {
     app = await startAppWithLinkedWorktree();
     const client = await connectLegacyClient(app.socketPath);
 
@@ -261,7 +261,12 @@ describe("list_local_reviews (#558)", () => {
 
     expect(refused).toMatchObject({
       isError: true,
-      content: { error: "checkout_not_found" },
+      content: {
+        error: "repository_not_local",
+        message: expect.stringContaining(
+          "patchdesk setup add-checkout --cwd <path>",
+        ),
+      },
     });
   });
 });

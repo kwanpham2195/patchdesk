@@ -1,3 +1,4 @@
+import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
 import { safeParse, type InferOutput } from "valibot";
 import type { WalkthroughPage } from "#src/domain/walkthrough-progress";
 import type { WalkthroughPageService } from "#src/services/walkthrough-result-pages";
@@ -82,10 +83,16 @@ export type McpToolReply = Result<
 >;
 
 type LocalRepositoryListing = {
-  readonly host: GitHubHost;
-  readonly owner: GitHubOwner;
-  readonly repo: GitHubRepoName;
-  readonly localPath: string;
+  readonly id: LocalRepositoryRegistration["id"];
+  readonly displayName: string;
+  readonly state: LocalRepositoryRegistration["state"];
+  readonly identityKey: LocalRepositoryRegistration["identityKey"];
+  readonly github?: {
+    readonly host: GitHubHost;
+    readonly owner: GitHubOwner;
+    readonly repo: GitHubRepoName;
+  };
+  readonly localPath?: string;
   readonly checkouts: ReadonlyArray<RepositoryCheckoutDescription>;
   /** Why `checkouts` is empty when git could not list them. */
   readonly checkoutError?: LocalReviewOpenFailure["reason"];
@@ -230,18 +237,36 @@ async function listRepositories(
   const profiles = await readActiveProfile(services);
   if (profiles._tag === "err") return profiles;
   const profile = profiles.value.active;
+  const listed = await services.localRepositories.list(profile.id);
+  if (listed._tag === "err")
+    return err({
+      error: listed.error.reason,
+      message: "Patchdesk could not read the local repository catalog.",
+    });
   const repositories = await Promise.all(
-    profile.repos.flatMap(({ host, owner, repo, localPath }) =>
-      localPath === undefined
-        ? []
-        : [
-            describeLocalRepository(services, profile.id, {
-              host,
-              owner,
-              repo,
-              localPath,
-            }),
-          ],
+    listed.value.map((registration) =>
+      describeLocalRepository(services, profile.id, {
+        id: registration.id,
+        displayName: registration.displayName,
+        state: registration.state,
+        identityKey: registration.identityKey,
+        ...definedProps({
+          localPath: registration.configuredRoot,
+          github:
+            registration.identityKey.kind === "github"
+              ? {
+                  host: registration.identityKey.host,
+                  owner: registration.identityKey.owner,
+                  repo: registration.identityKey.repo,
+                }
+              : profile.repos.find(
+                  (repository) =>
+                    repository.localRepositoryId === registration.id ||
+                    (registration.configuredRoot !== undefined &&
+                      repository.localPath === registration.configuredRoot),
+                ),
+        }),
+      }),
     ),
   );
   return ok({
@@ -257,7 +282,7 @@ async function describeLocalRepository(
 ): Promise<LocalRepositoryListing> {
   const listed = await services.localReviewOpening.listCheckouts(
     profileId,
-    repository,
+    repository.identityKey,
   );
   return listed._tag === "ok"
     ? {

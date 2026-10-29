@@ -95,7 +95,7 @@ export type ReviewObservation =
 
 /** Storage or ownership failure that prevents observation. */
 export type ReviewObservationFailure = {
-  readonly reason: "not_found" | "storage";
+  readonly reason: "not_found" | "storage" | "github_read";
 };
 
 type ObservationGitHub = Pick<
@@ -231,6 +231,8 @@ export class ReviewObservationService {
     const loaded = await this.load(input);
     if (loaded._tag === "err") return loaded;
     const { profile, review, session, represented } = loaded.value;
+    if (profile.github.kind !== "connected")
+      return err({ reason: "github_read" });
     const detectedAt = this.dependencies.now();
     if (review.status._tag === "Terminal") {
       // Best effort: no further reconciliation will read the journal once a

@@ -1,3 +1,9 @@
+import {
+  parseLocalRepositoryId,
+  type RepositoryIdentityKey,
+} from "#src/domain/local-repository";
+import type { WorkspaceProfileId } from "#src/domain/ids";
+import { err, type Result } from "#src/domain/result";
 import type { Context, Hono } from "hono";
 import {
   array,
@@ -13,6 +19,7 @@ import {
   safeParse,
   strictObject,
   string,
+  union,
   type InferOutput,
   type SafeParseResult,
 } from "valibot";
@@ -43,7 +50,10 @@ import {
 import { localPatchViews } from "#src/domain/local-patch-view";
 import { ok } from "#src/domain/result";
 import { reviewRequestSchema } from "#src/domain/review";
-import { parseLocalReviewSourceRequest } from "#src/domain/review-source";
+import {
+  parseLocalReviewSourceRequest,
+  localReviewSourceRequestSchema,
+} from "#src/domain/review-source";
 import {
   changeIntentFailureKinds,
   changeIntentRequestSchema,
@@ -52,10 +62,7 @@ import { agentExplanationFailureKinds } from "#src/services/agent-explanation-se
 import { describeRepositoryCheckout } from "#src/services/local-checkout";
 import { localDraftFailureKinds } from "#src/services/local-draft-service";
 import { localPatchViewFailureKinds } from "#src/services/local-patch-view-service";
-import {
-  localReviewFailureKinds,
-  localReviewOpenRequestSchema,
-} from "#src/services/local-review-opening";
+import { localReviewFailureKinds } from "#src/services/local-review-opening";
 import type { LocalApiContainer } from "#src/main/local-api-container";
 import { response, serviceResponse } from "./http-status";
 import { jsonBody } from "./json-body";
@@ -76,21 +83,24 @@ export function registerLocalReviewRoutes(
     );
     if (!parsed.success) return context.json({ error: "invalid_input" }, 400);
     const profileId = parseWorkspaceProfileId(parsed.output.profileId);
-    const host = parseGitHubHost(parsed.output.host);
-    const owner = parseGitHubOwner(parsed.output.owner);
-    const repo = parseGitHubRepoName(parsed.output.repo);
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const repository = await localRepositoryRequest(
+      container,
+      profileId.value,
+      parsed.output,
+    );
+    if (repository._tag === "err")
+      return serviceResponse(context, repository, {
+        ...localReviewFailureKinds,
+        invalid_input: "invalid",
+      });
     const request = parseLocalReviewSourceRequest(parsed.output.source);
-    if (
-      profileId._tag === "err" ||
-      host._tag === "err" ||
-      owner._tag === "err" ||
-      repo._tag === "err" ||
-      request === undefined
-    )
+    if (request === undefined)
       return context.json({ error: "invalid_input" }, 400);
     const opened = await container.localReviewOpening.open({
       profileId: profileId.value,
-      repository: { host: host.value, owner: owner.value, repo: repo.value },
+      repository: repository.value,
       request,
     });
     return serviceResponse(context, opened, localReviewFailureKinds);
@@ -99,19 +109,21 @@ export function registerLocalReviewRoutes(
   // The checkouts the open dialog offers: the configured one and its live linked worktrees (#489).
   app.get("/v1/reviews/local-checkouts", async (context) => {
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
-    const host = parseGitHubHost(context.req.query("host"));
-    const owner = parseGitHubOwner(context.req.query("owner"));
-    const repo = parseGitHubRepoName(context.req.query("repo"));
-    if (
-      profileId._tag === "err" ||
-      host._tag === "err" ||
-      owner._tag === "err" ||
-      repo._tag === "err"
-    )
+    if (profileId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
+    const repository = await localRepositoryRequest(
+      container,
+      profileId.value,
+      context.req.query(),
+    );
+    if (repository._tag === "err")
+      return serviceResponse(context, repository, {
+        ...localReviewFailureKinds,
+        invalid_input: "invalid",
+      });
     const listed = await container.localReviewOpening.listCheckouts(
       profileId.value,
-      { host: host.value, owner: owner.value, repo: repo.value },
+      repository.value,
     );
     return serviceResponse(
       context,
@@ -125,25 +137,28 @@ export function registerLocalReviewRoutes(
   // The bases the open dialog offers for the shared Review, and the one it preselects (#555).
   app.get("/v1/reviews/local-branches", async (context) => {
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
-    const host = parseGitHubHost(context.req.query("host"));
-    const owner = parseGitHubOwner(context.req.query("owner"));
-    const repo = parseGitHubRepoName(context.req.query("repo"));
+    if (profileId._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    const repository = await localRepositoryRequest(
+      container,
+      profileId.value,
+      context.req.query(),
+    );
+    if (repository._tag === "err")
+      return serviceResponse(context, repository, {
+        ...localReviewFailureKinds,
+        invalid_input: "invalid",
+      });
     const rawCheckout = context.req.query("checkout");
     const checkout =
       rawCheckout === undefined ? undefined : parseAbsolutePath(rawCheckout);
-    if (
-      profileId._tag === "err" ||
-      host._tag === "err" ||
-      owner._tag === "err" ||
-      repo._tag === "err" ||
-      checkout?._tag === "err"
-    )
+    if (checkout?._tag === "err")
       return context.json({ error: "invalid_input" }, 400);
     return serviceResponse(
       context,
       await container.localReviewOpening.listBranches(
         profileId.value,
-        { host: host.value, owner: owner.value, repo: repo.value },
+        repository.value,
         checkout?.value,
       ),
       localReviewFailureKinds,
@@ -421,6 +436,46 @@ export function registerLocalReviewRoutes(
   });
 }
 
+async function localRepositoryRequest(
+  container: LocalApiContainer,
+  profileId: WorkspaceProfileId,
+  input: {
+    readonly localRepositoryId?: string;
+    readonly host?: string;
+    readonly owner?: string;
+    readonly repo?: string;
+  },
+): Promise<
+  Result<
+    RepositoryIdentityKey,
+    { readonly reason: "storage" | "repository_not_local" | "invalid_input" }
+  >
+> {
+  if (input.localRepositoryId !== undefined) {
+    const id = parseLocalRepositoryId(input.localRepositoryId);
+    if (id._tag === "err") return err({ reason: "invalid_input" });
+    const registrations = await container.localRepositories.list(profileId);
+    if (registrations._tag === "err") return err({ reason: "storage" });
+    const registration = registrations.value.find(
+      (entry) => entry.id === id.value,
+    );
+    return registration === undefined
+      ? err({ reason: "repository_not_local" })
+      : ok(registration.identityKey);
+  }
+  const host = parseGitHubHost(input.host),
+    owner = parseGitHubOwner(input.owner),
+    repo = parseGitHubRepoName(input.repo);
+  return host._tag === "ok" && owner._tag === "ok" && repo._tag === "ok"
+    ? ok({
+        kind: "github",
+        host: host.value,
+        owner: owner.value,
+        repo: repo.value,
+      })
+    : err({ reason: "invalid_input" });
+}
+
 async function localDraftResponse(
   context: Context,
   container: LocalApiContainer,
@@ -468,6 +523,24 @@ function parseDraftWriteKey(raw: {
         sessionId: sessionId.value,
       };
 }
+
+const nonEmpty = pipe(string(), minLength(1));
+
+/** The wire form of `open`'s request; the route parses each id and the source from it. */
+const localReviewOpenRequestSchema = union([
+  strictObject({
+    profileId: nonEmpty,
+    host: nonEmpty,
+    owner: nonEmpty,
+    repo: nonEmpty,
+    source: localReviewSourceRequestSchema,
+  }),
+  strictObject({
+    profileId: nonEmpty,
+    localRepositoryId: nonEmpty,
+    source: localReviewSourceRequestSchema,
+  }),
+]);
 
 const localPatchViewSchema = strictObject({
   ...draftWriteKeySchema,

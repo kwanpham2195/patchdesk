@@ -11,6 +11,7 @@ import * as v from "valibot";
 const setupCommandNames = [
   "setup_status",
   "setup_add_repo",
+  "setup_add_checkout",
   "setup_set_checkout",
 ] as const;
 
@@ -31,5 +32,6 @@ const folderInputSchema = v.strictObject({
 export const setupCommandInputSchemas = {
   setup_status: v.strictObject({}),
   setup_add_repo: folderInputSchema,
+  setup_add_checkout: folderInputSchema,
   setup_set_checkout: folderInputSchema,
 } as const satisfies Record<SetupCommandName, v.GenericSchema>;

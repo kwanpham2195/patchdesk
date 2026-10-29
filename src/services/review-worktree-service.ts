@@ -145,6 +145,8 @@ export class ReviewWorktreeService {
   async prepare(
     input: WorktreeInput,
   ): Promise<Result<ManagedWorktree | MetadataOnlyReview, WorktreeFailure>> {
+    if (input.profile.github.kind !== "connected")
+      return err({ _tag: "GitHubAuthenticationFailed" });
     if (input.localPath === undefined)
       return ok({ mode: "metadata_only", warning: "missing_local_path" });
     let repositoryPath: string;
