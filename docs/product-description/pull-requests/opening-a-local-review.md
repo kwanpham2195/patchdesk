@@ -2,7 +2,9 @@
 
 ## Summary
 
-Opening a local Review turns a change that has no pull request yet into a readable Review workbench. The maintainer reaches it from the Local review button on the Pull requests screen, beside the Repository picker, for any Selected repository the active workspace profile watches. A repository without a checkout asks for one first. The maintainer picks a _Review source_: the _shared Review_ of the checked-out branch against a base branch, which shows the branch's commits and the checkout's uncommitted changes as one diff and can narrow it to either, or one commit. Patchdesk reads the checkout, prepares a _Review session_ for that exact revision, and opens the workbench on the Diff tab. Opening changes no file, index, or branch in the maintainer's checkout and performs no GitHub read or write; Patchdesk keeps the snapshot as git objects, a `refs/patchdesk/local/` ref, and a worktree in its cache. A coding agent can open and refresh the same Review over MCP; see [A coding agent over MCP](coding-agent-over-mcp.md).
+Opening a local Review turns a branch or commit into a readable Review workbench. **Open local checkout** is available on first run and in the titlebar, including when Pull requests cannot load. It lists registered repositories and offers a folder picker for another checkout. No remote, GitHub account, GitHub CLI, or watched repository is required. The existing Local review button beside the Repository picker also opens a watched repository's checkout.
+
+The maintainer picks a _Review source_: the _shared Review_ of the checked-out branch against a base branch, which shows committed and uncommitted changes together, or one commit. Patchdesk prepares a _Review session_ for that exact revision and opens the Diff tab. Opening changes no file, index, or branch in the maintainer's checkout and performs no GitHub read or write. Patchdesk keeps the snapshot as git objects, a `refs/patchdesk/local/` ref, and a worktree in its cache. A coding agent can open and refresh the same Review over MCP; see [A coding agent over MCP](coding-agent-over-mcp.md).
 
 ## The simple case
 
@@ -26,6 +28,10 @@ stateDiagram-v2
 ```
 
 ### Arrive
+
+**Open local checkout** lists the workspace's registered repositories. Choose checkout opens the native folder picker. A selected folder registers its Git repository and opens the existing Shared and Commit source dialog. Cancelling the picker creates no registration or Review. A non-Git folder shows an error on this path, without starting GitHub setup. Missing or unresolved registrations remain visible but cannot be opened from the chooser.
+
+Visited Local Reviews are grouped by their registration and checkout. Reopening, refreshing, adding a remote, or changing a remote keeps the registration and Review IDs. Existing GitHub-backed Local Reviews retain their IDs when the workspace upgrades. Local registration never adds a watched repository.
 
 The Local review button sits in the Pull requests header between the Repository picker and the freshness badge. It appears for every Selected repository the workspace profile watches. For a repository with no checkout path, pressing it opens the same dialog on a first step: `Choose the folder that holds this repository's local checkout. Patchdesk keeps it for later reviews.` with Cancel and Choose checkout. Choose checkout opens the macOS folder picker; Patchdesk accepts a folder inside a git checkout whose `origin` names the repository, saves that checkout's top-level folder, and the dialog continues to the source picker. A refused folder shows `Checkout not saved` with `That folder is not inside a git checkout.` or `That checkout's origin is not <owner>/<repo>.`, and the step stays open. Cancelling the picker changes nothing. [Watched repositories and checkouts](../first-run/watched-repositories.md) owns the same choice from Settings. Pressing Local review for a repository with a checkout opens the dialog with the Shared tab selected. Patchdesk reads the checkout's local and remote-tracking branches; `Reading the branches…` shows until they arrive, and `Patchdesk could not read the checkout's branches.` replaces the picker when the read fails.
 

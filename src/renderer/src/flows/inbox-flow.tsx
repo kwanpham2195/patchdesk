@@ -51,47 +51,8 @@ import { chooseRepositoryCheckout } from "#src/renderer/src/watched-repository-c
 import { WorkspaceFirstRun } from "./inbox-first-run";
 import type { InboxReviewOpeningControls } from "./use-inbox-review-opening";
 
-export function InboxFlow({
-  destination,
-  reviewId,
-  dashboard,
-  unsavedProfile,
-  inbox,
-  state,
-  refreshStatus,
-  onRefresh,
-  inboxState = "open",
-  listPending = false,
-  pageSize = DEFAULT_INBOX_PAGE_SIZE,
-  hasPreviousPage = false,
-  hasNextPage = false,
-  onInboxStateChange = () => undefined,
-  onInboxPageSizeChange = () => undefined,
-  selectedLabels = [],
-  onInboxLabelsChange = () => undefined,
-  filterBudget = UNLIMITED_FILTER_BUDGET,
-  preset,
-  onInboxPresetChange = () => undefined,
-  reviewState,
-  onInboxReviewStateChange = () => undefined,
-  checkStatus,
-  onInboxCheckStatusChange = () => undefined,
-  author,
-  onInboxAuthorChange = () => undefined,
-  baseBranch,
-  onInboxBaseBranchChange = () => undefined,
-  onClearInboxMoreFilters = () => undefined,
-  selectedRepository,
-  onRepositoryChange = () => undefined,
-  onPreviousInboxPage = () => undefined,
-  onNextInboxPage = () => undefined,
-  onSettings,
-  onWorkspaceReload = async () => undefined,
-  onBootRestoreMissing,
-  onStoredReviewRefused,
-  onStoredReviewOpenFailed,
-  reviewOpening,
-}: {
+type InboxFlowProps = {
+  readonly onOpenLocalCheckout: () => void;
   readonly destination: "dashboard" | "workbench";
   readonly reviewId?: string;
   readonly dashboard?: Dashboard;
@@ -164,7 +125,50 @@ export function InboxFlow({
   /** Leaves the workbench route when a Review opened in this session, such as from a Visited row, fails to load; its error stays on Pull requests. */
   readonly onStoredReviewOpenFailed?: () => void;
   readonly reviewOpening: InboxReviewOpeningControls;
-}): React.JSX.Element {
+};
+
+export function InboxFlow({
+  destination,
+  reviewId,
+  dashboard,
+  unsavedProfile,
+  inbox,
+  state,
+  refreshStatus,
+  onRefresh,
+  inboxState = "open",
+  listPending = false,
+  pageSize = DEFAULT_INBOX_PAGE_SIZE,
+  hasPreviousPage = false,
+  hasNextPage = false,
+  onInboxStateChange = () => undefined,
+  onInboxPageSizeChange = () => undefined,
+  selectedLabels = [],
+  onInboxLabelsChange = () => undefined,
+  filterBudget = UNLIMITED_FILTER_BUDGET,
+  preset,
+  onInboxPresetChange = () => undefined,
+  reviewState,
+  onInboxReviewStateChange = () => undefined,
+  checkStatus,
+  onInboxCheckStatusChange = () => undefined,
+  author,
+  onInboxAuthorChange = () => undefined,
+  baseBranch,
+  onInboxBaseBranchChange = () => undefined,
+  onClearInboxMoreFilters = () => undefined,
+  selectedRepository,
+  onRepositoryChange = () => undefined,
+  onPreviousInboxPage = () => undefined,
+  onNextInboxPage = () => undefined,
+  onSettings,
+  onWorkspaceReload = async () => undefined,
+  onBootRestoreMissing,
+  onStoredReviewRefused,
+  onStoredReviewOpenFailed,
+  reviewOpening,
+  onOpenLocalCheckout,
+}: InboxFlowProps): React.JSX.Element {
   const {
     openedPr,
     openError,
@@ -233,11 +237,23 @@ export function InboxFlow({
   )?.error;
   const activeOpenError = openError ?? rowOpenError;
 
+  if (dashboard?.profile.ghAccount === "" && destination === "dashboard")
+    return (
+      <WorkspaceFirstRun
+        dashboard={dashboard}
+        unsavedProfile={unsavedProfile}
+        onWorkspaceReload={onWorkspaceReload}
+        onContinue={undefined}
+        onOpenLocalCheckout={onOpenLocalCheckout}
+      />
+    );
+
   if (inbox === undefined || dashboard === undefined)
     return state === "loading" ? (
       <MaintainerInboxSkeleton />
     ) : (
       <BootstrapOutcome
+        onOpenLocalCheckout={onOpenLocalCheckout}
         state={state}
         unsavedProfile={unsavedProfile}
         onRefresh={onRefresh}
@@ -256,6 +272,7 @@ export function InboxFlow({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
+            onOpenLocalCheckout={onOpenLocalCheckout}
             dashboard={dashboard}
             unsavedProfile={undefined}
             onWorkspaceReload={onWorkspaceReload}
@@ -576,12 +593,14 @@ function ReviewOpeningNotice({
  * against `state === "loading"`) can only be true when both are undefined.
  */
 function BootstrapOutcome({
+  onOpenLocalCheckout,
   state,
   unsavedProfile,
   onRefresh,
   onSettings,
   onWorkspaceReload,
 }: {
+  readonly onOpenLocalCheckout: () => void;
   readonly state: DashboardScreenState;
   readonly unsavedProfile: Profile | undefined;
   readonly onRefresh: () => void;
@@ -597,6 +616,7 @@ function BootstrapOutcome({
         <div className="mx-auto max-w-[112rem]">
           <WorkspaceFirstRun
             dashboard={undefined}
+            onOpenLocalCheckout={onOpenLocalCheckout}
             unsavedProfile={unsavedProfile}
             onWorkspaceReload={onWorkspaceReload}
             onContinue={undefined}

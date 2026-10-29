@@ -23,7 +23,10 @@ import type {
   WorkbenchPayload,
 } from "#src/renderer/src/renderer-models";
 import type { PullRequestRef } from "#src/domain/pull-request";
-import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import {
+  localRepositoryQuery,
+  type LocalRepositoryTarget,
+} from "#src/renderer/src/local-repositories";
 
 /** The local Review source a maintainer picks, as `POST /v1/reviews/open-local` takes it (ADR 0050). */
 export type LocalReviewSourceInput =
@@ -75,7 +78,7 @@ export type InboxReviewOpeningControls = {
   ) => Promise<void>;
   /** Opens a local Review on the Selected repository; rejects with the sentence the source picker shows. */
   readonly openLocalReview: (
-    repository: RepositoryIdentity,
+    repository: LocalRepositoryTarget,
     source: LocalReviewSourceInput,
   ) => Promise<void>;
   /** Raises the screen's "Could not open review" alert for a refusal decided
@@ -437,7 +440,7 @@ export function useInboxReviewOpening({
 
   const openLocalReview = useCallback(
     async (
-      repository: RepositoryIdentity,
+      repository: LocalRepositoryTarget,
       source: LocalReviewSourceInput,
     ): Promise<void> => {
       const profileId = dashboardProfileIdRef.current;
@@ -449,9 +452,7 @@ export function useInboxReviewOpening({
             method: "POST",
             body: {
               profileId,
-              host: repository.host,
-              owner: repository.owner,
-              repo: repository.repo,
+              ...localRepositoryQuery(repository),
               source,
             },
           }),
@@ -548,6 +549,10 @@ export function localReviewOpenFailure(
   // oxlint-disable-next-line anti-slop/no-unknown-parameters -- a rejected request is `unknown` by construction; this maps it to the picker's sentence.
   cause: unknown,
 ): string {
+  if (isApiErrorCode(cause, "checkout_not_a_repository"))
+    return "That folder is not inside a Git checkout. Choose a checkout with an initial commit.";
+  if (isApiErrorCode(cause, "registration_conflict"))
+    return "That checkout has conflicting repository registrations. Reconcile them before opening a review.";
   if (isApiErrorCode(cause, "unmerged_index"))
     return "The working tree has unresolved merge conflicts.";
   const missing = checkoutMissingMessage(cause);

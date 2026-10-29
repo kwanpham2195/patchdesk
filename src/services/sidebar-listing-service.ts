@@ -14,11 +14,13 @@ import {
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
+import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
 import { err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
 import type { InsightSlotStatus } from "./insight-slot-status";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
+import type { LocalRepositoryService } from "./local-repository-service";
 
 /** How many rows the sidebar shows; a repository's local row counts once. */
 const SIDEBAR_ROW_LIMIT = 20;
@@ -60,9 +62,6 @@ type SidebarPullRequestRow = {
  * of them is open.
  */
 type SidebarLocalRepositoryRow = {
-  readonly host: GitHubHost;
-  readonly owner: GitHubOwner;
-  readonly repo: GitHubRepoName;
   /** The linked worktree the row opens, and its folder name; absent for the configured checkout. */
   readonly checkout?: AbsolutePath;
   readonly checkoutName?: string;
@@ -73,7 +72,14 @@ type SidebarLocalRepositoryRow = {
   readonly lastOpenedAt?: IsoTimestamp;
   /** Present while one of them has an agent run request awaiting approval or its approved run active (ADR 0052 "Sidebar marker"). */
   readonly agent?: true;
-};
+} & (
+  | {
+      readonly host: GitHubHost;
+      readonly owner: GitHubOwner;
+      readonly repo: GitHubRepoName;
+    }
+  | { readonly localRepositoryId: string; readonly displayName: string }
+);
 
 /** The sidebar's rows, plus how many stored Reviews could not be read. */
 export type SidebarListing = {
@@ -86,6 +92,7 @@ export type SidebarListing = {
 export type SidebarListingFailure = { readonly reason: "storage" };
 
 export type SidebarListingDependencies = {
+  readonly repositories: Pick<LocalRepositoryService, "list">;
   readonly reviews: Pick<ReviewStore, "list">;
   readonly insights: Pick<InsightStore, "load">;
   /** Current-format slots answer for a type that has one; the legacy record is fenced off. */
@@ -125,14 +132,18 @@ export class SidebarListingService {
         continue;
       }
       const { identityKey, source } = review.identity;
-      if (identityKey.kind !== "github") continue;
-      const { host, owner, repo } = identityKey;
       // Working-tree and branch Reviews stored before the shared Review (#555) are not listed.
       if (source.kind === "working_tree" || source.kind === "branch") continue;
-      const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
+      const key = JSON.stringify([identityKey, source.checkout ?? null]);
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
     const groups = [...localReviews.values()];
+    const registrations = groups.some(
+      (group) => group[0].identity.identityKey.kind === "local",
+    )
+      ? await this.dependencies.repositories.list(profileId)
+      : ok([]);
+    if (registrations._tag === "err") return err({ reason: "storage" });
     const activity = await Promise.all(
       groups.map((group) => this.hasAgentActivity(profileId, group)),
     );
@@ -141,8 +152,10 @@ export class SidebarListingService {
       const agent = activity[index];
       if (agent === undefined || agent._tag === "err")
         return err({ reason: "storage" });
+      const row = localRepositoryRow(group, registrations.value);
+      if (row._tag === "err") return row;
       localRows.push({
-        ...localRepositoryRow(group),
+        ...row.value,
         ...definedProps({ agent: agent.value ? (true as const) : undefined }),
       });
     }
@@ -245,7 +258,8 @@ type LocalReviewGroup = readonly [
 /** One checkout's local Reviews as one row, dated by the newest of them. */
 function localRepositoryRow(
   reviews: LocalReviewGroup,
-): SidebarLocalRepositoryRow {
+  registrations: ReadonlyArray<LocalRepositoryRegistration>,
+): Result<SidebarLocalRepositoryRow, SidebarListingFailure> {
   const [first, ...rest] = reviews;
   const newest = rest.reduce(
     (latest, review) => (sortedAt(review) > sortedAt(latest) ? review : latest),
@@ -259,13 +273,31 @@ function localRepositoryRow(
       undefined,
     );
   const { identityKey, source } = newest.identity;
-  if (identityKey.kind !== "github")
-    throw new Error("Sidebar group requires GitHub repository identity");
-  const { host, owner, repo } = identityKey;
-  return {
-    host,
-    owner,
-    repo,
+  let repository:
+    | {
+        readonly host: GitHubHost;
+        readonly owner: GitHubOwner;
+        readonly repo: GitHubRepoName;
+      }
+    | { readonly localRepositoryId: string; readonly displayName: string };
+  if (identityKey.kind === "github") {
+    repository = {
+      host: identityKey.host,
+      owner: identityKey.owner,
+      repo: identityKey.repo,
+    };
+  } else {
+    const registration = registrations.find(
+      (entry) => entry.id === identityKey.localRepositoryId,
+    );
+    if (registration === undefined) return err({ reason: "storage" });
+    repository = {
+      localRepositoryId: registration.id,
+      displayName: registration.displayName,
+    };
+  }
+  return ok({
+    ...repository,
     reviewIds: reviews.map((review) => review.id),
     sortedAt: sortedAt(newest),
     ...definedProps({
@@ -276,7 +308,7 @@ function localRepositoryRow(
           ? undefined
           : checkoutFolderName(source.checkout),
     }),
-  };
+  });
 }
 
 /**

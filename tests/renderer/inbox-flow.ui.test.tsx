@@ -65,6 +65,7 @@ describe("InboxFlow saved-review recovery", () => {
     const onOpenWorkbench = vi.fn();
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -122,6 +123,7 @@ describe("InboxFlow merged review opening", () => {
     const onOpenWorkbench = vi.fn();
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         inbox={mergedInbox}
@@ -173,6 +175,7 @@ describe("InboxFlow unreadable repo outcome", () => {
   >)("explains %s and offers no retry", (_name, outcome, fragment) => {
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={{
           ...dashboard,
@@ -219,6 +222,7 @@ describe("InboxFlow settings targeting", () => {
     };
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={authDashboard}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -274,6 +278,7 @@ describe("InboxFlow first run", () => {
     ) => (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={destination}
           onNavigate={vi.fn()}
           visitedReloadKey={0}
@@ -292,6 +297,7 @@ describe("InboxFlow first run", () => {
       shell(
         { kind: "dashboard" },
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={dashboard}
           // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -318,6 +324,7 @@ describe("InboxFlow first run", () => {
     });
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -362,6 +369,7 @@ describe("InboxFlow first run", () => {
     ): React.JSX.Element => (
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={current}
           // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -410,6 +418,7 @@ describe("InboxFlow first run", () => {
     });
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -439,6 +448,7 @@ describe("InboxFlow first run", () => {
     });
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: test fixture narrows a partial InboxResponse mock to the stricter renderer-contracts type; only the fields InboxFlow reads are set.
@@ -485,6 +495,7 @@ describe("InboxFlow review-opened notice", () => {
     });
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         inbox={runReviewInbox}
@@ -531,6 +542,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
 
     const { rerender } = renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         inbox={runReviewInbox}
@@ -564,6 +576,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
     rerender(
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={changedDashboard}
           // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
@@ -587,6 +600,7 @@ describe("InboxFlow bootstrap outcome open-error alert", () => {
     rerender(
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           state="error"
           refreshStatus="Current"
@@ -632,6 +646,7 @@ describe("InboxFlow stored-review error ownership", () => {
     };
     const { rerender } = renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="workbench"
         reviewId="saved-review"
         dashboard={dashboard}
@@ -650,6 +665,7 @@ describe("InboxFlow stored-review error ownership", () => {
     rerender(
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={profileB}
           // SAFETY: InboxFlow reads only the fixture fields supplied here.
@@ -671,6 +687,7 @@ describe("InboxFlow stored-review error ownership", () => {
     rerender(
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={dashboard}
           // SAFETY: InboxFlow reads only the fixture fields supplied here.
@@ -714,6 +731,7 @@ describe("InboxFlow profile-scoped Review opening", () => {
     const opened: WorkbenchResponse[] = [];
     const { rerender } = renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         inbox={runReviewInbox}
@@ -740,6 +758,7 @@ describe("InboxFlow profile-scoped Review opening", () => {
     rerender(
       <BusyProvider>
         <InboxFlow
+          onOpenLocalCheckout={() => undefined}
           destination="dashboard"
           dashboard={changedDashboard}
           // SAFETY: InboxFlow reads only the fixture fields supplied by this narrowed response.
@@ -796,6 +815,7 @@ describe("InboxFlow Review opening ownership", () => {
     const opened: WorkbenchResponse[] = [];
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: InboxFlow reads only the fixture fields supplied here.
@@ -858,6 +878,7 @@ describe("InboxFlow Review opening ownership", () => {
     };
     renderInboxFlow(
       <InboxFlow
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: InboxFlow reads only the fixture fields supplied here.

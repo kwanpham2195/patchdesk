@@ -2,11 +2,13 @@
 
 ## Summary
 
-When the active workspace watches no repository, the Pull requests screen shows workspace setup instead of the listing. The maintainer confirms the GitHub account, then adds the repositories to review by `owner/repo`. Setup happens in place: it never opens Settings, and it uses the same two cards Settings → Workspace renders, saving through the same path.
+On first run, the Pull requests screen offers **Open local checkout** and **Connect GitHub**. A disconnected workspace shows these actions instead of an authentication error or an empty pull request listing. Local Reviews need Git, but no GitHub CLI, account, remote, or watched repository. GitHub setup begins only after Connect GitHub.
 
 ## The simple case
 
-On a new installation, Pull requests shows `Set up your workspace` with two numbered cards. `1. Reviewing as` states the account the GitHub CLI resolved, or offers a selector when several are authenticated. Saving an account is the first thing that happens; on a fresh install with no stored workspace, that save writes the Default workspace, which becomes active.
+On a new installation, choose Open local checkout. Select a Git checkout in the folder picker, then pick Shared or Commit in the source dialog. Registering the first checkout saves the Default workspace with GitHub disconnected. Cancelling the folder picker saves nothing. See [Opening a local Review](../pull-requests/opening-a-local-review.md).
+
+For pull requests, choose Connect GitHub. The two numbered cards then appear. `1. Reviewing as` states the account the GitHub CLI resolved, or offers a selector when several are authenticated. Saving an account connects the workspace. Without a stored workspace, it writes Default.
 
 `2. Repositories` appears once an account is saved. The maintainer types a repository such as `acme/api` into `Add a repository` and presses Add; each added repository saves at once, so several can be added in one pass. A repository's checkout is optional here and can be chosen from its row; see [Watched repositories and checkouts](watched-repositories.md). Once at least one repository is watched, a Continue button appears at the end of setup; pressing it opens the inbox.
 
@@ -14,7 +16,10 @@ On a new installation, Pull requests shows `Set up your workspace` with two numb
 
 ```mermaid
 stateDiagram-v2
-    [*] --> account : Pull requests has no watched repository
+    [*] --> choice : first run or GitHub disconnected
+    choice --> local : Open local checkout
+    local --> workbench : checkout registered and Review opened
+    choice --> account : Connect GitHub
     account --> repositories : an account is saved
     repositories --> repositories : a repository is added
     repositories --> inbox : Continue is pressed with a repository watched
@@ -22,9 +27,9 @@ stateDiagram-v2
 
 ### Arrive
 
-The screen reaches this path when the workspace loaded successfully and watches no repository. The page heading is `Set up your workspace`, and it takes focus on arrival like every other destination's heading. The numbered cards below it carry the rest. The filter toolbar, the table, the pager, and the details panel are not rendered; setup replaces the screen rather than sitting above it. The titlebar and the [Visited pull requests column](../foundations/visited-pull-requests.md) stay beside it, as they do on every screen. On a fresh install the column is a blank frame until the account save creates the workspace; after that it reads the new workspace's Reviews and shows its empty line when there are none. When the first inbox load never succeeded at all, the same setup appears under the screen's own `First run` header, with Refresh available.
+The page heading is `Set up your workspace`. The filter toolbar, table, pager, and details panel are absent. The titlebar's Open local checkout action and the [Visited pull requests column](../foundations/visited-pull-requests.md) remain available. A disconnected workspace does not poll GitHub or probe credentials. Local errors stay with the checkout action.
 
-One environment read serves the whole screen. `1. Reviewing as` renders what the GitHub CLI reports. Below it, and only when that read says Git is missing, one line says `Git is not installed. Install Git for this platform, then re-check.` Nothing else about local tools is shown, and Patchdesk installs and logs in to nothing.
+After Connect GitHub, one environment read serves the account cards. `1. Reviewing as` renders what the GitHub CLI reports. Below it, and only when that read says Git is missing, one line says `Git is not installed. Install Git for this platform, then re-check.` Patchdesk installs and logs in to nothing.
 
 Until an account is saved, the second card is replaced by the line `Choose an account first.` The watchlist needs a saved workspace, which the account save is what creates.
 
@@ -52,37 +57,37 @@ Setup stays on screen after the first repository is watched and ends when the ma
 
 ## Variants
 
-| Variant                                                | Before the action runs                                                                                                               | While the action runs                                                                                                     |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Workspace profile and GitHub account                   | A fresh install has no stored workspace, only a neutral one held in memory. The first account save writes it under the name Default. | Every later save updates that workspace. The account is what the watchlist is scoped to.                                   |
-| Pull request and Review state                          | An empty watchlist produces this setup state, not a listing or a Review workbench.                                                   | No repository is read and no Review session is created until a repository is watched.                                     |
-| GitHub permissions and merge readiness                 | Setup needs an authenticated account, not merge permission or a pull-request decision.                                               | Saving is local. Repository permission failures appear later, on the first listing read.                                  |
-| Network, local tool, and Insight provider availability | The GitHub CLI supplies the accounts. A missing Git shows its own line. Insight providers are not required and are not queried.      | Adding reads no folder. A failed environment read leaves the account card explaining the failure, with Re-check.          |
-| Input path: mouse, keyboard, or desktop menu           | The cards are the same controls Settings renders, and are keyboard operable.                                                         | Commit on Enter and commit on blur reach the same save. Choose checkout's macOS folder picker temporarily owns focus.      |
+| Variant                                                | Before the action runs                                                                                                | While the action runs                                                                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Workspace profile and GitHub account                   | Default remains in memory until the first registration or account save.                                               | Local registration saves a disconnected workspace; an account save connects GitHub.                                   |
+| Pull request and Review state                          | A disconnected workspace offers local setup without a watchlist.                                                      | Opening a local checkout can create a Review immediately. GitHub listing starts after account and repository setup.   |
+| GitHub permissions and merge readiness                 | Local setup needs no GitHub permission. Connect GitHub needs an authenticated account, not merge permission.          | Saving is local. Repository permission failures appear later, on the first listing read.                              |
+| Network, local tool, and Insight provider availability | Local setup needs Git. The GitHub CLI supplies accounts only after Connect GitHub. Insight providers are not queried. | Checkout errors remain on the local path. A failed account probe offers Re-check.                                     |
+| Input path: mouse, keyboard, or desktop menu           | The cards are the same controls Settings renders, and are keyboard operable.                                          | Commit on Enter and commit on blur reach the same save. Choose checkout's macOS folder picker temporarily owns focus. |
 
 ## Cancel and interrupt
 
-| Event                                                                                                 | Before the action runs                                                                                   | While the action runs                                                                                             |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Cancel, Stop, or Escape                                                                               | There is no setup-wide Cancel or Stop. Escape has no effect here.                                        | A save and a watchlist write have no Stop control; each settles or fails on its own.                              |
-| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation proceeds; setup holds nothing unsaved. Settings → Workspace shows the same two cards.         | Leaving does not cancel a request in flight. Returning re-reads the environment and the workspace.                |
-| Start another action or request a refresh                                                             | Re-check and Refresh are separate reads. Neither edits the workspace.                                    | A newer Re-check owns the visible result. A reload after a save is what makes the next card correct.              |
-| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Setup is reachable without any successful GitHub read; the empty state is local.                         | The affected control reports its own failure. Nothing retries by itself; Re-check and re-committing are explicit. |
-| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Saved account, watchlist, and checkouts survive. Probe results do not.                                   | A reload drops in-memory status. The next load starts from what was actually saved.                               |
-| The pull request, represented revision, pending review, permission, or other target changes elsewhere | No pull-request target exists yet. Another workspace becoming active changes what setup is asked for.    | The next inbox load is authoritative for whether setup is still needed.                                           |
-| macOS focus, a file or folder picker, or another input path takes control                             | Cancelling Choose checkout's folder picker changes nothing.                                              | Focus loss does not cancel a watchlist write. Blur is itself a commit.                                            |
+| Event                                                                                                 | Before the action runs                                                                                | While the action runs                                                                                             |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Cancel, Stop, or Escape                                                                               | There is no setup-wide Cancel or Stop. Escape has no effect here.                                     | A save and a watchlist write have no Stop control; each settles or fails on its own.                              |
+| Navigate to another Patchdesk screen, Review, Settings section, or workspace profile                  | Navigation proceeds; setup holds nothing unsaved. Settings → Workspace shows the same two cards.      | Leaving does not cancel a request in flight. Returning re-reads the environment and the workspace.                |
+| Start another action or request a refresh                                                             | Re-check and Refresh are separate reads. Neither edits the workspace.                                 | A newer Re-check owns the visible result. A reload after a save is what makes the next card correct.              |
+| GitHub, the network, a local tool, or an Insight provider fails or times out                          | Setup is reachable without any successful GitHub read; the empty state is local.                      | The affected control reports its own failure. Nothing retries by itself; Re-check and re-committing are explicit. |
+| Close Settings, reload the renderer, close the window, or quit Patchdesk                              | Saved account, watchlist, and checkouts survive. Probe results do not.                                | A reload drops in-memory status. The next load starts from what was actually saved.                               |
+| The pull request, represented revision, pending review, permission, or other target changes elsewhere | No pull-request target exists yet. Another workspace becoming active changes what setup is asked for. | The next inbox load is authoritative for whether setup is still needed.                                           |
+| macOS focus, a file or folder picker, or another input path takes control                             | Cancelling Choose checkout's folder picker changes nothing.                                           | Focus loss does not cancel a watchlist write. Blur is itself a commit.                                            |
 
 ## Interactions with other systems
 
-**Workspace profile and identity.** Setup writes the same workspace Settings → Workspace writes, through the same editor. The account save on a fresh install is what creates the workspace.
+**Workspace profile and identity.** Local registration creates a disconnected Default workspace when needed. Connect GitHub uses the same workspace editor as Settings → Workspace.
 
-**Review revision and freshness.** No Review session or represented revision exists in this state. Freshness begins after a watched pull request is loaded.
+**Review revision and freshness.** The local path opens a captured Git revision. The GitHub path establishes no Review session until a pull request is opened.
 
-**Local persistence and recovery.** A workspace that was never persisted is neutral: Patchdesk holds it in memory rather than writing a record with no account. The first account save is what writes it, under the name Default. Account, watchlist, and checkouts are durable; environment results are re-creatable.
+**Local persistence and recovery.** Before the first registration or account save, Default is held in memory. Either action saves it. Registrations, account, watchlist, and checkouts survive restart. Environment results are re-creatable.
 
 **GitHub permissions and write authority.** Nothing here writes to GitHub. A resolved account proves only that the GitHub CLI reports it as authenticated.
 
-**Network, local tools, and Insight providers.** One environment read supplies both the account list and the Git line. Patchdesk reads no folder during setup. Insight providers are not consulted.
+**Network, local tools, and Insight providers.** Opening a local checkout reads only the selected Git repository. The GitHub account probe runs only after Connect GitHub. Insight providers are not consulted.
 
 **Concurrent operations and locking.** Saves compose and the newest response wins. Watchlist writes are per repository, so one slow row does not block another.
 

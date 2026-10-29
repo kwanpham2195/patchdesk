@@ -58,6 +58,7 @@ export const inbox = {
   profile: {
     id: "profile",
     label: "Profile",
+    github: { kind: "connected", host: "github.com", account: "fixture" },
     githubHost: "github.com",
     ghAccount: "fixture",
   },

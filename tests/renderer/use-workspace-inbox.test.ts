@@ -39,8 +39,11 @@ type RepositoryFixture = {
 type ProfileFixture = {
   readonly id: string;
   readonly label: string;
-  readonly githubHost: string;
-  readonly ghAccount: string;
+  readonly github: {
+    readonly kind: "connected";
+    readonly host: string;
+    readonly account: string;
+  };
   readonly repos: ReadonlyArray<RepositoryFixture>;
 };
 
@@ -57,15 +60,13 @@ const repositoryB: RepositoryFixture = {
 const profileA: ProfileFixture = {
   id: "a",
   label: "Profile A",
-  githubHost: "github.com",
-  ghAccount: "a",
+  github: { kind: "connected", host: "github.com", account: "a" },
   repos: [repositoryA],
 };
 const profileB: ProfileFixture = {
   id: "b",
   label: "Profile B",
-  githubHost: "github.com",
-  ghAccount: "b",
+  github: { kind: "connected", host: "github.com", account: "b" },
   repos: [repositoryA, repositoryB],
 };
 const profileEmpty: ProfileFixture = {

@@ -168,11 +168,16 @@ type VisitedLabelScope = "number" | "repo" | "owner-repo";
  * and distinguishes nothing, which pushed the age off the meta line.
  */
 function visitedLabelScope(
-  rows: ReadonlyArray<Pick<SidebarReviewRow, "owner" | "repo">>,
+  rows: ReadonlyArray<SidebarReviewRow>,
 ): VisitedLabelScope {
-  const repositories = new Set(rows.map((row) => `${row.owner}/${row.repo}`));
+  const githubRows = rows.filter((row) => "owner" in row);
+  const repositories = new Set(
+    githubRows.map((row) => `${row.owner}/${row.repo}`),
+  );
   if (repositories.size <= 1) return "number";
-  return new Set(rows.map((row) => row.owner)).size > 1 ? "owner-repo" : "repo";
+  return new Set(githubRows.map((row) => row.owner)).size > 1
+    ? "owner-repo"
+    : "repo";
 }
 
 type VisitedListEntry = {
@@ -479,8 +484,19 @@ export function visitedRowLabels(
         "title" | "owner" | "repo" | "number" | "lastOpenedAt"
       >
     | Pick<
-        SidebarLocalRepositoryRow,
+        Extract<SidebarLocalRepositoryRow, { readonly owner: string }>,
         "owner" | "repo" | "reviewIds" | "lastOpenedAt" | "checkoutName"
+      >
+    | Pick<
+        Extract<
+          SidebarLocalRepositoryRow,
+          { readonly localRepositoryId: string }
+        >,
+        | "displayName"
+        | "localRepositoryId"
+        | "reviewIds"
+        | "lastOpenedAt"
+        | "checkoutName"
       >,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
@@ -489,8 +505,10 @@ export function visitedRowLabels(
     return {
       title:
         row.checkoutName === undefined
-          ? `${row.owner}/${row.repo}`
-          : `${row.owner}/${row.repo} · ${row.checkoutName}`,
+          ? "localRepositoryId" in row
+            ? row.displayName
+            : `${row.owner}/${row.repo}`
+          : `${"localRepositoryId" in row ? row.displayName : `${row.owner}/${row.repo}`} · ${row.checkoutName}`,
       reference: `local${separator}`,
     };
   const repository = visitedRepositoryLabel(row, scope);
@@ -504,7 +522,7 @@ export function visitedRowLabels(
 
 /** The repository part of a row's label, empty when the scope names none. */
 function visitedRepositoryLabel(
-  row: Pick<SidebarReviewRow, "owner" | "repo">,
+  row: Pick<SidebarPullRequestRow, "owner" | "repo">,
   scope: VisitedLabelScope,
 ): string {
   if (scope === "number") return "";

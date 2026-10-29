@@ -95,8 +95,7 @@ describe("parseInboxResponse", () => {
     profile: {
       id: "acme",
       label: "Profile",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      github: { kind: "connected", host: "github.com", account: "fixture" },
     },
     inbox: {
       state: "merged" as const,

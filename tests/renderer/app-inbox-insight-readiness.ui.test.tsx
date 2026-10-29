@@ -25,8 +25,7 @@ const repo = { host: "github.com", owner: "owner", repo: "repo" };
 const profile = {
   id: "profile",
   label: "Profile",
-  githubHost: "github.com",
-  ghAccount: "fixture",
+  github: { kind: "connected", host: "github.com", account: "fixture" },
   repos: [repo],
 };
 

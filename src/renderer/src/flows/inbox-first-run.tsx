@@ -1,4 +1,5 @@
 import { CircleAlert } from "lucide-react";
+import { useState } from "react";
 import { Button } from "#src/renderer/src/components/ui/button";
 import type { Dashboard, Profile } from "#src/renderer/src/renderer-models";
 import { useWorkspaceProfileEditor } from "./settings-workspace-profile-editor";
@@ -18,6 +19,46 @@ import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";
 const NO_PROFILES: ReadonlyArray<Profile> = [];
 
 export function WorkspaceFirstRun({
+  onOpenLocalCheckout,
+  ...props
+}: {
+  readonly onOpenLocalCheckout: () => void;
+  readonly dashboard: Dashboard | undefined;
+  readonly unsavedProfile: Profile | undefined;
+  readonly onWorkspaceReload: () => Promise<void>;
+  readonly onContinue: (() => void) | undefined;
+}): React.JSX.Element {
+  const profile = props.dashboard?.profile ?? props.unsavedProfile;
+  const profileId = profile?.id ?? "default";
+  const [connectingProfileId, setConnectingProfileId] = useState<string>();
+  if (
+    (profile !== undefined && profile.ghAccount !== "") ||
+    connectingProfileId === profileId
+  )
+    return <GitHubWorkspaceSetup {...props} />;
+  return (
+    <section
+      className="m-6 flex flex-col gap-4"
+      aria-label="Set up your workspace"
+    >
+      <h1 className="text-lg font-semibold">Set up your workspace</h1>
+      <p className="text-sm text-muted-foreground">
+        Review a local Git checkout, or connect GitHub to review pull requests.
+      </p>
+      <div className="flex gap-2">
+        <Button onClick={onOpenLocalCheckout}>Open local checkout</Button>
+        <Button
+          variant="outline"
+          onClick={() => setConnectingProfileId(profileId)}
+        >
+          Connect GitHub
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function GitHubWorkspaceSetup({
   dashboard,
   unsavedProfile,
   onWorkspaceReload,

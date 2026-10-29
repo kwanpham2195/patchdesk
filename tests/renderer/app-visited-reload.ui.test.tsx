@@ -26,8 +26,7 @@ afterEach(() => {
 const profile = {
   id: "profile",
   label: "Profile",
-  githubHost: "github.com",
-  ghAccount: "fixture",
+  github: { kind: "connected", host: "github.com", account: "fixture" },
 };
 const visitedRow = {
   reviewId: "review-7",

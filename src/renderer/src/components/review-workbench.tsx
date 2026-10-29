@@ -165,7 +165,10 @@ export function ReviewWorkbench({
             : model.checks.overall === "none"
               ? "No checks"
               : "Unknown";
-  const repository = `${model.session.key.owner}/${model.session.key.repo}`;
+  const repository =
+    "identityKey" in model.session.key
+      ? "Local checkout"
+      : `${model.session.key.owner}/${model.session.key.repo}`;
   const title =
     model.pullRequest?.title ?? reviewSourceTitle(model.session.key.source);
   const unsentTextFields = useUnsentReviewTextFields();

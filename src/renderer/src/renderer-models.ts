@@ -12,8 +12,8 @@ export type Profile = {
   readonly label: string;
   readonly githubHost: string;
   readonly ghAccount: string;
-  readonly rulePaths?: ReadonlyArray<string>;
-  readonly repos?: ReadonlyArray<Repo>;
+  readonly rulePaths?: ReadonlyArray<string> | undefined;
+  readonly repos?: ReadonlyArray<Repo> | undefined;
 };
 
 /** A watched repository as the renderer holds it: its identity plus the

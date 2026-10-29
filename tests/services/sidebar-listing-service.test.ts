@@ -190,6 +190,7 @@ function service(
     },
   );
   const listed = new SidebarListingService({
+    repositories: { list: async () => ok([]) },
     reviews: {
       async list(): Promise<ListResult> {
         return listing;
@@ -487,6 +488,7 @@ describe("SidebarListingService.list", () => {
 
   it("survives a diagnostic that rejects", async () => {
     const listed = new SidebarListingService({
+      repositories: { list: async () => ok([]) },
       reviews: {
         async list(): Promise<ListResult> {
           return ok({

@@ -28,6 +28,7 @@ describe("InboxFlow paste behavior", () => {
     desktop = installDesktopDouble(SHARED_INBOX_ROUTES);
     renderInboxFlow(
       <InboxFlowHarness
+        onOpenLocalCheckout={() => undefined}
         destination="dashboard"
         dashboard={dashboard}
         // SAFETY: InboxFlow reads only the fixture fields supplied here.

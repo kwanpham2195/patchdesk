@@ -1,6 +1,9 @@
 import * as v from "valibot";
 
-import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import {
+  localRepositoryQuery,
+  type LocalRepositoryTarget,
+} from "./local-repositories";
 import type { LocalReviewSourceInput } from "./flows/use-inbox-review-opening";
 
 const branchName = v.pipe(v.string(), v.minLength(1));
@@ -37,10 +40,13 @@ export function parseLocalBranches(
 /** The listing for `checkout`, or for the configured checkout when it is absent. */
 export function localBranchesPath(
   profileId: string,
-  repository: RepositoryIdentity,
+  repository: LocalRepositoryTarget,
   checkout: string | undefined,
 ): string {
-  const query = new URLSearchParams({ profileId, ...repository });
+  const query = new URLSearchParams({
+    profileId,
+    ...localRepositoryQuery(repository),
+  });
   if (checkout !== undefined) query.set("checkout", checkout);
   return `/v1/reviews/local-branches?${query.toString()}`;
 }

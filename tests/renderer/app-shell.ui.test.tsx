@@ -58,6 +58,7 @@ describe("AppShell settings overlay entry points", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -85,6 +86,7 @@ describe("AppShell settings overlay entry points", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -129,6 +131,7 @@ describe("AppShell Navigate shortcut", () => {
       render(
         <BusyProvider>
           <AppShell
+            onOpenLocalCheckout={() => undefined}
             destination={{ kind: "dashboard" }}
             onNavigate={() => undefined}
             visitedReloadKey={0}
@@ -164,6 +167,7 @@ describe("AppShell Navigate shortcut", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -204,6 +208,7 @@ describe("AppShell Navigate shortcut", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -238,6 +243,7 @@ describe("AppShell preset commands", () => {
       render(
         <BusyProvider>
           <AppShell
+            onOpenLocalCheckout={() => undefined}
             destination={{ kind: "dashboard" }}
             onNavigate={onNavigate}
             visitedReloadKey={0}
@@ -272,6 +278,7 @@ describe("AppShell pull-request command", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -307,6 +314,7 @@ describe("AppShell pull-request command", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "workbench", reviewId: "review-1" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -338,6 +346,7 @@ describe("AppShell visited pull requests toggle", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -403,6 +412,7 @@ describe("AppShell pull-request search", () => {
     render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -515,6 +525,7 @@ describe("AppShell Review commands", () => {
     return (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -572,6 +583,7 @@ describe("AppShell heading focus", () => {
     ) => (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={destination}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -605,6 +617,7 @@ describe("AppShell heading focus", () => {
     const shell = (heading: boolean) => (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "workbench", reviewId: "review-1" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -619,6 +632,7 @@ describe("AppShell heading focus", () => {
     const { rerender } = render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -654,6 +668,7 @@ describe("AppShell heading focus", () => {
     ) => (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={destination}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -688,6 +703,7 @@ describe("AppShell heading focus", () => {
     const shell = (content: React.ReactNode) => (
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "workbench", reviewId: "review-1" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}
@@ -702,6 +718,7 @@ describe("AppShell heading focus", () => {
     const { rerender } = render(
       <BusyProvider>
         <AppShell
+          onOpenLocalCheckout={() => undefined}
           destination={{ kind: "dashboard" }}
           onNavigate={() => undefined}
           visitedReloadKey={0}

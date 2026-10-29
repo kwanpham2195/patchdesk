@@ -23,6 +23,7 @@ import { fixtureDestination, isFixtureHash } from "./flows/fixture-routes";
 import { InboxFlow } from "./flows/inbox-flow";
 import { DiagnosticsModal } from "./components/diagnostics-modal";
 import { LocalReviewSourceDialog } from "./components/local-review-source-dialog";
+import { LocalCheckoutDialog } from "./components/local-checkout-dialog";
 import { SettingsModal } from "./components/settings-modal";
 import type { DashboardScreenState } from "./renderer-models";
 import {
@@ -181,6 +182,8 @@ function AppContent({
     bootRestoredDestination,
     pendingDestination,
     setPendingDestination,
+    localCheckoutEntry,
+    setLocalCheckoutEntry,
     performNavigation: commitNavigation,
     navigate: parkNavigation,
   } = useAppNavigation(leaveWorkbench);
@@ -332,6 +335,11 @@ function AppContent({
     [navigationState, performNavigation],
   );
   const [visitedReloadKey, setVisitedReloadKey] = useState(0);
+  const openLocalCheckout = (entry: "picker" | "chooser"): void => {
+    void confirmLeaveReview().then((leave) => {
+      if (leave) setLocalCheckoutEntry(entry);
+    });
+  };
   // The retention sweep runs in the main process and removes Reviews the column lists, so it reads again on the main process's say-so, never on a timer (#740, ADR 0032).
   useEffect(() => {
     if (window.patchdesk?.onReviewsRemoved === undefined) return;
@@ -380,8 +388,16 @@ function AppContent({
   const { openRow: openLocalRow } = localRowOpen;
   const rowDialogTarget = localRowOpen.dialogTarget;
   const openLocalRepositoryFromSidebar = useCallback(
-    ({ host, owner, repo, checkout }: SidebarLocalRepositoryRow): void => {
-      const target = { host, owner, repo, ...definedProps({ checkout }) };
+    (row: SidebarLocalRepositoryRow): void => {
+      const target = {
+        ...("localRepositoryId" in row
+          ? {
+              localRepositoryId: row.localRepositoryId,
+              displayName: row.displayName,
+            }
+          : { host: row.host, owner: row.owner, repo: row.repo }),
+        ...definedProps({ checkout: row.checkout }),
+      };
       if (navigationState !== "clear") {
         setParkedLocalOpen(target);
         return;
@@ -451,7 +467,11 @@ function AppContent({
   ): React.JSX.Element => (
     <TooltipProvider>
       <WatchedPullRequestsProvider
-        profileId={dashboard?.profile.id ?? inbox?.profile.id ?? ""}
+        profileId={
+          dashboard?.profile.ghAccount === ""
+            ? ""
+            : (dashboard?.profile.id ?? inbox?.profile.id ?? "")
+        }
       >
         <AppShell
           destination={next}
@@ -459,6 +479,7 @@ function AppContent({
           navigationBlocked={navigationState === "write_pending"}
           onNavigate={navigate}
           onOpenLocalReview={openLocalRepositoryFromSidebar}
+          onOpenLocalCheckout={() => openLocalCheckout("chooser")}
           onOpenSettings={openSettings}
           onOpenDiagnostics={openDiagnostics}
           profiles={profiles.map((p) => ({ id: p.id, label: p.label }))}
@@ -606,9 +627,22 @@ function AppContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {localCheckoutEntry !== undefined ? (
+        <LocalCheckoutDialog
+          profileId={profileId ?? "default"}
+          pickOnOpen={localCheckoutEntry === "picker"}
+          onClose={() => setLocalCheckoutEntry(undefined)}
+          onWorkspaceReload={loadWorkspace}
+          onOpen={openLocalReview}
+        />
+      ) : null}
       {rowDialogTarget === undefined || profileId === undefined ? null : (
         <LocalReviewSourceDialog
-          repositoryLabel={`${rowDialogTarget.owner}/${rowDialogTarget.repo}`}
+          repositoryLabel={
+            "localRepositoryId" in rowDialogTarget
+              ? (rowDialogTarget.displayName ?? "Local checkout")
+              : `${rowDialogTarget.owner}/${rowDialogTarget.repo}`
+          }
           checkoutsPath={localCheckoutsPath(profileId, rowDialogTarget)}
           branchesPath={(checkout) =>
             localBranchesPath(profileId, rowDialogTarget, checkout)
@@ -728,6 +762,7 @@ function AppContent({
   return shell(
     <div className="flex min-h-0 flex-1 flex-col">
       <InboxFlow
+        onOpenLocalCheckout={() => openLocalCheckout("picker")}
         destination={destination.kind}
         {...reviewIdField}
         {...bootRestoreMissingField}

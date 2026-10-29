@@ -77,6 +77,7 @@ export function directConversationActionProps(
 export function pullRequestExternalRef(
   model: WorkbenchResponse,
 ): PullRequestRef | undefined {
+  if ("identityKey" in model.session.key) return undefined;
   const prNumber = workbenchPullRequestNumber(model.session.key.source);
   if (prNumber === undefined) return undefined;
   const source = model.pullRequest?.ref ?? {

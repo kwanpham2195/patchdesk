@@ -1,6 +1,9 @@
 import * as v from "valibot";
 
-import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import {
+  localRepositoryQuery,
+  type LocalRepositoryTarget,
+} from "./local-repositories";
 
 // `GET /v1/reviews/local-checkouts` (#489): the configured checkout and its live linked worktrees.
 const localCheckoutsSchema = v.array(
@@ -30,8 +33,11 @@ export function parseLocalCheckouts(
 
 export function localCheckoutsPath(
   profileId: string,
-  repository: RepositoryIdentity,
+  repository: LocalRepositoryTarget,
 ): string {
-  const query = new URLSearchParams({ profileId, ...repository });
+  const query = new URLSearchParams({
+    profileId,
+    ...localRepositoryQuery(repository),
+  });
   return `/v1/reviews/local-checkouts?${query.toString()}`;
 }

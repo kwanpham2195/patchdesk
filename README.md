@@ -66,8 +66,9 @@ https://github.com/user-attachments/assets/861a56f9-c76d-4b77-8254-43762a924251
   (English or Vietnamese) per run. Pi supplies models through its configured
   native login; Patchdesk no longer runs a separate API-key integration.
   [More](#bring-your-preferred-model)
-- **Local Reviews.** Review your branch against its base branch, committed
-  and uncommitted changes together, or one commit, before it reaches GitHub.
+- **Local Reviews.** Open any local Git checkout without GitHub, a remote,
+  or the GitHub CLI. Review your branch against its base branch, committed
+  and uncommitted changes together, or one commit.
 - **Coding agents over MCP.** Claude Code and Codex open a local Review of
   their change, read your notes on its lines, and refresh the Review with
   their fix. An Insight an agent requests waits until you press **Run**.
@@ -162,9 +163,14 @@ commands.
 
 ### Finish setup
 
-Check that `uname -m` prints `arm64`, `git --version` and `gh --version` work,
-and `gh auth status` shows an authenticated account. If it does not, run
-`gh auth login`. Open Patchdesk and add the repositories to review as
+Check that `uname -m` prints `arm64` and `git --version` works. Open Patchdesk
+and choose **Open local checkout** to review a branch or commit. With Patchdesk
+open, `patchdesk setup add-checkout` registers the current checkout from the
+terminal. Local Reviews need no GitHub account, remote, or GitHub CLI.
+
+For GitHub pull requests, choose **Connect GitHub**. Check that `gh --version`
+works and `gh auth status` shows an authenticated account. If it does not, run
+`gh auth login`. Add the repositories to review as
 `owner/repo`. Press Continue to see the pull request list. With Patchdesk open,
 `patchdesk setup add-repo` run in a checkout adds its repository from the
 terminal instead; see
@@ -177,15 +183,15 @@ to review and give it this task:
 > https://github.com/kwanpham2195/patchdesk. Follow these steps in order:
 >
 > 1. Check the prerequisites in [Finish setup](#finish-setup): `uname -m`
->    prints `arm64`, and `git --version` and `gh --version` work.
+>    prints `arm64`, and `git --version` works.
 > 2. If `command -v patchdesk` finds nothing, install Patchdesk
 >    [with one command](#install-with-one-command). If
 >    `/Applications/Patchdesk.app` already exists,
 >    [link the command](docs/mcp.md#install-the-command) instead.
 > 3. Run `patchdesk setup status`. If it answers `app_not_running`, run
->    `open -a Patchdesk`, wait a few seconds, and run it again. If it asks
->    for `gh auth login`, stop and ask me to run it.
-> 4. Run `patchdesk setup add-repo` in this project's checkout.
+>    `open -a Patchdesk`, wait a few seconds, and run it again.
+> 4. Run `patchdesk setup add-checkout` in this project's checkout. Connect
+>    GitHub separately only if I ask to review GitHub pull requests.
 > 5. Register the MCP server unless `claude mcp get patchdesk` or
 >    `codex mcp get patchdesk` already finds it: run
 >    `claude mcp add patchdesk -- patchdesk mcp` in Claude Code or

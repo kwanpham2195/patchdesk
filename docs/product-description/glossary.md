@@ -20,7 +20,9 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 ## Workspace and identity
 
-**Workspace profile.** The saved local configuration that selects a GitHub host and account, rule paths, and watched repositories with their checkouts. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a _Workspace_.
+**Workspace profile.** The saved local configuration for local repository registrations, rule paths, and an optional GitHub connection with watched repositories. Switching profiles returns the app to the Pull requests screen and reloads that profile's state. This is the internal name; the app calls it a _Workspace_.
+
+**Local repository registration.** A workspace's saved identity for a Git repository and its checkout. A subdirectory, symlink, and linked worktree resolve to the same registration. Adding or changing a remote does not change its identity or its Local Reviews. Registering a checkout does not add it to the GitHub watchlist.
 
 **Workspace.** What the app calls a _workspace profile_ everywhere the maintainer can see it: the Settings section, its Name and Active workspace controls, and the New workspace dialog. A workspace's stored identifier is derived from its name and is never shown.
 

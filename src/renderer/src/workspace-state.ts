@@ -4,7 +4,6 @@ import type {
   Profile,
 } from "./renderer-models";
 import type { InboxResponse, InboxRow } from "./renderer-contracts";
-import { record, stringArray } from "./json-guards";
 
 type WorkspaceState = {
   readonly profiles: ReadonlyArray<Profile>;
@@ -22,6 +21,11 @@ type WorkspaceState = {
 };
 
 export type WorkspaceAction =
+  | {
+      readonly _tag: "localLoaded";
+      readonly profiles: ReadonlyArray<Profile>;
+      readonly dashboard: Dashboard;
+    }
   | { readonly _tag: "loading" }
   | {
       readonly _tag: "failed";
@@ -65,6 +69,14 @@ export function workspaceReducer(
   action: WorkspaceAction,
 ): WorkspaceState {
   switch (action._tag) {
+    case "localLoaded":
+      return {
+        profiles: action.profiles,
+        dashboard: action.dashboard,
+        screen: "empty",
+        refreshing: false,
+        refreshFailed: false,
+      };
     case "loading":
       return { ...state, screen: "loading" };
     case "failed":
@@ -154,21 +166,6 @@ export function unsavedDefaultProfile(
   return only.ghAccount === "" ? only : undefined;
 }
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the Profile I/O boundary parser for the raw /v1/profiles response; there is no earlier boundary to move the parse to.
-export function isProfile(value: unknown): value is Profile {
-  return (
-    record(value) &&
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof value.id === "string" &&
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof value.label === "string" &&
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof value.githubHost === "string" &&
-    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows a raw JSON field at this exact I/O boundary; no earlier parser exists for this primitive shape.
-    typeof value.ghAccount === "string" &&
-    (value.rulePaths === undefined || stringArray(value.rulePaths))
-  );
-}
 export function dashboardFromInbox(inbox: InboxResponse): Dashboard {
   const rulePathsField =
     inbox.profile.rulePaths === undefined

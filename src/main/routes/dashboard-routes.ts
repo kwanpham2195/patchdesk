@@ -65,6 +65,10 @@ export function registerDashboardRoutes(
     );
   });
   app.get("/v1/local-repositories", async (context) => {
+    const saved = await dashboard.savedProfiles();
+    if (saved._tag === "err" && saved.error.reason === "no_profile")
+      return context.json([]);
+    if (saved._tag === "err") return response(context, saved);
     const profileId = parseWorkspaceProfileId(context.req.query("profileId"));
     if (profileId._tag === "err")
       return context.json({ error: "invalid_input" }, 400);

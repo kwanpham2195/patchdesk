@@ -69,30 +69,12 @@ type AppShellProfileSwitch = (
   returnFocus: HTMLElement | null,
 ) => void;
 
-export function AppShell({
-  destination,
-  navigationBlocked = false,
-  onNavigate,
-  onOpenLocalReview,
-  onOpenSettings,
-  onOpenDiagnostics,
-  profiles,
-  activeProfileId,
-  profileSwitchState,
-  onProfileSwitch,
-  onInboxStateChange,
-  onInboxPresetChange,
-  inboxChangeFits,
-  pullRequestDefaultHost,
-  onOpenPullRequest,
-  selectedRepository,
-  visitedReloadKey,
-  children,
-}: {
+type AppShellProps = {
   readonly destination: AppDestination;
   readonly navigationBlocked?: boolean;
   readonly onNavigate: (destination: AppDestination) => void;
   readonly onOpenLocalReview: LocalRepositoryOpen;
+  readonly onOpenLocalCheckout: () => void;
   readonly onOpenSettings: (opener?: HTMLElement) => void;
   readonly onOpenDiagnostics: (opener?: HTMLElement) => void;
   readonly profiles?: ReadonlyArray<ProfileEntry>;
@@ -120,7 +102,29 @@ export function AppShell({
   /** Re-reads the visited pull requests whenever it moves: `App` bumps it on every Review open. */
   readonly visitedReloadKey: number;
   readonly children: React.ReactNode;
-}): React.JSX.Element {
+};
+
+export function AppShell({
+  destination,
+  navigationBlocked = false,
+  onNavigate,
+  onOpenLocalReview,
+  onOpenLocalCheckout,
+  onOpenSettings,
+  onOpenDiagnostics,
+  profiles,
+  activeProfileId,
+  profileSwitchState,
+  onProfileSwitch,
+  onInboxStateChange,
+  onInboxPresetChange,
+  inboxChangeFits,
+  pullRequestDefaultHost,
+  onOpenPullRequest,
+  selectedRepository,
+  visitedReloadKey,
+  children,
+}: AppShellProps): React.JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const reviewCommands = useReviewCommandRegistry();
@@ -261,6 +265,14 @@ export function AppShell({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={navigationBlocked}
+            onClick={onOpenLocalCheckout}
+          >
+            Open local checkout
+          </Button>
           {profiles !== undefined && profiles.length > 0 ? (
             <TitlebarWorkspaceSwitcher
               profiles={profiles}

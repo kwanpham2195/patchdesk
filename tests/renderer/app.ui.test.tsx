@@ -43,8 +43,7 @@ afterEach(() => {
 const profileFixture = {
   id: "profile",
   label: "Profile",
-  githubHost: "github.com",
-  ghAccount: "fixture",
+  github: { kind: "connected", host: "github.com", account: "fixture" },
 };
 
 /**
@@ -618,8 +617,7 @@ function stateFilteredInbox(
     profile: {
       id: "profile",
       label: "Profile",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      github: { kind: "connected", host: "github.com", account: "fixture" },
     },
     inbox: {
       state,
@@ -711,8 +709,7 @@ function inbox(rows: ReadonlyArray<ReturnType<typeof openRow>> = []) {
     profile: {
       id: "profile",
       label: "Profile",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      github: { kind: "connected", host: "github.com", account: "fixture" },
     },
     inbox: {
       state: "open",
@@ -765,8 +762,7 @@ function repoInboxResponse(
     profile: {
       id: "profile",
       label: "Profile",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      github: { kind: "connected", host: "github.com", account: "fixture" },
       repos: watchlist,
     },
     inbox: {

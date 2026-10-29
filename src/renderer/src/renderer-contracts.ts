@@ -2,6 +2,7 @@ import { INSIGHT_FAILURE_CATEGORIES } from "#src/domain/insight-record";
 import { nativeSessionAttemptPageSchema } from "#src/domain/native-session-attempt";
 import { walkthroughSummarySchema } from "#src/domain/walkthrough-progress";
 import { guideInsightSchema } from "./guide-contracts";
+import { workspaceProfileResponseSchema } from "./workspace-profile-response";
 import * as v from "valibot";
 
 import { reviewSourceSchema } from "./review-source";
@@ -154,23 +155,7 @@ const inboxResponseSchema = v.strictObject({
   // The main process owns the full workspace profile. The renderer deliberately
   // projects only the fields it needs, so future profile settings do not make a
   // safe inbox response disappear at the JSON boundary.
-  profile: v.object({
-    id: v.pipe(v.string(), v.minLength(1)),
-    label: v.pipe(v.string(), v.minLength(1)),
-    githubHost: v.pipe(v.string(), v.minLength(1)),
-    ghAccount: v.pipe(v.string(), v.minLength(1)),
-    rulePaths: v.optional(v.array(v.string())),
-    repos: v.optional(
-      v.array(
-        v.object({
-          ...repositoryIdentityFields,
-          // Absent on a watched repository with no chosen checkout (see
-          // `parseWatchedRepo`).
-          localPath: v.optional(v.pipe(v.string(), v.minLength(1))),
-        }),
-      ),
-    ),
-  }),
+  profile: workspaceProfileResponseSchema,
   inbox: v.object({
     state: v.picklist(INBOX_STATE_FILTER_VALUES),
     pageSize: v.picklist(INBOX_PAGE_SIZES),
@@ -466,12 +451,23 @@ export function parseReviewerListResponse(
 // objects below reject any response that still carries them.
 const workbenchSessionSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1)),
-  key: v.strictObject({
-    profileId: v.pipe(v.string(), v.minLength(1)),
-    ...repositoryIdentityFields,
-    source: reviewSourceSchema,
-    headSha: v.pipe(v.string(), v.minLength(7)),
-  }),
+  key: v.union([
+    v.strictObject({
+      profileId: v.pipe(v.string(), v.minLength(1)),
+      ...repositoryIdentityFields,
+      source: reviewSourceSchema,
+      headSha: v.pipe(v.string(), v.minLength(7)),
+    }),
+    v.strictObject({
+      profileId: v.pipe(v.string(), v.minLength(1)),
+      identityKey: v.strictObject({
+        kind: v.literal("local"),
+        localRepositoryId: v.pipe(v.string(), v.uuid()),
+      }),
+      source: reviewSourceSchema,
+      headSha: v.pipe(v.string(), v.minLength(7)),
+    }),
+  ]),
 });
 
 const repoRelativePathSchema = v.pipe(

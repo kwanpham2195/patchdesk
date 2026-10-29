@@ -37,8 +37,7 @@ afterEach(() => {
 const profile = {
   id: "profile",
   label: "Profile",
-  githubHost: "github.com",
-  ghAccount: "fixture",
+  github: { kind: "connected", host: "github.com", account: "fixture" },
 };
 const repository = { host: "github.com", owner: "acme", repo: "widgets" };
 

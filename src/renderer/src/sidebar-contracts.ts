@@ -26,10 +26,7 @@ const sidebarPullRequestRowSchema = v.strictObject({
 // One checkout's local Reviews (#479, #489). `host` and `checkout` are what
 // the local open route needs, and `reviewIds` names every local Review the
 // row stands for. `checkout` is absent for the configured checkout.
-const sidebarLocalRepositoryRowSchema = v.strictObject({
-  host: v.pipe(v.string(), v.minLength(1)),
-  owner: v.pipe(v.string(), v.minLength(1)),
-  repo: v.pipe(v.string(), v.minLength(1)),
+const sidebarLocalRepositoryFields = {
   checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
   checkoutName: v.optional(v.pipe(v.string(), v.minLength(1))),
   reviewIds: v.pipe(
@@ -40,7 +37,20 @@ const sidebarLocalRepositoryRowSchema = v.strictObject({
   lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
   // Present while an agent's request awaits approval or its approved run is active (ADR 0052).
   agent: v.optional(v.literal(true)),
-});
+};
+const sidebarLocalRepositoryRowSchema = v.union([
+  v.strictObject({
+    ...sidebarLocalRepositoryFields,
+    host: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+  }),
+  v.strictObject({
+    ...sidebarLocalRepositoryFields,
+    localRepositoryId: v.string(),
+    displayName: v.string(),
+  }),
+]);
 
 // `GET /v1/sidebar/reviews` is a local-API payload Patchdesk owns on both
 // sides (ADR "Choose a validation style by data boundary"), so it gets a
@@ -75,7 +85,10 @@ export function isSidebarLocalRepositoryRow(
 /** A key unique among the listed rows: a pull request row's Review id, or a local row's repository and checkout. */
 export function sidebarRowKey(row: SidebarReviewRow): string {
   if (!isSidebarLocalRepositoryRow(row)) return row.reviewId;
-  const repository = `local:${row.host}/${row.owner}/${row.repo}`;
+  const repository =
+    "localRepositoryId" in row
+      ? `local:${row.localRepositoryId}`
+      : `local:${row.host}/${row.owner}/${row.repo}`;
   return row.checkout === undefined
     ? repository
     : `${repository}:${row.checkout}`;

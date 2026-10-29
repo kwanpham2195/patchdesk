@@ -24,6 +24,7 @@ import type { RunDirectCommand } from "./use-review-observation";
 function pullRequestExternalRef(
   model: WorkbenchResponse,
 ): PullRequestRef | undefined {
+  if ("identityKey" in model.session.key) return undefined;
   const host = parseGitHubHost(model.session.key.host);
   const owner = parseGitHubOwner(model.session.key.owner);
   const repo = parseGitHubRepoName(model.session.key.repo);
@@ -91,7 +92,7 @@ export function useReviewMergeAction({
           // `MergeReadiness`'s literal unions.
           readiness: workbench.mergeReadiness as MergeReadiness,
           context: {
-            repo: `${workbench.session.key.owner}/${workbench.session.key.repo}`,
+            repo: `${externalPullRequest.owner}/${externalPullRequest.repo}`,
             prNumber: externalPullRequest.number,
             title:
               workbench.pullRequest?.title ??

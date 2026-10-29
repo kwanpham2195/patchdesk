@@ -8,7 +8,8 @@ import {
   type Dispatch,
   type RefObject,
 } from "react";
-import { api } from "#src/renderer/src/api-client";
+import { api, isApiErrorCode } from "#src/renderer/src/api-client";
+import { parseWorkspaceProfiles } from "#src/renderer/src/workspace-profile-response";
 import {
   inboxPreferencesWithinQueryBudget,
   loadInboxViewPreferences,
@@ -41,7 +42,6 @@ import type {
 import { screenStateForInbox } from "#src/renderer/src/screen-state-for-inbox";
 import {
   dashboardFromInbox,
-  isProfile,
   unsavedDefaultProfile,
   workspaceReducer,
   type WorkspaceAction,
@@ -186,9 +186,7 @@ export function useWorkspaceInbox({
     let nextProfiles: ReadonlyArray<Profile> = [];
     try {
       profilePayload = await api("/v1/profiles");
-      nextProfiles = Array.isArray(profilePayload)
-        ? profilePayload.filter(isProfile)
-        : [];
+      nextProfiles = parseWorkspaceProfiles(profilePayload);
       if (generation !== workspaceGeneration.current) return;
       // The bootstrap request (`firstInboxRequest`) never knows the saved
       // page size or state filter up front. Guessing them from the just-fetched
@@ -225,7 +223,17 @@ export function useWorkspaceInbox({
       // the row list would sit in its loading state forever after a cold
       // start, because nothing else records what produced them.
       setConfirmedInboxRequest(initialRequest);
-    } catch {
+    } catch (cause: unknown) {
+      const first = nextProfiles[0];
+      if (isApiErrorCode(cause, "no_profile") && first?.ghAccount === "") {
+        dispatchWorkspace({
+          _tag: "localLoaded",
+          profiles: [],
+          dashboard: { profile: first, dashboard: { repos: [] } },
+        });
+        activeInboxProfileId.current = first.id;
+        return;
+      }
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });
       return;

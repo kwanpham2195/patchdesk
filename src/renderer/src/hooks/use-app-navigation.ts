@@ -33,6 +33,10 @@ export type LeftWorkbench = {
  * two.
  */
 export type AppNavigation = {
+  readonly localCheckoutEntry: "picker" | "chooser" | undefined;
+  readonly setLocalCheckoutEntry: Dispatch<
+    SetStateAction<"picker" | "chooser" | undefined>
+  >;
   readonly destination: AppDestination;
   readonly workbench: WorkbenchPayload | undefined;
   readonly setWorkbench: Dispatch<SetStateAction<WorkbenchPayload | undefined>>;
@@ -61,6 +65,9 @@ export type AppNavigation = {
 export function useAppNavigation(
   onLeaveWorkbench: (left: LeftWorkbench) => void,
 ): AppNavigation {
+  const [localCheckoutEntry, setLocalCheckoutEntry] = useState<
+    "picker" | "chooser"
+  >();
   const [destination, setDestination] = useState<AppDestination>(() =>
     parseDestination(
       globalThis.window === undefined
@@ -125,6 +132,8 @@ export function useAppNavigation(
     [destination, navigationState, performNavigation],
   );
   return {
+    localCheckoutEntry,
+    setLocalCheckoutEntry,
     destination,
     workbench,
     setWorkbench,

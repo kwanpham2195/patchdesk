@@ -575,6 +575,7 @@ export async function buildLocalApiContainer(
     configuration.insightResources.uiReader,
   );
   const sidebarListing = new SidebarListingService({
+    repositories: localRepositories,
     reviews,
     insights,
     slots: slotStatus,

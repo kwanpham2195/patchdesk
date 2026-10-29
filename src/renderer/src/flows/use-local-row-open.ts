@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import type { RepositoryIdentity } from "#src/domain/repository-identity";
+import type { LocalRepositoryTarget } from "#src/renderer/src/local-repositories";
 import { requestJson } from "#src/renderer/src/api-client";
 import {
   localBranchesPath,
@@ -13,8 +13,9 @@ import {
 } from "./use-inbox-review-opening";
 
 /** A repository checkout a sidebar row opens; `checkout` names a linked worktree (#489). */
-export type LocalCheckoutTarget = RepositoryIdentity & {
+export type LocalCheckoutTarget = LocalRepositoryTarget & {
   readonly checkout?: string;
+  readonly displayName?: string;
 };
 
 /** What a sidebar local row's click drives: the open, and the dialog it may show instead. */
