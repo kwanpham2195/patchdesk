@@ -1,3 +1,4 @@
+import type { LocalRepositoryService } from "./local-repository-service";
 import * as v from "valibot";
 
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
@@ -44,7 +45,6 @@ import {
   addWatchedRepo,
   ProfileSettingsService,
   removeWatchedRepo,
-  updateWatchedRepoPath,
 } from "./profile-service";
 import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
@@ -58,7 +58,8 @@ export type DashboardControllerFailure = {
     | "not_found"
     | "storage"
     | "checkout_not_a_repository"
-    | "checkout_origin_mismatch";
+    | "checkout_origin_mismatch"
+    | "registration_conflict";
 };
 
 // This class is the main-process composition root: every schema below parses
@@ -439,6 +440,7 @@ export class DashboardController {
   async chooseWatchedRepoCheckout(
     // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `PUT /v1/watchlist/checkout`; there is no earlier boundary to run it at.
     input: unknown,
+    repositories: Pick<LocalRepositoryService, "setWatchedCheckout">,
   ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
     const parsed = v.safeParse(watchedRepoCheckoutInputSchema, input);
     if (!parsed.success) return failure("invalid_input");
@@ -458,14 +460,20 @@ export class DashboardController {
       folder.value,
     );
     if (checkout._tag === "err") return failure(checkout.error.reason);
-    const updated = updateWatchedRepoPath(
-      profile.value,
-      target.value,
+    const saved = await repositories.setWatchedCheckout(
+      profileId.value,
+      { kind: "github", ...target.value },
       checkout.value,
     );
-    if (updated._tag === "err") return failure("not_found");
-    const saved = await this.settings.saveProfile(updated.value);
-    return saved._tag === "ok" ? ok(updated.value) : failure("storage");
+    return saved._tag === "ok"
+      ? saved
+      : failure(
+          saved.error.reason === "repository_not_local"
+            ? "not_found"
+            : saved.error.reason === "checkout_missing"
+              ? "storage"
+              : saved.error.reason,
+        );
   }
 
   /** Resolves the workspace a request names, so the write cannot land in whichever workspace `activeProfile` happens to resolve to. */

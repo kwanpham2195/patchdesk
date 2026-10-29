@@ -17,6 +17,7 @@ import {
   type RepositoryIdentityKey,
 } from "#src/domain/local-repository";
 import { definedProps } from "#src/domain/defined-props";
+import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import { mapConcurrent } from "#src/domain/map-concurrent";
 import { err, ok, type Result } from "#src/domain/result";
 import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
@@ -80,44 +81,77 @@ export class LocalRepositoryService {
     profileId: WorkspaceProfileId,
     identityKey: Extract<RepositoryIdentityKey, { kind: "github" }>,
     folder: AbsolutePath,
-  ): Promise<Result<void, LocalRepositoryFailure>> {
+  ): Promise<Result<WorkspaceProfileConfig, LocalRepositoryFailure>> {
     const scheduled = this.registrationTail.then(async () => {
       const catalog = await this.dependencies.catalog.load(profileId);
       if (catalog._tag === "err") return err({ reason: "storage" as const });
+      const profile = await this.dependencies.profiles.load(profileId);
+      if (profile._tag === "err") return this.refused(profileId, "storage");
+      const watched = profile.value.repos.find((entry) =>
+        sameRepositoryIdentity(entry, identityKey),
+      );
+      if (watched === undefined)
+        return this.refused(profileId, "repository_not_local");
       const registration = catalog.value.repositories.find((entry) =>
         sameRepositoryIdentityKey(entry.identityKey, identityKey),
       );
-      if (registration === undefined) {
-        const registered = await this.registerCheckout(folder, profileId);
-        return registered._tag === "err" ? registered : ok(undefined);
-      }
+      if (
+        watched.localRepositoryId !== undefined &&
+        watched.localRepositoryId !== registration?.id
+      )
+        return this.refused(profileId, "registration_conflict");
       const checkout = await this.discover(folder);
       if (checkout._tag === "err") return checkout;
       if (
         catalog.value.repositories.some(
           (entry) =>
-            entry.id !== registration.id &&
+            entry.id !== registration?.id &&
             entry.canonicalCommonDirectory === checkout.value.common,
         )
       )
         return this.refused(profileId, "registration_conflict");
+      const id =
+        registration === undefined
+          ? parseLocalRepositoryId(randomUUID())
+          : ok(registration.id);
+      if (id._tag === "err") return this.refused(profileId, "storage");
+      const updated: LocalRepositoryRegistration = {
+        id: id.value,
+        identityKey: registration?.identityKey ?? identityKey,
+        displayName:
+          registration?.displayName ??
+          `${identityKey.owner}/${identityKey.repo}`,
+        state: "resolved",
+        configuredRoot: checkout.value.root,
+        canonicalCommonDirectory: checkout.value.common,
+      };
       const saved = await this.dependencies.catalog.save({
         ...catalog.value,
         revision: catalog.value.revision + 1,
-        repositories: catalog.value.repositories.map((entry) =>
-          entry.id !== registration.id
-            ? entry
-            : {
-                ...entry,
-                state: "resolved",
-                configuredRoot: checkout.value.root,
-                canonicalCommonDirectory: checkout.value.common,
-              },
-        ),
+        repositories:
+          registration === undefined
+            ? [...catalog.value.repositories, updated]
+            : catalog.value.repositories.map((entry) =>
+                entry.id === updated.id ? updated : entry,
+              ),
       });
       if (saved._tag === "err") return this.refused(profileId, "storage");
-      this.log(profileId, "watched_checkout_set", registration.id);
-      return ok(undefined);
+      const changed = {
+        ...profile.value,
+        repos: profile.value.repos.map((entry) =>
+          sameRepositoryIdentity(entry, identityKey)
+            ? {
+                ...entry,
+                localPath: checkout.value.root,
+                localRepositoryId: updated.id,
+              }
+            : entry,
+        ),
+      };
+      if ((await this.dependencies.profiles.save(changed))._tag === "err")
+        return this.refused(profileId, "storage");
+      this.log(profileId, "watched_checkout_set", updated.id);
+      return ok(changed);
     });
     this.registrationTail = scheduled.then(
       () => undefined,

@@ -267,7 +267,10 @@ export function registerDashboardRoutes(
   app.put("/v1/watchlist/checkout", async (context) =>
     response(
       context,
-      await dashboard.chooseWatchedRepoCheckout(await jsonBody(context)),
+      await dashboard.chooseWatchedRepoCheckout(
+        await jsonBody(context),
+        container.localRepositories,
+      ),
     ),
   );
   app.get("/v1/environment", async (context) => {

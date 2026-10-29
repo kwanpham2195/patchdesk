@@ -247,23 +247,11 @@ export class WorkspaceSetupService {
     root: AbsolutePath,
     outcome: Pick<WorkspaceRepositorySet, "profileCreated" | "repositoryAdded">,
   ): Promise<Result<WorkspaceRepositorySet, WorkspaceSetupFailure>> {
-    const chosen = await this.dependencies.dashboard.chooseWatchedRepoCheckout({
-      profileId: profile.id,
-      ...repository,
-      localPath: root,
-    });
-    if (chosen._tag === "err") return err(fromDashboard(chosen.error));
-    const registered = await this.dependencies.repositories.setWatchedCheckout(
-      profile.id,
-      {
-        kind: "github",
-        host: repository.host,
-        owner: repository.owner,
-        repo: repository.repo,
-      },
-      root,
+    const chosen = await this.dependencies.dashboard.chooseWatchedRepoCheckout(
+      { profileId: profile.id, ...repository, localPath: root },
+      this.dependencies.repositories,
     );
-    if (registered._tag === "err") return registered;
+    if (chosen._tag === "err") return err(fromDashboard(chosen.error));
     return ok({
       profile: summary(chosen.value),
       ...outcome,
@@ -348,6 +336,7 @@ function fromDashboard(
     case "checkout_origin_mismatch":
     case "invalid_input":
     case "storage":
+    case "registration_conflict":
       return { reason: failure.reason };
     case "not_found":
       return { reason: "not_watched" };

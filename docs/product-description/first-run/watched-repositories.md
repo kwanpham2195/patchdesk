@@ -53,7 +53,7 @@ The main process accepts a chosen folder only when `git rev-parse --show-topleve
 
 ### Settle
 
-A successful add, checkout, or removal reloads the workspace, so the card and the Pull requests repository picker agree. An added repository has no checkout. A saved checkout replaces any earlier one for that repository.
+A successful add, checkout, or removal reloads the workspace, so the card and the Pull requests repository picker agree. An added repository has no checkout. A saved checkout replaces any earlier one for that repository. Choose checkout and `patchdesk setup set-checkout` update the repository registration before saving the watch entry. Existing default-checkout Local Reviews keep their IDs and read the newly chosen checkout when reopened, even when the previous folder is gone. A folder already owned by another registration in the workspace is refused.
 
 A refused checkout keeps the saved one and says why beneath the row: `That folder is not inside a git checkout.` or `That checkout's origin is not <owner>/<repo>.` A failed add keeps the typed text and shows the reason beneath the field. A failed removal keeps the row and shows the reason beneath it.
 

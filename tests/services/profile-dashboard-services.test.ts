@@ -1,3 +1,5 @@
+import { LocalRepositoryService } from "#src/services/local-repository-service";
+import { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
 import { LocalRepositoryUpgrade } from "#src/services/local-repository-upgrade";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
@@ -695,13 +697,16 @@ describe("choosing a watched repository's checkout", () => {
         readBoundedInsightArtifactFile,
       );
 
-      const chosen = await controller.chooseWatchedRepoCheckout({
-        profileId: "acme",
-        host: "github.com",
-        owner: "octo-org",
-        repo: "new-repo",
-        localPath: join(checkout, "src"),
-      });
+      const chosen = await controller.chooseWatchedRepoCheckout(
+        {
+          profileId: "acme",
+          host: "github.com",
+          owner: "octo-org",
+          repo: "new-repo",
+          localPath: join(checkout, "src"),
+        },
+        checkoutRegistrations(store, controller, paths),
+      );
 
       expect(chosen).toMatchObject({ _tag: "ok" });
       expect(await store.load(profile.id)).toMatchObject({
@@ -750,13 +755,16 @@ describe("choosing a watched repository's checkout", () => {
           readBoundedInsightArtifactFile,
         );
 
-        const chosen = await controller.chooseWatchedRepoCheckout({
-          profileId: "acme",
-          host: "github.com",
-          owner: "octo-org",
-          repo: "patchdesk",
-          localPath: folder,
-        });
+        const chosen = await controller.chooseWatchedRepoCheckout(
+          {
+            profileId: "acme",
+            host: "github.com",
+            owner: "octo-org",
+            repo: "patchdesk",
+            localPath: folder,
+          },
+          checkoutRegistrations(store, controller, paths),
+        );
 
         expect(chosen).toEqual({
           _tag: "err",
@@ -781,4 +789,19 @@ async function gitCheckout(root: string, origin: string): Promise<string> {
   execFileSync("git", ["init", "-q", checkout]);
   execFileSync("git", ["-C", checkout, "remote", "add", "origin", origin]);
   return checkout;
+}
+
+function checkoutRegistrations(
+  profiles: ProfileStore,
+  dashboard: DashboardController,
+  paths: PatchdeskPaths,
+): LocalRepositoryService {
+  return new LocalRepositoryService({
+    profiles,
+    catalog: new LocalRepositoryStore(paths),
+    dashboard,
+    git,
+    paths,
+    logs: { write: () => undefined },
+  });
 }
