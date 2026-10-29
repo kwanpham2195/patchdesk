@@ -1,3 +1,7 @@
+import type {
+  RepositoryIdentityKey,
+  GitHubRepositoryKey,
+} from "#src/domain/local-repository";
 import { realpath, stat } from "node:fs/promises";
 
 import { isNotFound } from "#src/adapters/storage/json-file";
@@ -95,8 +99,9 @@ export async function missingCheckout(
 /** The profile's configured checkout of a repository, if it gives one. */
 export function configuredLocalPath(
   profile: WorkspaceProfileConfig,
-  repository: RepositoryIdentity,
+  repository: RepositoryIdentityKey,
 ): AbsolutePath | undefined {
+  if (repository.kind !== "github") return undefined;
   return profile.repos.find((candidate) =>
     sameRepositoryIdentity(candidate, repository),
   )?.localPath;
@@ -300,10 +305,13 @@ async function readCheckoutListing(
 export async function resolveLocalReviewCheckout(
   reads: LocalCheckoutReads,
   profile: WorkspaceProfileConfig,
-  repository: RepositoryIdentity,
+  repository: Pick<GitHubRepositoryKey, "host" | "owner" | "repo">,
   checkout: string | undefined,
 ): Promise<Result<LocalReviewCheckout, LocalCheckoutFailure>> {
-  const localPath = configuredLocalPath(profile, repository);
+  const localPath = configuredLocalPath(profile, {
+    kind: "github",
+    ...repository,
+  });
   if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
   const missing = await missingCheckout(localPath);
   if (missing !== undefined) return err(missing);

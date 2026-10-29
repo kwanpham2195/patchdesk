@@ -101,7 +101,10 @@ export class WatchedPullRequestService {
       return profile.error.reason === "not_found"
         ? err({ _tag: "WatchedPullRequestNotFound" })
         : profile;
-    if (profile.value.githubHost !== ref.host)
+    if (
+      profile.value.github.kind !== "connected" ||
+      profile.value.github.host !== ref.host
+    )
       return err({ _tag: "WatchedPullRequestNotFound" });
     const before = await this.dependencies.store.load(profileId);
     if (before._tag === "err") return before;
@@ -188,9 +191,12 @@ export class WatchedPullRequestService {
         const changes = diffWatchedSnapshot(watched.snapshot, snapshot);
         const reviewId = createReviewId({
           profileId: profile.id,
-          host: watched.ref.host,
-          owner: watched.ref.owner,
-          repo: watched.ref.repo,
+          identityKey: {
+            kind: "github",
+            host: watched.ref.host,
+            owner: watched.ref.owner,
+            repo: watched.ref.repo,
+          },
           source: { kind: "pull_request", prNumber: watched.ref.number },
         });
         for (const change of changes)

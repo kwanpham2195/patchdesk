@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { LocalRepositoryStore } from "./local-repository-store";
+import { parseContentHash } from "#src/domain/ids";
 import {
   parsePatchdeskConfig,
   type PatchdeskConfigFile,
@@ -65,12 +68,50 @@ export class ProfileStore {
       });
     }
 
-    return writeAtomicJson(this.paths.profileFile(parsed.value.id), {
-      ...parsed.value,
-      // v0.0.12 refuses a profile without this key and then opens no profile
-      // at all. Remove once a tagged release contains #641.
-      workspaceRoots: [],
-    });
+    const catalogStore = new LocalRepositoryStore(this.paths);
+    const catalog = await catalogStore.load(parsed.value.id);
+    if (catalog._tag === "err") {
+      if (catalog.error.reason !== "not_found") return catalog;
+      const existing = await readJsonFile(
+        this.paths.profileFile(parsed.value.id),
+      );
+      if (existing._tag === "ok" || existing.error.reason !== "not_found")
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "invalid_stored_value",
+        });
+      const fingerprint = parseContentHash(
+        createHash("sha256").update("fresh-profile/1").digest("hex"),
+      );
+      if (fingerprint._tag === "err")
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "invalid_stored_value",
+        });
+      const created = await catalogStore.save({
+        format: 1,
+        profileId: parsed.value.id,
+        generationId: parsed.value.localRepositoryCatalogGeneration,
+        revision: 1,
+        repositories: [],
+        bootstrapInputFingerprint: fingerprint.value,
+      });
+      if (created._tag === "err") return created;
+    } else if (
+      catalog.value.generationId !==
+      parsed.value.localRepositoryCatalogGeneration
+    )
+      return err({
+        _tag: "StorageFailure",
+        operation: "write",
+        reason: "invalid_stored_value",
+      });
+    return writeAtomicJson(
+      this.paths.profileFile(parsed.value.id),
+      parsed.value,
+    );
   }
 
   async load(
@@ -82,7 +123,7 @@ export class ProfileStore {
     }
 
     const parsed = parseWorkspaceProfileConfig(stored.value);
-    if (parsed._tag === "err") {
+    if (parsed._tag === "err" || parsed.value.id !== profileId) {
       return err({
         _tag: "StorageFailure",
         operation: "read",
@@ -90,7 +131,16 @@ export class ProfileStore {
       });
     }
 
-    return parsed;
+    const catalog = await new LocalRepositoryStore(this.paths).load(profileId);
+    if (catalog._tag === "err") return catalog;
+    return catalog.value.generationId ===
+      parsed.value.localRepositoryCatalogGeneration
+      ? parsed
+      : err({
+          _tag: "StorageFailure",
+          operation: "read",
+          reason: "invalid_stored_value",
+        });
   }
 
   /** Lists persisted profiles; no profiles is a normal first-run result. */

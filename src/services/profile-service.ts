@@ -1,6 +1,7 @@
 import {
   parseAbsolutePath,
   parseGitHubHost,
+  parseGitHubLogin,
   parseWorkspaceProfileId,
   type AbsolutePath,
   type GitHubHost,
@@ -149,11 +150,16 @@ export async function detectDefaultWorkspaceProfile(
     });
   }
   const ghAccount = await detectActiveGitHubAccount(commands, host.value);
+  const account = parseGitHubLogin(ghAccount);
   return ok({
+    schemaVersion: 1,
+    localRepositoryCatalogGeneration: crypto.randomUUID(),
     id: id.value,
     label: "Default",
-    githubHost: host.value,
-    ghAccount: ghAccount ?? "",
+    github:
+      account._tag === "ok"
+        ? { kind: "connected", host: host.value, account: account.value }
+        : { kind: "disconnected" },
     rulePaths: [],
     repos: [],
     analysisMergePolicy: "require_acknowledgement",

@@ -44,8 +44,14 @@ const profile = mustParse(
   parseWorkspaceProfileConfig({
     id: "acme",
     label: "ACME",
-    githubHost: "github.com",
-    ghAccount: account,
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: {
+      kind: "connected" as const,
+      host: "github.com",
+      account: account,
+    },
+
     rulePaths: [],
     repos: [],
   }),

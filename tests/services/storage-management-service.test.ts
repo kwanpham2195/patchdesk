@@ -37,9 +37,7 @@ const baseSha = unwrap(parseGitSha("0".repeat(40)));
 const at = unwrap(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const sessionId = createReviewSessionId({
   profileId,
-  host,
-  owner,
-  repo,
+  identityKey: { kind: "github" as const, host, owner, repo },
   source: { kind: "pull_request", prNumber },
   headSha,
   baseSha,
@@ -48,9 +46,7 @@ const session = reviewSessionFixture({
   id: sessionId,
   key: {
     profileId,
-    host,
-    owner,
-    repo,
+    identityKey: { kind: "github" as const, host, owner, repo },
     source: { kind: "pull_request", prNumber },
     headSha,
     baseSha,
@@ -297,10 +293,7 @@ describe("StorageManagementService", () => {
   it.each([
     [
       "current Open Review",
-      {
-        currentSessionId: sessionId,
-        status: { _tag: "Open" },
-      },
+      { currentSessionId: sessionId, status: { _tag: "Open" } },
       undefined,
       undefined,
       undefined,
@@ -677,9 +670,7 @@ describe("StorageManagementService", () => {
     it("keeps sweeping past per-item storage errors", async () => {
       const second = createReviewSessionId({
         profileId,
-        host,
-        owner,
-        repo,
+        identityKey: { kind: "github" as const, host, owner, repo },
         source: {
           kind: "pull_request",
           prNumber: unwrap(parsePullRequestNumber(43)),

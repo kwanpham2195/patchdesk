@@ -67,9 +67,9 @@ export async function requireCurrentHead(
   const current = await github.getPullRequest({
     profile,
     pr: {
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
+      host: session.key.identityKey.host,
+      owner: session.key.identityKey.owner,
+      repo: session.key.identityKey.repo,
       number: session.key.source.prNumber,
     },
   });
@@ -228,9 +228,9 @@ export class ReviewWriteGate {
     const snapshotRef = snapshot.value.pullRequest.ref;
     if (
       snapshot.value.pullRequest.headSha !== value.representedRemote.headSha ||
-      snapshotRef.host !== value.identity.host ||
-      snapshotRef.owner !== value.identity.owner ||
-      snapshotRef.repo !== value.identity.repo ||
+      snapshotRef.host !== value.identity.identityKey.host ||
+      snapshotRef.owner !== value.identity.identityKey.owner ||
+      snapshotRef.repo !== value.identity.identityKey.repo ||
       snapshotRef.number !== value.identity.source.prNumber
     )
       return err({ reason: "stale" });
@@ -308,10 +308,12 @@ export class ReviewWriteGate {
       return err({ reason: "stale" });
     const request = reopenLocalSourceRequest(value.identity.source);
     if (request === undefined) return err({ reason: "storage" });
+    if (value.identity.identityKey.kind !== "github")
+      return err({ reason: "checkout_unavailable" });
     const checkout = await resolveLocalReviewCheckout(
       this.localSources,
       profile.value,
-      value.identity,
+      value.identity.identityKey,
       request.checkout,
     );
     if (checkout._tag === "err") return err({ reason: "checkout_unavailable" });

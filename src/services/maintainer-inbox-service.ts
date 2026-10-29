@@ -249,7 +249,7 @@ export class MaintainerInboxService {
     const sessions = (listed._tag === "ok" ? listed.value : []).filter(
       (session): session is PullRequestReviewSession =>
         isPullRequestReviewSession(session) &&
-        sameRepositoryIdentity(session.key, repository),
+        sameRepositoryIdentity(session.key.identityKey, repository),
     );
     return await Promise.all(
       rows.map(async ({ number, headSha }) => {
@@ -362,7 +362,7 @@ export class MaintainerInboxService {
     const repositorySessions = allSessions.filter(
       (session): session is PullRequestReviewSession =>
         isPullRequestReviewSession(session) &&
-        sameRepositoryIdentity(session.key, repository),
+        sameRepositoryIdentity(session.key.identityKey, repository),
     );
     const read = await this.readRepository({
       profile,
@@ -496,7 +496,8 @@ export class MaintainerInboxService {
           const input = {
             summary: pullRequest.summary,
             checks: pullRequest.checks,
-            activeAccount: profile.ghAccount,
+            activeAccount:
+              profile.github.kind === "connected" ? profile.github.account : "",
             dataFreshness: "fresh" as const,
             ...scopeField,
             ...definedProps({ insights }),
@@ -770,9 +771,7 @@ async function readInsightReadiness(
   if (session === undefined) return undefined;
   const reviewId = createReviewId({
     profileId: session.key.profileId,
-    host: session.key.host,
-    owner: session.key.owner,
-    repo: session.key.repo,
+    identityKey: session.key.identityKey,
     source: session.key.source,
   });
   // Each kind is its own stored record, so reading them independently keeps
@@ -822,9 +821,9 @@ function sessionForRow(
 ): PullRequestReviewSession | undefined {
   return sessions.find(
     (candidate) =>
-      candidate.key.host === summary.ref.host &&
-      candidate.key.owner === summary.ref.owner &&
-      candidate.key.repo === summary.ref.repo &&
+      candidate.key.identityKey.host === summary.ref.host &&
+      candidate.key.identityKey.owner === summary.ref.owner &&
+      candidate.key.identityKey.repo === summary.ref.repo &&
       candidate.key.source.prNumber === summary.ref.number,
   );
 }
@@ -836,9 +835,9 @@ function sessionAtCurrentHead(
 ): PullRequestReviewSession | undefined {
   return sessions.find(
     (candidate) =>
-      candidate.key.host === summary.ref.host &&
-      candidate.key.owner === summary.ref.owner &&
-      candidate.key.repo === summary.ref.repo &&
+      candidate.key.identityKey.host === summary.ref.host &&
+      candidate.key.identityKey.owner === summary.ref.owner &&
+      candidate.key.identityKey.repo === summary.ref.repo &&
       candidate.key.source.prNumber === summary.ref.number &&
       candidate.key.headSha === summary.headSha,
   );
@@ -869,9 +868,9 @@ function latestReviewFor(
 ): InboxReviewSummary | undefined {
   const session = sessions.find(
     (candidate) =>
-      candidate.key.host === summary.ref.host &&
-      candidate.key.owner === summary.ref.owner &&
-      candidate.key.repo === summary.ref.repo &&
+      candidate.key.identityKey.host === summary.ref.host &&
+      candidate.key.identityKey.owner === summary.ref.owner &&
+      candidate.key.identityKey.repo === summary.ref.repo &&
       candidate.key.source.prNumber === summary.ref.number,
   );
   return session === undefined
@@ -879,9 +878,7 @@ function latestReviewFor(
     : {
         reviewId: createReviewId({
           profileId: session.key.profileId,
-          host: session.key.host,
-          owner: session.key.owner,
-          repo: session.key.repo,
+          identityKey: session.key.identityKey,
           source: session.key.source,
         }),
         reviewedHeadSha: session.key.headSha,

@@ -10,7 +10,10 @@ import type { GitHubCredentials } from "#src/adapters/github/github-credentials"
 import type { GitHubHost, WorkspaceProfileId } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import {
+  type ConnectedWorkspaceProfile,
+  isConnectedWorkspaceProfile,
+} from "#src/domain/workspace-profile";
 import type { AppLogService } from "./app-log-service";
 
 /**
@@ -73,12 +76,13 @@ export class PullRequestImageService {
     // The profile is loaded before the URL is judged, so the allowlist is built
     // from the stored GitHub host rather than the host the renderer named.
     const profile = await this.dependencies.profiles.load(input.profileId);
-    if (profile._tag === "err") return err({ reason: "not_found" });
+    if (profile._tag === "err" || !isConnectedWorkspaceProfile(profile.value))
+      return err({ reason: "not_found" });
 
     const target = resolvePullRequestImageUrl(
       input.imageUrl,
       input.pullRequest,
-      profile.value.githubHost,
+      profile.value.github.host,
     );
     if (target === undefined) return err({ reason: "invalid_input" });
 
@@ -123,7 +127,7 @@ export class PullRequestImageService {
    */
   private async download(
     imageUrl: string,
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
   ): Promise<Result<Uint8Array, PullRequestImageFailure>> {
     const token = await this.token(imageUrl, profile);
     let target = imageUrl;
@@ -145,7 +149,7 @@ export class PullRequestImageService {
       if (isRedirect(response.status)) {
         const location = response.headers.get("location");
         if (location === null) return err({ reason: "github_read" });
-        const next = resolveImageUrl(location, target, profile.githubHost);
+        const next = resolveImageUrl(location, target, profile.github.host);
         if (next === undefined) return err({ reason: "invalid_input" });
         target = next;
         continue;
@@ -160,9 +164,9 @@ export class PullRequestImageService {
   /** The profile's GitHub token, only for a request to that profile's own GitHub host. */
   private async token(
     imageUrl: string,
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
   ): Promise<string | undefined> {
-    if (!isHost(imageUrl, profile.githubHost)) return undefined;
+    if (!isHost(imageUrl, profile.github.host)) return undefined;
     const environment =
       await this.dependencies.credentials.environmentFor(profile);
     if (environment._tag === "err") return undefined;

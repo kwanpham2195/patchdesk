@@ -27,11 +27,14 @@ export const sessionId =
 export const identity = {
   profileId,
   // SAFETY: a plain host string already satisfies GitHubHost's runtime shape.
-  host: "github.com" as never,
-  // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
-  owner: "octo-org" as never,
-  // SAFETY: a plain repo name already satisfies GitHubRepoName's runtime shape.
-  repo: "patchdesk" as never,
+  identityKey: {
+    kind: "github" as const,
+    host: "github.com" as never,
+    // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
+    owner: "octo-org" as never,
+    // SAFETY: a plain repo name already satisfies GitHubRepoName's runtime shape.
+    repo: "patchdesk" as never,
+  },
   // SAFETY: a positive integer already satisfies PullRequestNumber's runtime shape.
   source: { kind: "pull_request" as const, prNumber: 42 as never },
 };
@@ -180,7 +183,11 @@ export function fixture(
   localCheckoutWarning?: "missing_local_path" | "local_checkout_unavailable",
   patchPath?: string,
 ) {
-  const profiles = { load: vi.fn(async () => ok({ ghAccount: "fixture" })) };
+  const profiles = {
+    load: vi.fn(async () =>
+      ok({ github: { kind: "connected", account: "fixture" } }),
+    ),
+  };
   const sessions = {
     load: vi.fn(async () => ok(session(localCheckoutWarning, patchPath))),
   };

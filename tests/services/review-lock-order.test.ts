@@ -126,9 +126,12 @@ const pullRequest = {
 const reviewId = "github.com__octo-org__patchdesk__pr-42__review-aaaa";
 const sessionId = createReviewSessionId({
   profileId,
-  host: pullRequest.host,
-  owner: pullRequest.owner,
-  repo: pullRequest.repo,
+  identityKey: {
+    kind: "github" as const,
+    host: pullRequest.host,
+    owner: pullRequest.owner,
+    repo: pullRequest.repo,
+  },
   source: { kind: "pull_request", prNumber: pullRequest.number },
   headSha,
   baseSha,
@@ -259,7 +262,15 @@ function reviewRetention(
 ): ReviewRetention {
   const localReview = {
     id: reviewId,
-    identity: { source: { kind: "working_tree" } },
+    identity: {
+      identityKey: {
+        kind: "github",
+        host: "github.com",
+        owner: "fixture",
+        repo: "fixture",
+      },
+      source: { kind: "working_tree" },
+    },
     status: { _tag: "Open" },
     updatedAt: at,
   };

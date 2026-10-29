@@ -23,7 +23,7 @@ import {
 } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import type { GitHubReviewEvent } from "#src/domain/pending-review";
 import type { DirectSummaryReviewReceipt } from "#src/domain/direct-summary-review";
 import type { GitHubWriteFailure } from "#src/domain/github-write";
@@ -75,7 +75,7 @@ function imageRewritesOf(
  */
 type AuthenticatedAccountReader = {
   resolveAuthenticatedAccount(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>>;
 };
 
@@ -93,7 +93,7 @@ export class GitHubConversationReader {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -108,14 +108,14 @@ export class GitHubConversationReader {
   }
 
   private async getPullRequest(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
     return this.pullRequests.getPullRequest(input);
   }
 
   private async getRepositoryPermission(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly account: string;
   }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
@@ -123,7 +123,7 @@ export class GitHubConversationReader {
   }
 
   private async getBranchProtection(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
@@ -131,13 +131,13 @@ export class GitHubConversationReader {
   }
 
   private async resolveAuthenticatedAccount(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
     return this.accounts.resolveAuthenticatedAccount(profile);
   }
 
   async getPullRequestPublishedFeedback(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     /** The branch whose protection decides `canDismiss`, when the caller already read it; otherwise this reader reads the pull request for it. */
     readonly baseBranch?: string;
@@ -151,7 +151,7 @@ export class GitHubConversationReader {
         input.reviews ?? readPullRequestReviews(this.requests, input),
         this.ghJson(input.profile, {
           kind: "rest",
-          host: input.profile.githubHost,
+          host: input.profile.github.host,
           accept: fullJsonMediaType,
           path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments?per_page=100&page=1`,
         }),
@@ -160,7 +160,7 @@ export class GitHubConversationReader {
         // comment never reaches the timeline at all.
         this.ghJson(input.profile, {
           kind: "rest",
-          host: input.profile.githubHost,
+          host: input.profile.github.host,
           accept: fullJsonMediaType,
           path: `repos/${input.pr.owner}/${input.pr.repo}/issues/${input.pr.number}/comments?per_page=100&page=1`,
         }),
@@ -180,22 +180,23 @@ export class GitHubConversationReader {
       return this.commandFailure(
         "get_reviews",
         reviews.failure,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     if (comments._tag === "err")
       return this.commandFailure(
         "get_comments",
         comments.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     if (issueComments._tag === "err")
       return this.commandFailure(
         "get_issue_comments",
         issueComments.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const permission =
-      account._tag === "ok" && account.value.account === input.profile.ghAccount
+      account._tag === "ok" &&
+      account.value.account === input.profile.github.account
         ? await this.getRepositoryPermission({
             profile: input.profile,
             pr: input.pr,
@@ -218,7 +219,7 @@ export class GitHubConversationReader {
               })));
     const canWrite =
       permission?._tag === "ok" &&
-      permission.value.account === input.profile.ghAccount &&
+      permission.value.account === input.profile.github.account &&
       permission.value.pullRequestsWrite;
     const isAdmin =
       permission?._tag === "ok" && permission.value.permission === "admin";
@@ -228,13 +229,13 @@ export class GitHubConversationReader {
         (protection?._tag === "ok" &&
           (protection.value.protected === false ||
             protection.value.allowedDismissers.includes(
-              input.profile.ghAccount,
+              input.profile.github.account,
             ))));
     // One authorship rule for both comment endpoints: only the profile's own
     // authenticated account may edit or delete what it wrote.
     const ownedBy = (author: string): boolean =>
       account._tag === "ok" &&
-      account.value.account === input.profile.ghAccount &&
+      account.value.account === input.profile.github.account &&
       author === account.value.account;
     const parsedComments = v.safeParse(publishedCommentSchema, comments.value);
     if (reviews._tag === "Unparsable" || !parsedComments.success)
@@ -380,7 +381,7 @@ export class GitHubConversationReader {
   }
 
   async createDirectSummaryReview(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
     readonly event: GitHubReviewEvent;
@@ -388,7 +389,7 @@ export class GitHubConversationReader {
   }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "POST",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
       jsonBody: JSON.stringify({
@@ -412,7 +413,7 @@ export class GitHubConversationReader {
   }
 
   async getViewerDirectSummaryReviews(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
   }): Promise<
@@ -426,14 +427,14 @@ export class GitHubConversationReader {
   > {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "get_direct_summary_reviews",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const parsed = v.safeParse(publishedReviewSchema, response.value);
     if (!parsed.success) return invalid("get_direct_summary_reviews");

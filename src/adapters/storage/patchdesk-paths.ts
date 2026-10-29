@@ -215,6 +215,22 @@ export class PatchdeskPaths {
     return join(this.configDirectory(), "profiles", `${profileId}.json`);
   }
 
+  localRepositoryCatalogFile(profileId: WorkspaceProfileId): string {
+    return join(
+      this.dataProfilesDirectory(),
+      profileId,
+      "local-repositories-v1.json",
+    );
+  }
+
+  preUpgradeProfileFile(profileId: WorkspaceProfileId): string {
+    return join(
+      this.configDirectory(),
+      "profiles",
+      `${profileId}.pre-schema-1.json.bak`,
+    );
+  }
+
   dataProfilesDirectory(): string {
     return join(this.dataDirectory(), "profiles");
   }

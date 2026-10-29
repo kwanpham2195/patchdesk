@@ -53,9 +53,12 @@ function session(
     // (a bare hostname, and slug-shaped owner/repo names).
     key: {
       profileId,
-      host: "github.com" as never,
-      owner: "octo-org" as never,
-      repo: "patchdesk" as never,
+      identityKey: {
+        kind: "github" as const,
+        host: "github.com" as never,
+        owner: "octo-org" as never,
+        repo: "patchdesk" as never,
+      },
       // SAFETY: this literal is a positive integer, matching parsePullRequestNumber's format.
       source: { kind: "pull_request" as const, prNumber: 42 as never },
       headSha,
@@ -96,10 +99,20 @@ function fixture(
   };
   const gate = {
     requireFresh: vi.fn(async () =>
-      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+      ok({
+        profile: {
+          github: { kind: "connected", account: "fixture", host: "github.com" },
+        },
+        session: stored,
+      }),
     ),
     requireCurrentSession: vi.fn(async () =>
-      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+      ok({
+        profile: {
+          github: { kind: "connected", account: "fixture", host: "github.com" },
+        },
+        session: stored,
+      }),
     ),
   };
   const github = {
@@ -399,7 +412,16 @@ describe("DirectSummaryReviewService save compare-and-swap", () => {
       requireCurrentSession: vi.fn(async () => {
         const loaded = await sessions.load(profileId, seeded.id);
         if (loaded._tag === "err") throw new Error("fixture");
-        return ok({ profile: { ghAccount: "fixture" }, session: loaded.value });
+        return ok({
+          profile: {
+            github: {
+              kind: "connected",
+              account: "fixture",
+              host: "github.com",
+            },
+          },
+          session: loaded.value,
+        });
       }),
     };
     const github = {

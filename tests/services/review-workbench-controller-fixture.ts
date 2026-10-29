@@ -26,9 +26,12 @@ export const sessionId =
 // GitHubRepoName/PullRequestNumber values, matching their branded shapes.
 export const identity = {
   profileId,
-  host: "github.com" as never,
-  owner: "octo-org" as never,
-  repo: "patchdesk" as never,
+  identityKey: {
+    kind: "github" as const,
+    host: "github.com" as never,
+    owner: "octo-org" as never,
+    repo: "patchdesk" as never,
+  },
   source: { kind: "pull_request" as const, prNumber: 42 as never },
 };
 export const reviewId = createReviewId(identity);

@@ -20,7 +20,7 @@ import type {
   InboxStateFilter,
 } from "#src/domain/maintainer-inbox";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import type { WatchedSnapshot } from "#src/domain/watched-pull-request";
 import {
   maintainerInboxQuery,
@@ -114,7 +114,7 @@ export class GitHubPullRequestReader {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -129,19 +129,19 @@ export class GitHubPullRequestReader {
   }
 
   async listOpenPullRequests(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.repo.owner}/${input.repo.repo}/pulls?state=open&per_page=100`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "list_open_prs",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     if (!Array.isArray(response.value)) return invalid("list_open_prs");
 
@@ -151,7 +151,7 @@ export class GitHubPullRequestReader {
       if (!raw.success) return invalid("list_open_prs");
       const summary = parsePullRequest(
         raw.output,
-        input.profile.githubHost,
+        input.profile.github.host,
         input.repo.owner,
         input.repo.repo,
       );
@@ -163,13 +163,13 @@ export class GitHubPullRequestReader {
 
   /** Reads exactly one trusted-state page of pull requests with edge cursors. */
   async listMaintainerPullRequests(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly state?: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -220,14 +220,14 @@ export class GitHubPullRequestReader {
    * `summary.isOpen`.
    */
   async searchMaintainerPullRequests(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly searchQuery: string;
     readonly state: InboxStateFilter;
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -269,11 +269,11 @@ export class GitHubPullRequestReader {
 
   /** Reads up to 100 branch names of one repository; a non-empty `query` filters by name substring. */
   async listRepositoryBranches(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly query?: string;
   }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -312,13 +312,13 @@ export class GitHubPullRequestReader {
    * `GitHubRateLimited` without a call until its reset passes.
    */
   async readWatchedPullRequests(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly refs: ReadonlyArray<PullRequestRef>;
     readonly now: IsoTimestamp;
   }): Promise<
     Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>
   > {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     if (input.refs.length === 0) return ok([]);
     const resumeAt = this.requests.exhaustedRateLimit(host, input.now);
     if (resumeAt !== undefined)
@@ -407,26 +407,26 @@ export class GitHubPullRequestReader {
   }
 
   async getPullRequest(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
     });
     if (response._tag === "err") {
       return this.commandFailure(
         "get_pr",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     }
     const raw = v.safeParse(pullRequestSchema, response.value);
     if (!raw.success) return invalid("get_pr");
     const parsed = parsePullRequest(
       raw.output,
-      input.profile.githubHost,
+      input.profile.github.host,
       input.pr.owner,
       input.pr.repo,
     );
@@ -434,26 +434,26 @@ export class GitHubPullRequestReader {
   }
 
   async getMergeOutcome(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "get_pr",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const raw = v.safeParse(mergeOutcomeSchema, response.value);
     return raw.success ? parseMergeOutcome(raw.output) : invalid("get_pr");
   }
 
   async getPullRequestCommits(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     /** The head this list marks `isHead`, when the caller already read it; otherwise this reader reads the pull request for it. */
     readonly headSha?: GitSha;
@@ -463,14 +463,14 @@ export class GitHubPullRequestReader {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
       paginate: true,
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/commits?per_page=100`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "get_pr_commits",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const parsed = v.safeParse(
       v.array(v.array(pullRequestCommitSchema)),
@@ -510,7 +510,7 @@ export class GitHubPullRequestReader {
 
   /** The caller's own head when it supplied one, otherwise a pull request read for it. */
   private async resolveHeadSha(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha?: GitSha;
   }): Promise<Result<GitSha, GitHubReadFailure>> {

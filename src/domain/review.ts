@@ -1,3 +1,9 @@
+import {
+  parseRepositoryIdentityKey,
+  sameRepositoryIdentityKey,
+  type RepositoryIdentityKey,
+  type GitHubRepositoryKey,
+} from "./local-repository";
 import * as v from "valibot";
 
 import {
@@ -21,9 +27,6 @@ import {
 import {
   createReviewId,
   parseContentHash,
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
@@ -31,12 +34,8 @@ import {
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type ContentHash,
-  type GitHubHost,
-  type GitHubOwner,
-  type GitHubRepoName,
   type GitSha,
   type IsoTimestamp,
-  type PullRequestNumber,
   type ReviewId,
   type ReviewSessionId,
   type WorkspaceProfileId,
@@ -74,9 +73,9 @@ import {
  */
 export type ReviewIdentity<Source extends ReviewSource = ReviewSource> = {
   readonly profileId: WorkspaceProfileId;
-  readonly host: GitHubHost;
-  readonly owner: GitHubOwner;
-  readonly repo: GitHubRepoName;
+  readonly identityKey: Source extends PullRequestReviewSource
+    ? GitHubRepositoryKey
+    : RepositoryIdentityKey;
   readonly source: Source;
 };
 
@@ -137,7 +136,7 @@ type ReviewStatus =
     };
 
 export type Review<Source extends ReviewSource = ReviewSource> = {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 2 | 3;
   readonly id: ReviewId;
   readonly identity: ReviewIdentity<Source>;
   readonly currentSessionId: ReviewSessionId;
@@ -270,10 +269,8 @@ const freshnessSchema = v.variant("_tag", [
   }),
 ]);
 
-const reviewV2Schema = v.strictObject({
-  schemaVersion: v.literal(2),
+const reviewFields = {
   id: v.string(),
-  identity: identitySchema,
   currentSessionId: v.string(),
   currentHeadSha: v.string(),
   representedRemote: v.optional(representedRemoteSchema),
@@ -296,6 +293,23 @@ const reviewV2Schema = v.strictObject({
   preparedSessionId: v.optional(v.string()),
   agentRunRequests: v.optional(v.array(agentRunRequestSchema)),
   handoff: v.optional(storedFeedbackHandoffSchema),
+};
+const reviewV2Schema = v.strictObject({
+  ...reviewFields,
+  schemaVersion: v.literal(2),
+  identity: identitySchema,
+});
+const reviewV3Schema = v.strictObject({
+  ...reviewFields,
+  schemaVersion: v.literal(3),
+  identity: v.strictObject({
+    profileId: v.string(),
+    identityKey: v.strictObject({
+      kind: v.literal("local"),
+      localRepositoryId: v.string(),
+    }),
+    source: storedLocalReviewSourceSchema,
+  }),
 });
 
 type RawReviewV2 = v.InferOutput<typeof reviewV2Schema>;
@@ -316,9 +330,10 @@ export function sessionRepresentsReview(
 ): boolean {
   return (
     session.key.profileId === review.identity.profileId &&
-    session.key.host === review.identity.host &&
-    session.key.owner === review.identity.owner &&
-    session.key.repo === review.identity.repo &&
+    sameRepositoryIdentityKey(
+      session.key.identityKey,
+      review.identity.identityKey,
+    ) &&
     sameReviewSource(session.key.source, review.identity.source) &&
     session.key.headSha === review.currentHeadSha
   );
@@ -332,7 +347,7 @@ export function createReview<Source extends ReviewSource>(input: {
   readonly createdAt: IsoTimestamp;
 }): Review<Source> {
   return {
-    schemaVersion: 2,
+    schemaVersion: input.identity.identityKey.kind === "github" ? 2 : 3,
     id: createReviewId(input.identity),
     identity: input.identity,
     currentSessionId: input.currentSessionId,
@@ -633,8 +648,12 @@ export function laterTimestamp(
  * identity is written flat with `prNumber`, the form records had before local
  * sources existed; a local identity is written with its `source`.
  */
-export function serializeReview(review: Review): StoredReview {
-  const { source, ...repository } = review.identity;
+export function serializeReview(review: Review) {
+  const { source, identityKey, profileId } = review.identity;
+  if (identityKey.kind === "local")
+    return { ...review, identity: { profileId, identityKey, source } };
+  const { kind: _kind, ...triple } = identityKey;
+  const repository = { profileId, ...triple };
   return {
     ...review,
     identity:
@@ -644,32 +663,31 @@ export function serializeReview(review: Review): StoredReview {
   };
 }
 
-/** The JSON a Review store writes; only `serializeReview` builds it. */
-export type StoredReview = Omit<Review, "identity"> & {
-  readonly identity:
-    | (Omit<ReviewIdentity, "source"> & {
-        readonly prNumber: PullRequestNumber;
-      })
-    | ReviewIdentity<LocalReviewSource>;
-};
+/** Each schema validates its own identity and never retries another derivation. */
+export type StoredReview = ReturnType<typeof serializeReview>;
 
-/** Parse persisted Review data under the current durable freshness contract. */
 export function parseReview(input: unknown): Result<Review, InvalidReview> {
-  const current = v.safeParse(reviewV2Schema, input);
-  return current.success ? parseV2Review(current.output) : invalid();
-}
-
-function parseV2Review(raw: RawReviewV2): Result<Review, InvalidReview> {
+  const parsed = v.safeParse(
+    v.variant("schemaVersion", [reviewV2Schema, reviewV3Schema]),
+    input,
+  );
+  if (!parsed.success) return invalid();
+  const raw = parsed.output;
   const base = parseReviewBase(raw);
   if (base._tag === "err") return base;
   const freshness = parseFreshness(raw.freshness);
-  if (freshness._tag === "err") return freshness;
-  return ok({ ...base.value, schemaVersion: 2, freshness: freshness.value });
+  return freshness._tag === "err"
+    ? freshness
+    : ok({
+        ...base.value,
+        schemaVersion: raw.schemaVersion,
+        freshness: freshness.value,
+      });
 }
 
 function parseReviewBase(
   raw: Pick<
-    RawReviewV2,
+    RawReviewV2 | v.InferOutput<typeof reviewV3Schema>,
     | "id"
     | "identity"
     | "currentSessionId"
@@ -691,9 +709,16 @@ function parseReviewBase(
   >,
 ): Result<Omit<Review, "schemaVersion" | "freshness">, InvalidReview> {
   const profileId = parseWorkspaceProfileId(raw.identity.profileId);
-  const host = parseGitHubHost(raw.identity.host);
-  const owner = parseGitHubOwner(raw.identity.owner);
-  const repo = parseGitHubRepoName(raw.identity.repo);
+  const identityKey = parseRepositoryIdentityKey(
+    "identityKey" in raw.identity
+      ? raw.identity.identityKey
+      : {
+          kind: "github",
+          host: raw.identity.host,
+          owner: raw.identity.owner,
+          repo: raw.identity.repo,
+        },
+  );
   const source = parseStoredIdentitySource(raw.identity);
   const id = parseReviewId(raw.id);
   const sessionId = parseReviewSessionId(raw.currentSessionId);
@@ -702,9 +727,7 @@ function parseReviewBase(
   const updatedAt = parseIsoTimestamp(raw.updatedAt);
   if (
     profileId._tag === "err" ||
-    host._tag === "err" ||
-    owner._tag === "err" ||
-    repo._tag === "err" ||
+    identityKey._tag === "err" ||
     source._tag === "err" ||
     id._tag === "err" ||
     sessionId._tag === "err" ||
@@ -717,11 +740,15 @@ function parseReviewBase(
 
   const identity: ReviewIdentity = {
     profileId: profileId.value,
-    host: host.value,
-    owner: owner.value,
-    repo: repo.value,
+    identityKey: identityKey.value,
     source: source.value,
   };
+  if (
+    identity.identityKey.kind === "local" &&
+    source.value.kind !== "local_branch" &&
+    source.value.kind !== "commit"
+  )
+    return invalid();
   if (id.value !== createReviewId(identity)) return invalid();
 
   const representedRemote =
@@ -820,7 +847,9 @@ function parseReviewBase(
 }
 
 function parseStoredIdentitySource(
-  raw: RawReviewV2["identity"],
+  raw:
+    | RawReviewV2["identity"]
+    | v.InferOutput<typeof reviewV3Schema>["identity"],
 ): Result<ReviewSource, InvalidReview> {
   if ("prNumber" in raw) {
     const prNumber = parsePullRequestNumber(raw.prNumber);

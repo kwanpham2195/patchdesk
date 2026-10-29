@@ -38,9 +38,12 @@ it("recovers an interrupted shared Review preparation by deleting all three of i
   const profileId = must(parseWorkspaceProfileId("acme"));
   const sessionId = createReviewSessionId({
     profileId,
-    host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("octo-org")),
-    repo: must(parseGitHubRepoName("patchdesk")),
+    identityKey: {
+      kind: "github" as const,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+    },
     source: {
       kind: "local_branch",
       branch: must(parseLocalBranchName("feature")),

@@ -378,9 +378,9 @@ describe("ReviewWorkbenchController", () => {
     expect(value.preparation.prepare).toHaveBeenCalledWith({
       profileId,
       pullRequest: {
-        host: identity.host,
-        owner: identity.owner,
-        repo: identity.repo,
+        host: identity.identityKey.host,
+        owner: identity.identityKey.owner,
+        repo: identity.identityKey.repo,
         number: identity.source.prNumber,
       },
       expectedPullRequestState: "non_open",

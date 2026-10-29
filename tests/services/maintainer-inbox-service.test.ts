@@ -1,3 +1,4 @@
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -69,7 +70,10 @@ describe("MaintainerInboxService", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({ id: "acme", ghAccount: "fixture" } as never, repository),
+      service.list(
+        { id: "acme", github: githubConnectionFixture() } as never,
+        repository,
+      ),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: { rows: [{ recommendedAction: { kind: "run_review" } }] },
@@ -130,7 +134,6 @@ describe("MaintainerInboxService", () => {
       {
         read: async () => ({ _tag: "err", error: { reason: "not_found" } }),
         save: async () => ok(undefined),
-        // SAFETY: this fixture implements only the cache read/write seam list() calls.
       } as never,
       // SAFETY: the fixed ISO literal is valid and supplies only this test clock.
       { now: () => "2026-08-01T00:00:00.000Z" as never },
@@ -138,7 +141,7 @@ describe("MaintainerInboxService", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const result = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
       { filter: { state: "merged" }, pageSize: 25 },
     );
@@ -186,7 +189,7 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
     );
 
@@ -217,7 +220,7 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
       { filter: { state: "open", labels: ["bug", "p0"] }, pageSize: 25 },
     );
@@ -252,7 +255,7 @@ describe("MaintainerInboxService search query", () => {
     // A preset, not a queue: it composes beside the state and the label
     // qualifiers rather than replacing them.
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", github: githubConnectionFixture() } as never;
     await service.list(profile, repository, {
       filter: { state: "open", labels: ["bug"], preset: "awaiting_my_review" },
       pageSize: 25,
@@ -287,7 +290,7 @@ describe("MaintainerInboxService search query", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
       { filter: { state: "open" }, pageSize: 25 },
     );
@@ -318,7 +321,7 @@ describe("MaintainerInboxService search query", () => {
     );
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", github: githubConnectionFixture() } as never;
     const firstPage = await service.list(profile, repository, {
       filter: { state: "open", preset: "awaiting_my_review" },
       pageSize: 25,
@@ -364,7 +367,7 @@ describe("MaintainerInboxService search query", () => {
     );
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const profile = { id: "acme", github: githubConnectionFixture() } as never;
     const firstPage = await service.list(profile, repository, {
       filter: { state: "open", labels: ["bug"] },
       pageSize: 25,
@@ -449,7 +452,7 @@ describe("MaintainerInboxService match count", () => {
 
     // SAFETY: this minimal profile supplies exactly the fields list() reads.
     const result = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
       { filter: { state: "merged" }, pageSize: 10 },
     );
@@ -487,7 +490,10 @@ describe("MaintainerInboxService rate-limited reads", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
-      service.list({ id: "acme", ghAccount: "fixture" } as never, repository),
+      service.list(
+        { id: "acme", github: githubConnectionFixture() } as never,
+        repository,
+      ),
     ).resolves.toMatchObject({
       _tag: "ok",
       value: {
@@ -525,7 +531,7 @@ describe("MaintainerInboxService rate-limited reads", () => {
     // SAFETY: test fixture narrows a partial profile mock to
     // WorkspaceProfileConfig; only the fields the service reads are set.
     const result = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      { id: "acme", github: githubConnectionFixture() } as never,
       repository,
     );
     expect(result).toMatchObject({
@@ -574,7 +580,7 @@ describe("MaintainerInboxService forbidden reads (plan 009)", () => {
     // WorkspaceProfileConfig; only the fields the service reads are set.
     await expect(
       service.list(
-        { id: "acme", ghAccount: "fixture" } as never,
+        { id: "acme", github: githubConnectionFixture() } as never,
         forbiddenRepository,
       ),
     ).resolves.toMatchObject({
@@ -592,7 +598,7 @@ describe("MaintainerInboxService cache writes", () => {
   const now = "2026-08-01T00:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
   // WorkspaceProfileConfig; only the fields the service reads are set.
-  const profile = { id: "acme", ghAccount: "fixture" } as never;
+  const profile = { id: "acme", github: githubConnectionFixture() } as never;
 
   function pullRequestEntry(number: number, cursor: string) {
     return {
@@ -832,7 +838,7 @@ describe("MaintainerInboxService.cachedOrUnavailable", () => {
   const now = "2026-08-01T04:00:00.000Z";
   // SAFETY: test fixture narrows a partial profile mock to
   // WorkspaceProfileConfig; only the fields the service reads are set.
-  const profile = { id: "acme", ghAccount: "fixture" } as never;
+  const profile = { id: "acme", github: githubConnectionFixture() } as never;
 
   function serviceWithCache(cache: {
     readonly read: () => Promise<Result<MaintainerInboxCache, StorageFailure>>;

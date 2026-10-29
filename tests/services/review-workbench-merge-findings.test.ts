@@ -86,7 +86,11 @@ describe("ReviewWorkbenchProjectionService merge badge Analysis findings", () =>
         // below carries the one extra field this rule reads.
         (async () =>
           ok({
-            ghAccount: "fixture",
+            github: {
+              kind: "connected",
+              account: "fixture",
+              host: "github.com",
+            },
             analysisMergePolicy: options.policy,
           })) as never,
       );

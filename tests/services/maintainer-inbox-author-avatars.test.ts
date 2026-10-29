@@ -110,7 +110,10 @@ describe("MaintainerInboxService author avatars", () => {
   }
 
   // SAFETY: this minimal profile supplies exactly the fields list() reads.
-  const profile = { id: "acme", ghAccount: "fixture" } as never;
+  const profile = {
+    id: "acme",
+    github: { kind: "connected", account: "fixture", host: "github.com" },
+  } as never;
 
   it("attaches the cached avatar as a data URI, warming it first", async () => {
     const paths = await warmedPaths();

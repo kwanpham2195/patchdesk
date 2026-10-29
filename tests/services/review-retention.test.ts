@@ -140,7 +140,7 @@ async function storeLegacyReview(
   const branch = value(parseLocalBranchName("main"));
   const identity = {
     profileId,
-    ...repository,
+    identityKey: { kind: "github" as const, ...repository },
     source:
       kind === "branch"
         ? { kind, branch, baseBranch: branch }

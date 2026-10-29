@@ -36,7 +36,9 @@ export async function loadAllowedExternalHosts(
   return normalizeExternalHosts([
     "github.com",
     ...(profiles._tag === "ok"
-      ? profiles.value.map((profile) => profile.githubHost)
+      ? profiles.value.flatMap((profile) =>
+          profile.github.kind === "connected" ? [profile.github.host] : [],
+        )
       : []),
   ]);
 }

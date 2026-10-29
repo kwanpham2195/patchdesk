@@ -166,7 +166,10 @@ export class ReviewContextPackService {
         sessionId,
       ),
       pr: {
-        repository: `${input.session.key.owner}/${input.session.key.repo}`,
+        repository:
+          input.session.key.identityKey.kind === "github"
+            ? `${input.session.key.identityKey.owner}/${input.session.key.identityKey.repo}`
+            : input.session.key.identityKey.localRepositoryId,
         source: reviewSourceTitle(input.session.key.source),
         headSha: input.session.key.headSha,
       },
@@ -217,7 +220,10 @@ export class ReviewContextPackService {
     if (evidence._tag === "err") return evidence;
     if (options.signal?.aborted) return aborted;
     const pr = {
-      repository: `${session.key.owner}/${session.key.repo}`,
+      repository:
+        session.key.identityKey.kind === "github"
+          ? `${session.key.identityKey.owner}/${session.key.identityKey.repo}`
+          : session.key.identityKey.localRepositoryId,
       source: reviewSourceTitle(session.key.source),
       headSha: session.key.headSha,
     };
@@ -314,9 +320,9 @@ export class ReviewContextPackService {
     session: PullRequestReviewSession,
   ) {
     const pullRequest = {
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
+      host: session.key.identityKey.host,
+      owner: session.key.identityKey.owner,
+      repo: session.key.identityKey.repo,
       number: session.key.source.prNumber,
     };
     const [comments, checks] = await Promise.all([

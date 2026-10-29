@@ -946,9 +946,9 @@ function projectPendingReviewOwner(
 
 function sessionPr(session: PullRequestReviewSession): PullRequestRef {
   return {
-    host: session.key.host,
-    owner: session.key.owner,
-    repo: session.key.repo,
+    host: session.key.identityKey.host,
+    owner: session.key.identityKey.owner,
+    repo: session.key.identityKey.repo,
     number: session.key.source.prNumber,
   };
 }

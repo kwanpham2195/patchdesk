@@ -94,9 +94,12 @@ describe("LocalChangeIntentService.set", () => {
     const pullRequest = createReview({
       identity: {
         profileId,
-        host: value(parseGitHubHost("github.com")),
-        owner: value(parseGitHubOwner("octo-org")),
-        repo: value(parseGitHubRepoName("patchdesk")),
+        identityKey: {
+          kind: "github" as const,
+          host: value(parseGitHubHost("github.com")),
+          owner: value(parseGitHubOwner("octo-org")),
+          repo: value(parseGitHubRepoName("patchdesk")),
+        },
         source: {
           kind: "pull_request",
           prNumber: value(parsePullRequestNumber(42)),

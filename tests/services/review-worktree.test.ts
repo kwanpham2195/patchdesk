@@ -1,3 +1,4 @@
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import { execFileSync } from "node:child_process";
 import {
   access,
@@ -88,8 +89,13 @@ const ids = {
 const profile: WorkspaceProfileConfig = {
   id: ids.profileId,
   label: "ACME",
-  githubHost: ids.host,
-  ghAccount: "profile-account",
+  schemaVersion: 1 as const,
+  localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+  github: githubConnectionFixture({
+    host: ids.host,
+    account: "profile-account",
+  }),
+
   rulePaths: [],
   repos: [],
 };
@@ -261,7 +267,11 @@ describe("ReviewWorktreeService", () => {
       const requestedProfiles: string[] = [];
       const unavailable: WorktreeCredentials = {
         async environmentFor(requested) {
-          requestedProfiles.push(requested.ghAccount);
+          requestedProfiles.push(
+            requested.github.kind === "connected"
+              ? requested.github.account
+              : "",
+          );
           return err({ _tag: "CommandAuthenticationRequired" });
         },
       };

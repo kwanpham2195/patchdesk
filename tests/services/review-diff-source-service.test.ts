@@ -1,4 +1,8 @@
 import {
+  parseWorkspaceProfileFixture,
+  githubRepositoryKeyFixture,
+} from "#tests/domain/repository-fixtures";
+import {
   mkdtemp,
   mkdir,
   readFile,
@@ -17,9 +21,6 @@ import { ReviewSessionStore } from "#src/adapters/storage/review-session-store";
 import {
   createReviewSessionId,
   parseAbsolutePath,
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
@@ -27,7 +28,6 @@ import {
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import { createReviewSession } from "#src/domain/review-session";
-import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { CommandRunner } from "#src/adapters/github/command-runner";
 import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import { ReviewDiffSourceService } from "#src/services/review-diff-source-service";
@@ -52,13 +52,13 @@ function must<T>(
 
 function fixtureProfile() {
   return must(
-    parseWorkspaceProfileConfig({
+    parseWorkspaceProfileFixture({
       id: "acme",
       label: "ACME",
-      githubHost: "github.com",
-      ghAccount: "fixture",
       rulePaths: [],
       repos: [],
+      host: "github.com",
+      account: "fixture",
     }),
   );
 }
@@ -125,9 +125,7 @@ async function saveSession(input: {
 }) {
   const key = {
     profileId: input.profileId,
-    host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("octo-org")),
-    repo: must(parseGitHubRepoName("patchdesk")),
+    identityKey: githubRepositoryKeyFixture(),
     source: {
       kind: "pull_request" as const,
       prNumber: must(parsePullRequestNumber(input.number)),
@@ -252,9 +250,7 @@ describe("ReviewDiffSourceService", () => {
       await profileStore.save(profile);
       const key = {
         profileId: must(parseWorkspaceProfileId("acme")),
-        host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("octo-org")),
-        repo: must(parseGitHubRepoName("patchdesk")),
+        identityKey: githubRepositoryKeyFixture(),
         source: {
           kind: "pull_request" as const,
           prNumber: must(parsePullRequestNumber(42)),
@@ -418,9 +414,7 @@ describe("ReviewDiffSourceService", () => {
       await profiles.save(profile);
       const key = {
         profileId: profile.id,
-        host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("octo-org")),
-        repo: must(parseGitHubRepoName("patchdesk")),
+        identityKey: githubRepositoryKeyFixture(),
         source: {
           kind: "pull_request" as const,
           prNumber: must(parsePullRequestNumber(42)),
@@ -494,9 +488,7 @@ describe("ReviewDiffSourceService", () => {
       await new ProfileStore(paths).save(profile);
       const key = {
         profileId: profile.id,
-        host: must(parseGitHubHost("github.com")),
-        owner: must(parseGitHubOwner("octo-org")),
-        repo: must(parseGitHubRepoName("patchdesk")),
+        identityKey: githubRepositoryKeyFixture(),
         source: {
           kind: "pull_request" as const,
           prNumber: must(parsePullRequestNumber(42)),
@@ -847,11 +839,9 @@ describe("ReviewDiffSourceService when the Review worktree is missing (#616)", (
     const profiles = new ProfileStore(paths);
     await profiles.save(
       must(
-        parseWorkspaceProfileConfig({
+        parseWorkspaceProfileFixture({
           id: "acme",
           label: "ACME",
-          githubHost: "github.com",
-          ghAccount: "fixture",
           rulePaths: [],
           repos: [
             {
@@ -861,14 +851,14 @@ describe("ReviewDiffSourceService when the Review worktree is missing (#616)", (
               localPath: repositoryPath,
             },
           ],
+          host: "github.com",
+          account: "fixture",
         }),
       ),
     );
     const key = {
       profileId,
-      host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("octo-org")),
-      repo: must(parseGitHubRepoName("patchdesk")),
+      identityKey: githubRepositoryKeyFixture(),
       source: {
         kind: "pull_request" as const,
         prNumber: must(parsePullRequestNumber(7)),

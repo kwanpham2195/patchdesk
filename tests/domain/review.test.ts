@@ -39,13 +39,16 @@ function must<T>(result: Result<T, unknown>): T {
   return result.value;
 }
 
-const identity: ReviewIdentity = {
+const identity = {
   profileId: must(parseWorkspaceProfileId("acme")),
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
-};
+} satisfies ReviewIdentity;
 const firstSha = must(parseGitSha("1".repeat(40)));
 const secondSha = must(parseGitSha("2".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));
@@ -324,15 +327,33 @@ describe("sessionRepresentsReview", () => {
     },
     {
       field: "host",
-      mismatch: { host: must(parseGitHubHost("github.example.com")) },
+      mismatch: {
+        identityKey: {
+          ...identity.identityKey,
+          kind: "github" as const,
+          host: must(parseGitHubHost("github.example.com")),
+        },
+      },
     },
     {
       field: "owner",
-      mismatch: { owner: must(parseGitHubOwner("someone-else")) },
+      mismatch: {
+        identityKey: {
+          ...identity.identityKey,
+          kind: "github" as const,
+          owner: must(parseGitHubOwner("someone-else")),
+        },
+      },
     },
     {
       field: "repository",
-      mismatch: { repo: must(parseGitHubRepoName("other-repo")) },
+      mismatch: {
+        identityKey: {
+          ...identity.identityKey,
+          kind: "github" as const,
+          repo: must(parseGitHubRepoName("other-repo")),
+        },
+      },
     },
     {
       field: "pull request number",
@@ -362,9 +383,12 @@ describe("sessionRepresentsReview", () => {
 describe("local Review source IDs", () => {
   const repository = {
     profileId: identity.profileId,
-    host: identity.host,
-    owner: identity.owner,
-    repo: identity.repo,
+    identityKey: {
+      kind: "github" as const,
+      host: identity.identityKey.host,
+      owner: identity.identityKey.owner,
+      repo: identity.identityKey.repo,
+    },
   };
   function branchIdentity(branch: string): ReviewIdentity {
     return {
@@ -537,7 +561,10 @@ describe("local Review source IDs", () => {
     const stored = structuredClone(serializeReview(local));
 
     expect(stored.identity).toEqual({
-      ...repository,
+      profileId: repository.profileId,
+      host: "github.com",
+      owner: "octo-org",
+      repo: "patchdesk",
       source: { kind: "branch", branch: "feat/login", baseBranch: "main" },
     });
     expect(parseReview(stored)).toEqual({ _tag: "ok", value: local });

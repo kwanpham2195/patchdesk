@@ -27,7 +27,9 @@ export class StubCredentials implements GitHubCredentials {
   }
 
   forget(profile: WorkspaceProfileConfig): void {
-    this.forgotten.push(profile.ghAccount);
+    this.forgotten.push(
+      profile.github.kind === "connected" ? profile.github.account : "",
+    );
     this.verified.delete(key(profile));
   }
 
@@ -44,5 +46,5 @@ export class StubCredentials implements GitHubCredentials {
 }
 
 function key(profile: WorkspaceProfileConfig): string {
-  return `${profile.githubHost}\u0000${profile.ghAccount}`;
+  return `${profile.github.kind === "connected" ? profile.github.host : ""}\u0000${profile.github.kind === "connected" ? profile.github.account : ""}`;
 }

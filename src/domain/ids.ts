@@ -1,3 +1,5 @@
+import { sha256 } from "./sha256";
+import type { RepositoryIdentityKey } from "./local-repository";
 import { casesHandled, err, ok, type Result } from "./result";
 import type { ReviewSource } from "./review-source";
 
@@ -68,6 +70,14 @@ const reviewIdSyntax = new RegExp(
 );
 const sessionIdSyntax = new RegExp(
   String.raw`^[a-zA-Z0-9.-]+__[a-zA-Z0-9._-]+__[a-zA-Z0-9._-]+__${reviewSourceSegment}__sha-[a-f0-9]{8}__base-[a-f0-9]{8}__[a-f0-9]{12}$`,
+);
+const uuidPattern =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const localReviewIdSyntax = new RegExp(
+  `^local__${uuidPattern}__review-[a-f0-9]{64}$`,
+);
+const localSessionIdSyntax = new RegExp(
+  `^local__${uuidPattern}__session-[a-f0-9]{64}$`,
 );
 /** Keeps a local id segment well inside a 255-byte path component; the full name still enters the hash. */
 const LOCAL_SOURCE_SLUG_MAX_LENGTH = 64;
@@ -395,7 +405,7 @@ export function parseReviewId(
   if (
     // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before applying the Review ID invariant.
     typeof input !== "string" ||
-    !reviewIdSyntax.test(input)
+    !(reviewIdSyntax.test(input) || localReviewIdSyntax.test(input))
   ) {
     return err({ _tag: "InvalidDomainValue", field: "reviewId" });
   }
@@ -406,9 +416,7 @@ export function parseReviewId(
 /** What a Review id is derived from: the profile repository and the Review source spec. */
 export type ReviewIdKey = {
   readonly profileId: WorkspaceProfileId;
-  readonly host: GitHubHost;
-  readonly owner: GitHubOwner;
-  readonly repo: GitHubRepoName;
+  readonly identityKey: RepositoryIdentityKey;
   readonly source: ReviewSource;
 };
 
@@ -424,12 +432,24 @@ export type ReviewSessionIdKey = ReviewIdKey & {
  * so stored folders keep their names.
  */
 export function createReviewId(key: ReviewIdKey): ReviewId {
-  const readable = `${key.host}__${key.owner}__${key.repo}__${reviewSourceIdSegment(key.source)}`;
+  if (key.identityKey.kind === "local") {
+    const uuid = key.identityKey.localRepositoryId;
+    const digest = sha256(
+      JSON.stringify([
+        "local-review/1",
+        key.profileId,
+        uuid,
+        localSourceTuple(key.source),
+      ]),
+    );
+    return brand(`local__${uuid}__review-${digest}`);
+  }
+  const readable = `${key.identityKey.host}__${key.identityKey.owner}__${key.identityKey.repo}__${reviewSourceIdSegment(key.source)}`;
   const collisionInput = [
     key.profileId,
-    key.host,
-    key.owner,
-    key.repo,
+    key.identityKey.host,
+    key.identityKey.owner,
+    key.identityKey.repo,
     ...reviewSourceCollisionParts(key.source),
   ].join("\n");
 
@@ -443,7 +463,7 @@ export function parseReviewSessionId(
   if (
     // oxlint-disable-next-line anti-slop/no-runtime-typeof -- narrows raw boundary input before applying the Review session ID invariant.
     typeof input !== "string" ||
-    !sessionIdSyntax.test(input)
+    !(sessionIdSyntax.test(input) || localSessionIdSyntax.test(input))
   ) {
     return err({ _tag: "InvalidDomainValue", field: "reviewSessionId" });
   }
@@ -526,18 +546,54 @@ export function parseRepoRelativePath(
 export function createReviewSessionId(
   key: ReviewSessionIdKey,
 ): ReviewSessionId {
-  const readable = `${key.host}__${key.owner}__${key.repo}__${reviewSourceIdSegment(key.source)}__sha-${key.headSha.slice(0, 8)}__base-${key.baseSha.slice(0, 8)}`;
+  if (key.identityKey.kind === "local") {
+    const uuid = key.identityKey.localRepositoryId;
+    const digest = sha256(
+      JSON.stringify([
+        "local-session/1",
+        key.profileId,
+        uuid,
+        localSourceTuple(key.source),
+        key.headSha,
+        key.baseSha,
+      ]),
+    );
+    return brand(`local__${uuid}__session-${digest}`);
+  }
+  const readable = `${key.identityKey.host}__${key.identityKey.owner}__${key.identityKey.repo}__${reviewSourceIdSegment(key.source)}__sha-${key.headSha.slice(0, 8)}__base-${key.baseSha.slice(0, 8)}`;
   const collisionInput = [
     key.profileId,
-    key.host,
-    key.owner,
-    key.repo,
+    key.identityKey.host,
+    key.identityKey.owner,
+    key.identityKey.repo,
     ...reviewSourceCollisionParts(key.source),
     key.headSha,
     key.baseSha,
   ].join("\n");
 
   return brand(`${readable}__${fnv1a64(collisionInput).slice(0, 12)}`);
+}
+
+function localSourceTuple(source: ReviewSource): ReadonlyArray<string | null> {
+  switch (source.kind) {
+    case "local_branch":
+      return [
+        source.kind,
+        source.branch,
+        source.baseRef,
+        source.checkout ?? null,
+      ];
+    case "commit":
+      return [source.kind, source.commitSha, source.checkout ?? null];
+    case "working_tree":
+    case "branch":
+    case "pull_request":
+      throw new Error(
+        "Local repository identity requires a shared or commit source",
+      );
+    default:
+      return casesHandled(source);
+  }
 }
 
 function reviewSourceIdSegment(source: ReviewSource): string {

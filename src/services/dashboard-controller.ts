@@ -168,7 +168,7 @@ export class DashboardController {
     }
     const detected = await this.detectionMemo;
     if (detected._tag === "err") return failure("invalid_input");
-    if (detected.value.ghAccount.length === 0) {
+    if (detected.value.github.kind === "disconnected") {
       // Detection found no real account on this machine. The persisted-profile
       // schema requires a non-empty ghAccount (see workspace-profile.ts), so
       // there is nothing valid to save yet; hand the renderer this ephemeral,
@@ -235,8 +235,14 @@ export class DashboardController {
     const profile = parseWorkspaceProfileConfig({
       id: id.value,
       label: fields.label,
-      githubHost: fields.githubHost,
-      ghAccount: fields.ghAccount,
+      schemaVersion: 1,
+      localRepositoryCatalogGeneration:
+        current?.localRepositoryCatalogGeneration ?? crypto.randomUUID(),
+      github: {
+        kind: "connected",
+        host: fields.githubHost,
+        account: fields.ghAccount,
+      },
       rulePaths: fields.rulePaths,
       repos: current?.repos ?? [],
     });

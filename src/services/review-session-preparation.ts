@@ -136,9 +136,12 @@ export class ReviewSessionPreparation {
     if (revision === undefined) return err({ _tag: "PreparationUnavailable" });
     const sessionId = createReviewSessionId({
       profileId: input.profileId,
-      host: input.pullRequest.host,
-      owner: input.pullRequest.owner,
-      repo: input.pullRequest.repo,
+      identityKey: {
+        kind: "github",
+        host: input.pullRequest.host,
+        owner: input.pullRequest.owner,
+        repo: input.pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: input.pullRequest.number },
       ...revision,
     });
@@ -372,9 +375,12 @@ export class ReviewSessionPreparation {
     const sessionInput: Parameters<typeof createReviewSession>[0] = {
       key: {
         profileId: input.profileId,
-        host: input.pullRequest.host,
-        owner: input.pullRequest.owner,
-        repo: input.pullRequest.repo,
+        identityKey: {
+          kind: "github",
+          host: input.pullRequest.host,
+          owner: input.pullRequest.owner,
+          repo: input.pullRequest.repo,
+        },
         source: { kind: "pull_request", prNumber: input.pullRequest.number },
         ...revision,
       },
@@ -404,9 +410,12 @@ export class ReviewSessionPreparation {
       _tag: "PreparationFinished",
       reviewId: createReviewId({
         profileId: input.profileId,
-        host: input.pullRequest.host,
-        owner: input.pullRequest.owner,
-        repo: input.pullRequest.repo,
+        identityKey: {
+          kind: "github",
+          host: input.pullRequest.host,
+          owner: input.pullRequest.owner,
+          repo: input.pullRequest.repo,
+        },
         source: { kind: "pull_request", prNumber: input.pullRequest.number },
       }),
       pullRequest: input.pullRequest,

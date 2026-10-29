@@ -27,7 +27,7 @@ export type ReviewLocalCheckoutWarning =
 
 /** The fields every session kind shares; the kind lives in `key.source`. */
 export type ReviewSessionFields = {
-  readonly schemaVersion: 6;
+  readonly schemaVersion: 6 | 7;
   readonly id: ReviewSessionId;
   readonly patchPath: AbsolutePath;
   readonly canonicalPatchHash?: ContentHash;
@@ -209,7 +209,7 @@ export function createLocalReviewSession(input: {
   readonly commits?: LocalSessionCommits;
 }): LocalReviewSession {
   return {
-    schemaVersion: 6,
+    schemaVersion: input.key.identityKey.kind === "github" ? 6 : 7,
     id: createReviewSessionId(input.key),
     key: input.key,
     patchPath: input.patchPath,

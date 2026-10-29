@@ -11,7 +11,10 @@ const repository = {
   repo: "patchdesk",
 } as never;
 
-const profile = { id: "acme", ghAccount: "fixture" } as never;
+const profile = {
+  id: "acme",
+  github: { kind: "connected", account: "fixture", host: "github.com" },
+} as never;
 
 function serviceWithSearch(
   searchMaintainerPullRequests: GitHubReader["searchMaintainerPullRequests"],

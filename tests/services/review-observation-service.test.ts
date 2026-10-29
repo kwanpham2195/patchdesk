@@ -107,8 +107,14 @@ async function fixture(
     parseWorkspaceProfileConfig({
       id: "acme",
       label: "ACME",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      schemaVersion: 1 as const,
+      localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+      github: {
+        kind: "connected" as const,
+        host: "github.com",
+        account: "fixture",
+      },
+
       rulePaths: [],
       repos: [],
     }),
@@ -661,10 +667,7 @@ describe("ReviewObservationService", () => {
     });
     await expect(
       replay.recover({ profileId, reviewId: value.review.id }),
-    ).resolves.toMatchObject({
-      _tag: "ok",
-      value: { _tag: "Reconciled" },
-    });
+    ).resolves.toMatchObject({ _tag: "ok", value: { _tag: "Reconciled" } });
     await expect(
       value.sessions.load(profileId, value.session.id),
     ).resolves.toMatchObject({
@@ -673,10 +676,7 @@ describe("ReviewObservationService", () => {
     });
     await expect(
       value.journals.load(profileId, value.review.id),
-    ).resolves.toEqual({
-      _tag: "ok",
-      value: undefined,
-    });
+    ).resolves.toEqual({ _tag: "ok", value: undefined });
   });
 
   it("recovers when journal cleanup failed after both adoptions completed", async () => {

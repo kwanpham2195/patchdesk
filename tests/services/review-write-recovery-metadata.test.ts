@@ -170,9 +170,12 @@ describe("metadata recovery evidence", () => {
         session: {
           id: value.sessionId,
           key: {
-            host: "github.com",
-            owner: "octo-org",
-            repo: "patchdesk",
+            identityKey: {
+              kind: "github",
+              host: "github.com",
+              owner: "octo-org",
+              repo: "patchdesk",
+            },
             source: { kind: "pull_request", prNumber: 42 },
             headSha: "1".repeat(40),
           },

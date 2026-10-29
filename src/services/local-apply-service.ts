@@ -352,16 +352,16 @@ export class LocalApplyService {
     // The same branch and base, read again: the written files land in the next session.
     const request = reopenLocalSourceRequest(review.identity.source);
     const next =
-      request === undefined
+      request === undefined || review.identity.identityKey.kind !== "github"
         ? undefined
         : await this.dependencies.opening
             .openLocked(
               {
                 profileId: operation.profileId,
                 repository: {
-                  host: review.identity.host,
-                  owner: review.identity.owner,
-                  repo: review.identity.repo,
+                  host: review.identity.identityKey.host,
+                  owner: review.identity.identityKey.owner,
+                  repo: review.identity.identityKey.repo,
                 },
                 request,
               },
@@ -409,10 +409,12 @@ export class LocalApplyService {
     )
       return err({ reason: "storage" });
     const localReview = review.value;
+    if (localReview.identity.identityKey.kind !== "github")
+      return err({ reason: "storage" });
     const checkout = await resolveLocalReviewCheckout(
       this.dependencies,
       profile.value,
-      localReview.identity,
+      localReview.identity.identityKey,
       localReview.identity.source.checkout,
     );
     const root =

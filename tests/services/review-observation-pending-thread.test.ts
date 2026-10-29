@@ -79,9 +79,9 @@ function viewerReview(
     nodeId: must(parseGitHubReviewNodeId(nodeId)),
     author: must(parseGitHubLogin("fixture")),
     pr: {
-      host: identity.host,
-      owner: identity.owner,
-      repo: identity.repo,
+      host: identity.identityKey.host,
+      owner: identity.identityKey.owner,
+      repo: identity.identityKey.repo,
       number: identity.source.prNumber,
     },
     headSha,
@@ -124,8 +124,15 @@ async function observeAfterPendingRead({
       parseWorkspaceProfileConfig({
         id: "acme",
         label: "ACME",
-        githubHost: "github.com",
-        ghAccount: "fixture",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration:
+          "12345678-1234-4234-8234-123456789abc",
+        github: {
+          kind: "connected" as const,
+          host: "github.com",
+          account: "fixture",
+        },
+
         rulePaths: [],
         repos: [],
       }),

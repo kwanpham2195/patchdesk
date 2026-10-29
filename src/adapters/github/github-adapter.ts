@@ -1,3 +1,4 @@
+import { readConnectedGitHub, writeConnectedGitHub } from "./github-connection";
 import * as v from "valibot";
 
 import type { CommandFailure, CommandRunner } from "./command-runner";
@@ -59,7 +60,10 @@ import type {
   InboxStateFilter,
 } from "#src/domain/maintainer-inbox";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import {
+  type WorkspaceProfileConfig,
+  isConnectedWorkspaceProfile,
+} from "#src/domain/workspace-profile";
 import type {
   GitHubReviewEvent,
   PendingReviewAnchor,
@@ -275,6 +279,9 @@ export class GitHubAdapter
     profile: WorkspaceProfileConfig,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
+    if (!isConnectedWorkspaceProfile(profile))
+      return err({ _tag: "CommandAuthenticationRequired" });
+
     return this.requests.ghJson(profile, request);
   }
 
@@ -282,7 +289,9 @@ export class GitHubAdapter
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<ReadonlyArray<PullRequestSummary>, GitHubReadFailure>> {
-    return this.pullRequests.listOpenPullRequests(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.listOpenPullRequests(connectedInput),
+    );
   }
 
   async listMaintainerPullRequests(input: {
@@ -292,7 +301,9 @@ export class GitHubAdapter
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestPage, GitHubReadFailure>> {
-    return this.pullRequests.listMaintainerPullRequests(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.listMaintainerPullRequests(connectedInput),
+    );
   }
 
   async searchMaintainerPullRequests(input: {
@@ -303,14 +314,18 @@ export class GitHubAdapter
     readonly pageSize: InboxPageSize;
     readonly cursor?: string;
   }): Promise<Result<MaintainerPullRequestSearchPage, GitHubReadFailure>> {
-    return this.pullRequests.searchMaintainerPullRequests(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.searchMaintainerPullRequests(connectedInput),
+    );
   }
 
   async listRepositoryLabels(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
-    return this.collaborators.listRepositoryLabels(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.listRepositoryLabels(connectedInput),
+    );
   }
 
   async listAssignableUsers(input: {
@@ -318,7 +333,9 @@ export class GitHubAdapter
     readonly repo: PullRequestRef;
     readonly query?: string;
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
-    return this.collaborators.listAssignableUsers(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.listAssignableUsers(connectedInput),
+    );
   }
 
   async readWatchedPullRequests(input: {
@@ -328,7 +345,9 @@ export class GitHubAdapter
   }): Promise<
     Result<ReadonlyArray<WatchedPullRequestRead>, GitHubReadFailure>
   > {
-    return this.pullRequests.readWatchedPullRequests(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.readWatchedPullRequests(connectedInput),
+    );
   }
 
   async listRepositoryBranches(input: {
@@ -336,21 +355,27 @@ export class GitHubAdapter
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
     readonly query?: string;
   }): Promise<Result<RepositoryBranchListing, GitHubReadFailure>> {
-    return this.pullRequests.listRepositoryBranches(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.listRepositoryBranches(connectedInput),
+    );
   }
 
   async getPullRequestReviewers(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>> {
-    return this.collaborators.getPullRequestReviewers(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.getPullRequestReviewers(connectedInput),
+    );
   }
 
   async getPullRequest(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestSummary, GitHubReadFailure>> {
-    return this.pullRequests.getPullRequest(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.getPullRequest(connectedInput),
+    );
   }
 
   async getMergePolicy(input: {
@@ -358,14 +383,18 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly expectedHeadSha: GitSha;
   }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>> {
-    return this.mergePolicy.getMergePolicy(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.mergePolicy.getMergePolicy(connectedInput),
+    );
   }
 
   async getMergeOutcome(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<MergeOutcome, GitHubReadFailure>> {
-    return this.pullRequests.getMergeOutcome(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.getMergeOutcome(connectedInput),
+    );
   }
 
   async getPullRequestCommits(input: {
@@ -373,14 +402,18 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly headSha?: GitSha;
   }): Promise<Result<ReadonlyArray<PullRequestCommit>, GitHubReadFailure>> {
-    return this.pullRequests.getPullRequestCommits(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pullRequests.getPullRequestCommits(connectedInput),
+    );
   }
 
   async getPullRequestComments(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>> {
-    return this.threads.getPullRequestComments(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.threads.getPullRequestComments(connectedInput),
+    );
   }
 
   async getReviewThreadTarget(input: {
@@ -388,7 +421,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly threadId: GitHubThreadId;
   }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
-    return this.threads.getReviewThreadTarget(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.threads.getReviewThreadTarget(connectedInput),
+    );
   }
 
   async getReviewCommentTarget(input: {
@@ -396,7 +431,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
-    return this.threads.getReviewCommentTarget(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.threads.getReviewCommentTarget(connectedInput),
+    );
   }
 
   async getPullRequestPublishedFeedback(input: {
@@ -406,14 +443,23 @@ export class GitHubAdapter
     readonly branchProtection?: BranchProtectionRead;
     readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<GitHubPublishedFeedback, GitHubReadFailure>> {
-    return this.conversation.getPullRequestPublishedFeedback(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.conversation.getPullRequestPublishedFeedback(connectedInput),
+    );
   }
 
   async readPullRequestReviews(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly pr: PullRequestRef;
   }): Promise<PullRequestReviewsRead> {
-    return readPullRequestReviews(this.requests, input);
+    if (!isConnectedWorkspaceProfile(input.profile))
+      return {
+        _tag: "Unreadable",
+        failure: { _tag: "CommandAuthenticationRequired" },
+      };
+    const connectedInput = { ...input, profile: input.profile };
+
+    return readPullRequestReviews(this.requests, connectedInput);
   }
 
   async getRepositoryPermission(input: {
@@ -421,7 +467,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly account: string;
   }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
-    return this.mergePolicy.getRepositoryPermission(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.mergePolicy.getRepositoryPermission(connectedInput),
+    );
   }
 
   async getBranchProtection(input: {
@@ -429,7 +477,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
-    return this.mergePolicy.getBranchProtection(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.mergePolicy.getBranchProtection(connectedInput),
+    );
   }
 
   async readBranchProtection(input: {
@@ -437,7 +487,20 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<BranchProtectionRead> {
-    return this.mergePolicy.readBranchProtection(input);
+    if (!isConnectedWorkspaceProfile(input.profile))
+      return {
+        dismissal: err({
+          _tag: "GitHubAuthenticationFailed",
+          operation: "auth_status",
+        }),
+        evidence: err({
+          _tag: "GitHubAuthenticationFailed",
+          operation: "auth_status",
+        }),
+      };
+    const connectedInput = { ...input, profile: input.profile };
+
+    return this.mergePolicy.readBranchProtection(connectedInput);
   }
 
   async getMergePolicyEvidence(input: {
@@ -446,7 +509,9 @@ export class GitHubAdapter
     readonly branch: string;
     readonly branchProtection?: BranchProtectionRead;
   }): Promise<Result<GitHubMergePolicyEvidence, GitHubReadFailure>> {
-    return this.mergePolicy.getMergePolicyEvidence(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.mergePolicy.getMergePolicyEvidence(connectedInput),
+    );
   }
 
   async getPullRequestChecks(input: {
@@ -454,13 +519,17 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
   }): Promise<Result<CheckSummary, GitHubReadFailure>> {
-    return this.diffs.getPullRequestChecks(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.diffs.getPullRequestChecks(connectedInput),
+    );
   }
 
   async capturePullRequestDiff(
     input: Parameters<GitHubReader["capturePullRequestDiff"]>[0],
   ): Promise<Result<void, GitHubReadFailure>> {
-    return this.diffs.capturePullRequestDiff(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.diffs.capturePullRequestDiff(connectedInput),
+    );
   }
 
   async getPullRequestDiff(
@@ -469,7 +538,9 @@ export class GitHubAdapter
       readonly pr: PullRequestRef;
     } & PullRequestDiffSource,
   ): Promise<Result<string, GitHubReadFailure>> {
-    return this.diffs.getPullRequestDiff(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.diffs.getPullRequestDiff(connectedInput),
+    );
   }
 
   async getFileContents(input: {
@@ -478,23 +549,31 @@ export class GitHubAdapter
     readonly sha: GitSha;
     readonly path: RepoRelativePath;
   }): Promise<Result<GitHubFileContents, GitHubReadFailure>> {
-    return this.diffs.getFileContents(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.diffs.getFileContents(connectedInput),
+    );
   }
 
   async resolveAuthenticatedAccount(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<AuthenticatedGitHubAccount, GitHubReadFailure>> {
+    if (!isConnectedWorkspaceProfile(profile))
+      return err({
+        _tag: "GitHubAuthenticationFailed",
+        operation: "auth_status",
+      });
+
     // The answer is a property of the credential, not of the moment: while the
     // same token is cached, who it authenticates as cannot change. An
     // observation asks three times, and only the first need reach GitHub.
-    if (this.credentials.verifiedAccount(profile) === profile.ghAccount)
-      return ok({ host: profile.githubHost, account: profile.ghAccount });
+    if (this.credentials.verifiedAccount(profile) === profile.github.account)
+      return ok({ host: profile.github.host, account: profile.github.account });
     const response = await this.ghJson(profile, {
       // `gh auth status` exits nonzero if any stale, inactive account is
       // invalid, even when the configured active account can make API calls.
       // Ask GitHub who this invocation can actually authenticate as instead.
       kind: "rest",
-      host: profile.githubHost,
+      host: profile.github.host,
       path: "user",
     });
     if (response._tag === "err") {
@@ -504,14 +583,14 @@ export class GitHubAdapter
       });
     }
     const user = v.safeParse(authenticatedUserSchema, response.value);
-    if (!user.success || user.output.login !== profile.ghAccount) {
+    if (!user.success || user.output.login !== profile.github.account) {
       return err({
         _tag: "GitHubAuthenticationFailed",
         operation: "auth_status",
       });
     }
-    this.credentials.recordVerifiedAccount(profile, profile.ghAccount);
-    return ok({ host: profile.githubHost, account: profile.ghAccount });
+    this.credentials.recordVerifiedAccount(profile, profile.github.account);
+    return ok({ host: profile.github.host, account: profile.github.account });
   }
 
   async submitPendingReview(input: {
@@ -521,14 +600,22 @@ export class GitHubAdapter
     readonly event: GitHubReviewEvent;
     readonly summaryBody: string;
   }): Promise<Result<{ readonly reviewId: string }, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
+    if (!isConnectedWorkspaceProfile(input.profile))
+      return err({
+        _tag: "GitHubWriteFailure",
+        category: "auth",
+        message: "Workspace has no GitHub connection.",
+      });
+    const connectedInput = { ...input, profile: input.profile };
+
+    const response = await this.ghJson(connectedInput.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: connectedInput.profile.github.host,
       method: "POST",
-      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/events`,
+      path: `repos/${connectedInput.pr.owner}/${connectedInput.pr.repo}/pulls/${connectedInput.pr.number}/reviews/${connectedInput.reviewId}/events`,
       jsonBody: JSON.stringify({
-        event: input.event,
-        body: input.summaryBody,
+        event: connectedInput.event,
+        body: connectedInput.summaryBody,
       }),
     });
     if (response._tag === "err") return err(writeFailure(response.error));
@@ -552,7 +639,9 @@ export class GitHubAdapter
     readonly event: GitHubReviewEvent;
     readonly body: string;
   }): Promise<Result<DirectSummaryReviewReceipt, GitHubWriteFailure>> {
-    return this.conversation.createDirectSummaryReview(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.conversation.createDirectSummaryReview(connectedInput),
+    );
   }
 
   async getViewerDirectSummaryReviews(input: {
@@ -568,7 +657,9 @@ export class GitHubAdapter
       GitHubReadFailure
     >
   > {
-    return this.conversation.getViewerDirectSummaryReviews(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.conversation.getViewerDirectSummaryReviews(connectedInput),
+    );
   }
 
   async getViewerPendingReview(input: {
@@ -577,7 +668,9 @@ export class GitHubAdapter
     readonly account: GitHubLogin;
     readonly reviews?: PullRequestReviewsRead;
   }): Promise<Result<PendingReviewRead, GitHubReadFailure>> {
-    return this.pendingReviews.getViewerPendingReview(input);
+    return readConnectedGitHub(input, (connectedInput) =>
+      this.pendingReviews.getViewerPendingReview(connectedInput),
+    );
   }
 
   async startPendingReviewWithThread(input: {
@@ -587,7 +680,9 @@ export class GitHubAdapter
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    return this.pendingReviews.startPendingReviewWithThread(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.pendingReviews.startPendingReviewWithThread(connectedInput),
+    );
   }
 
   async addPendingReviewThread(input: {
@@ -597,7 +692,9 @@ export class GitHubAdapter
     readonly anchor: PendingReviewAnchor;
     readonly body: string;
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    return this.pendingReviews.addPendingReviewThread(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.pendingReviews.addPendingReviewThread(connectedInput),
+    );
   }
 
   async discardPendingReview(input: {
@@ -605,7 +702,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly reviewId: GitHubReviewRestId;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.pendingReviews.discardPendingReview(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.pendingReviews.discardPendingReview(connectedInput),
+    );
   }
 
   async createInlineComment(input: {
@@ -625,7 +724,9 @@ export class GitHubAdapter
       GitHubWriteFailure
     >
   > {
-    return this.threadWrites.createInlineComment(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.createInlineComment(connectedInput),
+    );
   }
 
   async createThreadReply(input: {
@@ -638,7 +739,9 @@ export class GitHubAdapter
       GitHubWriteFailure
     >
   > {
-    return this.threadWrites.createThreadReply(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.createThreadReply(connectedInput),
+    );
   }
 
   async setReviewThreadState(input: {
@@ -646,7 +749,9 @@ export class GitHubAdapter
     readonly threadId: GitHubThreadId;
     readonly state: "resolved" | "open";
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.threadWrites.setReviewThreadState(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.setReviewThreadState(connectedInput),
+    );
   }
 
   async addLabelsToLabelable(input: {
@@ -654,7 +759,9 @@ export class GitHubAdapter
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.addLabelsToLabelable(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.addLabelsToLabelable(connectedInput),
+    );
   }
 
   async removeLabelsFromLabelable(input: {
@@ -662,7 +769,9 @@ export class GitHubAdapter
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.removeLabelsFromLabelable(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.removeLabelsFromLabelable(connectedInput),
+    );
   }
 
   async addAssigneesToAssignable(input: {
@@ -670,7 +779,9 @@ export class GitHubAdapter
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.addAssigneesToAssignable(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.addAssigneesToAssignable(connectedInput),
+    );
   }
 
   async removeAssigneesFromAssignable(input: {
@@ -678,7 +789,9 @@ export class GitHubAdapter
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.removeAssigneesFromAssignable(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.removeAssigneesFromAssignable(connectedInput),
+    );
   }
 
   async requestReviews(input: {
@@ -686,7 +799,9 @@ export class GitHubAdapter
     readonly pullRequestId: string;
     readonly userIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.requestReviews(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.requestReviews(connectedInput),
+    );
   }
 
   async removeRequestedReviewers(input: {
@@ -694,7 +809,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly logins: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.removeRequestedReviewers(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.removeRequestedReviewers(connectedInput),
+    );
   }
 
   async setPullRequestDraftState(input: {
@@ -702,7 +819,9 @@ export class GitHubAdapter
     readonly pullRequestId: string;
     readonly draft: boolean;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.setPullRequestDraftState(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.setPullRequestDraftState(connectedInput),
+    );
   }
 
   async setPullRequestBaseBranch(input: {
@@ -710,7 +829,9 @@ export class GitHubAdapter
     readonly pullRequestId: string;
     readonly branch: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.collaborators.setPullRequestBaseBranch(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.collaborators.setPullRequestBaseBranch(connectedInput),
+    );
   }
 
   async updateThreadComment(input: {
@@ -718,14 +839,18 @@ export class GitHubAdapter
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.threadWrites.updateThreadComment(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.updateThreadComment(connectedInput),
+    );
   }
 
   async deleteThreadComment(input: {
     readonly profile: WorkspaceProfileConfig;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.threadWrites.deleteThreadComment(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.deleteThreadComment(connectedInput),
+    );
   }
 
   async updateReviewComment(input: {
@@ -734,7 +859,9 @@ export class GitHubAdapter
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.threadWrites.updateReviewComment(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.updateReviewComment(connectedInput),
+    );
   }
 
   async deleteReviewComment(input: {
@@ -742,7 +869,9 @@ export class GitHubAdapter
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    return this.threadWrites.deleteReviewComment(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.threadWrites.deleteReviewComment(connectedInput),
+    );
   }
 
   async dismissReview(input: {
@@ -751,12 +880,20 @@ export class GitHubAdapter
     readonly reviewId: GitHubReviewRestId;
     readonly message: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
-    const response = await this.ghJson(input.profile, {
+    if (!isConnectedWorkspaceProfile(input.profile))
+      return err({
+        _tag: "GitHubWriteFailure",
+        category: "auth",
+        message: "Workspace has no GitHub connection.",
+      });
+    const connectedInput = { ...input, profile: input.profile };
+
+    const response = await this.ghJson(connectedInput.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: connectedInput.profile.github.host,
       method: "PUT",
-      path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}/dismissals`,
-      jsonBody: JSON.stringify({ message: input.message }),
+      path: `repos/${connectedInput.pr.owner}/${connectedInput.pr.repo}/pulls/${connectedInput.pr.number}/reviews/${connectedInput.reviewId}/dismissals`,
+      jsonBody: JSON.stringify({ message: connectedInput.message }),
     });
     return response._tag === "err"
       ? err(writeFailure(response.error))
@@ -771,7 +908,9 @@ export class GitHubAdapter
   }): Promise<
     Result<{ readonly mergeCommitSha?: GitSha }, GitHubWriteFailure>
   > {
-    return this.mergePolicy.mergePullRequest(input);
+    return writeConnectedGitHub(input, (connectedInput) =>
+      this.mergePolicy.mergePullRequest(connectedInput),
+    );
   }
 }
 

@@ -55,9 +55,12 @@ describe("MaintainerInboxService insight readiness", () => {
   const session = {
     key: {
       profileId: "acme",
-      host: "github.com",
-      owner: "octo-org",
-      repo: "patchdesk",
+      identityKey: {
+        kind: "github" as const,
+        host: "github.com",
+        owner: "octo-org",
+        repo: "patchdesk",
+      },
       source: { kind: "pull_request", prNumber: 42 },
       headSha,
     },
@@ -169,7 +172,10 @@ describe("MaintainerInboxService insight readiness", () => {
       ...(withStore ? [insights as never] : []),
     );
     const listed = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      {
+        id: "acme",
+        github: { kind: "connected", account: "fixture", host: "github.com" },
+      } as never,
       repository,
     );
     if (listed._tag === "err") throw new Error("expected an inbox page");
@@ -318,7 +324,10 @@ describe("MaintainerInboxService insight readiness", () => {
       { now: () => "2026-08-01T00:00:00.000Z" as never },
       insights as never,
     );
-    const profile = { id: "acme", ghAccount: "fixture" } as never;
+    const profile = {
+      id: "acme",
+      github: { kind: "connected", account: "fixture", host: "github.com" },
+    } as never;
     const listed = await service.list(profile, repository);
     if (listed._tag === "err") throw new Error("expected an inbox page");
     const listedRow = listed.value.rows[0];

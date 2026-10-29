@@ -158,8 +158,15 @@ async function seedRepresentedReview(
       parseWorkspaceProfileConfig({
         id: "acme",
         label: "ACME",
-        githubHost: "github.com",
-        ghAccount: "fixture",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration:
+          "12345678-1234-4234-8234-123456789abc",
+        github: {
+          kind: "connected" as const,
+          host: "github.com",
+          account: "fixture",
+        },
+
         rulePaths: [],
         repos: [],
       }),
@@ -167,9 +174,7 @@ async function seedRepresentedReview(
   );
   const sessionId = createReviewSessionId({
     profileId,
-    host,
-    owner,
-    repo,
+    identityKey: { kind: "github" as const, host, owner, repo },
     source: { kind: "pull_request", prNumber: number },
     headSha,
     baseSha,
@@ -183,9 +188,7 @@ async function seedRepresentedReview(
   const session = createReviewSession({
     key: {
       profileId,
-      host,
-      owner,
-      repo,
+      identityKey: { kind: "github" as const, host, owner, repo },
       source: { kind: "pull_request", prNumber: number },
       headSha,
       baseSha,
@@ -200,9 +203,7 @@ async function seedRepresentedReview(
   const review = createReview({
     identity: {
       profileId,
-      host,
-      owner,
-      repo,
+      identityKey: { kind: "github" as const, host, owner, repo },
       source: { kind: "pull_request", prNumber: number },
     },
     currentSessionId: session.id,

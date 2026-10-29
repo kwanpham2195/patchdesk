@@ -152,7 +152,10 @@ export class ReviewRetention {
       const pruned = await this.pruneSuperseded(profileId, reviewId);
       return pruned._tag === "ok" ? "kept" : "failed";
     }
-    const localPath = configuredLocalPath(profile.value, review.value.identity);
+    const localPath = configuredLocalPath(
+      profile.value,
+      review.value.identity.identityKey,
+    );
     const sourceKind = review.value.identity.source.kind;
     if (
       localPath !== undefined &&
@@ -375,7 +378,10 @@ export class ReviewRetention {
     );
     // A locked pending-review or summary write keeps every session for its recovery (ADR 0035).
     if (owned.some(hasLockedGitHubWrite)) return ok(undefined);
-    const localPath = configuredLocalPath(profile.value, review.value.identity);
+    const localPath = configuredLocalPath(
+      profile.value,
+      review.value.identity.identityKey,
+    );
     // One session at a time: `git update-ref` and `git worktree` contend on the repository's locks.
     const outcomes = await mapConcurrent(owned, 1, (session) =>
       this.pruneSession(

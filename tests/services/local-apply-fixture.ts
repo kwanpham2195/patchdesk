@@ -186,8 +186,15 @@ export async function localApplyHarness(
       parseWorkspaceProfileConfig({
         id: profileId,
         label: "ACME",
-        githubHost: "github.com",
-        ghAccount: "fixture",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration:
+          "12345678-1234-4234-8234-123456789abc",
+        github: {
+          kind: "connected" as const,
+          host: "github.com",
+          account: "fixture",
+        },
+
         rulePaths: [],
         repos: [{ ...repository, localPath: repositoryPath }],
       }),

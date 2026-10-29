@@ -193,9 +193,9 @@ export class MergeWriteController {
         reviewId: reviewId,
         sessionId,
         pr: {
-          host: session.value.key.host,
-          owner: session.value.key.owner,
-          repo: session.value.key.repo,
+          host: session.value.key.identityKey.host,
+          owner: session.value.key.identityKey.owner,
+          repo: session.value.key.identityKey.repo,
           number: session.value.key.source.prNumber,
         },
         expectedHeadSha: session.value.key.headSha,

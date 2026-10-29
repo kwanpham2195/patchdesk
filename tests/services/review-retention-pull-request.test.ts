@@ -50,9 +50,12 @@ afterEach(cleanupLocalApplyRoots);
 
 const identity = {
   profileId,
-  host: value(parseGitHubHost("github.com")),
-  owner: value(parseGitHubOwner("octo-org")),
-  repo: value(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: value(parseGitHubHost("github.com")),
+    owner: value(parseGitHubOwner("octo-org")),
+    repo: value(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request",
     prNumber: value(parsePullRequestNumber(42)),
@@ -120,9 +123,9 @@ async function pushedPullRequest(
       await worktrees.prepare({
         profileId,
         profile,
-        host: identity.host,
-        owner: identity.owner,
-        repo: identity.repo,
+        host: identity.identityKey.host,
+        owner: identity.identityKey.owner,
+        repo: identity.identityKey.repo,
         number: identity.source.prNumber,
         baseSha,
         sha: headSha,

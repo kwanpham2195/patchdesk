@@ -4,7 +4,7 @@ import type { CommandFailure } from "./command-runner";
 import type { GhRequestRunner } from "./gh-request-runner";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import type { Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import { publishedReviewSchema } from "./github-wire-schemas";
 
 /**
@@ -48,14 +48,14 @@ export function classifyPullRequestReviews(
 export async function readPullRequestReviews(
   requests: GhRequestRunner,
   input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   },
 ): Promise<PullRequestReviewsRead> {
   return classifyPullRequestReviews(
     await requests.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       accept: fullJsonMediaType,
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
     }),

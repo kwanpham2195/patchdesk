@@ -252,7 +252,12 @@ describe("ReviewWorkbenchProjectionService", () => {
       // SAFETY: a 40-char hex string already satisfies GitSha's runtime shape.
       review({ currentHeadSha: "c".repeat(40) }),
       // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
-      review({ identity: { ...identity, owner: "someone-else" } }),
+      review({
+        identity: {
+          ...identity,
+          identityKey: { ...identity.identityKey, owner: "someone-else" },
+        },
+      }),
       review({
         identity: {
           ...identity,

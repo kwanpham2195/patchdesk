@@ -266,9 +266,9 @@ export class ReviewWorkbenchController {
     const preparationInput = {
       profileId: identity.profileId,
       pullRequest: {
-        host: identity.host,
-        owner: identity.owner,
-        repo: identity.repo,
+        host: identity.identityKey.host,
+        owner: identity.identityKey.owner,
+        repo: identity.identityKey.repo,
         number: identity.source.prNumber,
       },
     };
@@ -839,9 +839,12 @@ function parseReviewIdentity(
     return undefined;
   return {
     profileId: profileId.value,
-    host: host.value,
-    owner: owner.value,
-    repo: repo.value,
+    identityKey: {
+      kind: "github",
+      host: host.value,
+      owner: owner.value,
+      repo: repo.value,
+    },
     source: { kind: "pull_request", prNumber: number.value },
   };
 }

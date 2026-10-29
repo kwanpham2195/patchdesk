@@ -39,14 +39,19 @@ const input = {
   expected,
 };
 // SAFETY: requireFresh returns this fixture unchanged; no profile fields are read by this service test.
-const profile = { ghAccount: "reviewer", githubHost: "github.com" } as never;
+const profile = {
+  github: { kind: "connected", account: "reviewer", host: "github.com" },
+} as never;
 // SAFETY: this minimal session supplies the key fields PublishedFeedbackService reads after gate admission.
 const session = {
   id: expected.sessionId,
   key: {
-    host: "github.com",
-    owner: "octo-org",
-    repo: "patchdesk",
+    identityKey: {
+      kind: "github",
+      host: "github.com",
+      owner: "octo-org",
+      repo: "patchdesk",
+    },
     source: { kind: "pull_request", prNumber: 42 },
     headSha: expected.headSha,
   },

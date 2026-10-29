@@ -170,7 +170,10 @@ export class WorkspaceSetupService {
     if (profiles._tag === "err") return profiles;
     const active = profiles.value.active;
     const repository = read.value.origin;
-    if (repository.host !== active.githubHost)
+    if (
+      active.github.kind !== "connected" ||
+      repository.host !== active.github.host
+    )
       return err({ reason: "checkout_other_host" });
     if (!isWatched(active, repository)) return err({ reason: "not_watched" });
     return await this.chooseCheckout(active, repository, read.value.root, {
@@ -217,13 +220,17 @@ export class WorkspaceSetupService {
     const { dashboard, commands } = this.dependencies;
     const saved = await dashboard.savedProfiles();
     if (saved._tag === "ok")
-      return saved.value.active.githubHost === host
+      return saved.value.active.github.kind === "connected" &&
+        saved.value.active.github.host === host
         ? ok({ active: saved.value.active, created: false })
         : err({ reason: "checkout_other_host" });
     if (saved.error.reason === "storage") return err({ reason: "storage" });
     const detected = await detectDefaultWorkspaceProfile(commands);
     if (detected._tag === "err") return err({ reason: "storage" });
-    const { id, label, githubHost, ghAccount, rulePaths } = detected.value;
+    const { id, label, github, rulePaths } = detected.value;
+    if (github.kind !== "connected")
+      return err({ reason: "no_github_account" });
+    const { host: githubHost, account: ghAccount } = github;
     if (githubHost !== host) return err({ reason: "checkout_other_host" });
     if (ghAccount.length === 0) return err({ reason: "no_github_account" });
     const created = await dashboard.saveProfile({
@@ -242,7 +249,12 @@ export class WorkspaceSetupService {
 }
 
 function summary(profile: WorkspaceProfileConfig): ProfileSummary {
-  return { id: profile.id, label: profile.label, ghAccount: profile.ghAccount };
+  return {
+    id: profile.id,
+    label: profile.label,
+    ghAccount:
+      profile.github.kind === "connected" ? profile.github.account : "",
+  };
 }
 
 function isWatched(

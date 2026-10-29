@@ -493,8 +493,8 @@ function projectSession(
   return {
     id: session.id,
     prLabel: isPullRequestReviewSession(session)
-      ? `${session.key.owner}/${session.key.repo}#${session.key.source.prNumber}`
-      : `${session.key.owner}/${session.key.repo} (${session.key.source.kind})`,
+      ? `${session.key.identityKey.owner}/${session.key.identityKey.repo}#${session.key.source.prNumber}`
+      : `${session.key.identityKey.kind === "github" ? `${session.key.identityKey.owner}/${session.key.identityKey.repo}` : session.key.identityKey.localRepositoryId} (${session.key.source.kind})`,
     state: "prepared",
     updatedAt: session.updatedAt,
     canDiscard,

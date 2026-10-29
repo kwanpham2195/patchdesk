@@ -14,7 +14,7 @@ import type {
 } from "#src/domain/github-context";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import type { GitHubWriteFailure } from "#src/domain/github-write";
 import {
   addAssigneesToAssignableMutation,
@@ -50,7 +50,7 @@ export class GitHubCollaborators {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -66,10 +66,10 @@ export class GitHubCollaborators {
 
   /** Fetches up to 100 repository labels in one bounded page; `totalCount` reveals truncation beyond that. */
   async listRepositoryLabels(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: Pick<PullRequestRef, "host" | "owner" | "repo">;
   }): Promise<Result<RepositoryLabelListing, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -96,11 +96,11 @@ export class GitHubCollaborators {
 
   /** Fetches up to 100 repository collaborators eligible for assignment in one bounded page; `totalCount` reveals truncation beyond that. `query` filters server-side by login/name substring when provided. */
   async listAssignableUsers(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly repo: PullRequestRef;
     readonly query?: string;
   }): Promise<Result<AssignableUserListing, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -125,10 +125,10 @@ export class GitHubCollaborators {
   }
 
   async getPullRequestReviewers(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<Result<PullRequestReviewerListing, GitHubReadFailure>> {
-    const host = input.profile.githubHost;
+    const host = input.profile.github.host;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
       host,
@@ -165,7 +165,7 @@ export class GitHubCollaborators {
    * `clientMutationId`, so a succeeding command is the whole result.
    */
   private async runIdListMutation(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly mutation: string;
     readonly subjectVariable: string;
     readonly subjectId: string;
@@ -174,7 +174,7 @@ export class GitHubCollaborators {
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: input.mutation,
       variables: [
         {
@@ -191,7 +191,7 @@ export class GitHubCollaborators {
   }
 
   async addLabelsToLabelable(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -206,7 +206,7 @@ export class GitHubCollaborators {
   }
 
   async removeLabelsFromLabelable(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly labelableId: string;
     readonly labelIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -221,7 +221,7 @@ export class GitHubCollaborators {
   }
 
   async addAssigneesToAssignable(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -236,7 +236,7 @@ export class GitHubCollaborators {
   }
 
   async removeAssigneesFromAssignable(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly assignableId: string;
     readonly assigneeIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -251,7 +251,7 @@ export class GitHubCollaborators {
   }
 
   async requestReviews(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pullRequestId: string;
     readonly userIds: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -272,7 +272,7 @@ export class GitHubCollaborators {
    * `removeRequestedReviewers` builds its own.
    */
   async setPullRequestDraftState(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pullRequestId: string;
     readonly draft: boolean;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -281,7 +281,7 @@ export class GitHubCollaborators {
       : markPullRequestReadyForReviewMutation;
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: mutation,
       variables: [
         { kind: "typed", name: "pullRequestId", value: input.pullRequestId },
@@ -294,13 +294,13 @@ export class GitHubCollaborators {
 
   /** Moves a pull request onto `branch` of its base repository with `updatePullRequest`. */
   async setPullRequestBaseBranch(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pullRequestId: string;
     readonly branch: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: updatePullRequestBaseBranchMutation,
       variables: [
         { kind: "typed", name: "pullRequestId", value: input.pullRequestId },
@@ -323,13 +323,13 @@ export class GitHubCollaborators {
    * non-GET request.
    */
   async removeRequestedReviewers(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly logins: ReadonlyArray<string>;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "DELETE",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/requested_reviewers`,
       jsonBody: JSON.stringify({ reviewers: input.logins }),

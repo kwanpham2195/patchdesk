@@ -21,7 +21,7 @@ import {
 } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import {
   samePendingReviewAnchor,
   type PendingReviewAnchor,
@@ -62,7 +62,7 @@ export class GitHubPendingReviews {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -70,7 +70,7 @@ export class GitHubPendingReviews {
 
   /** Run a request that returns text as the profile's configured GitHub account. */
   private async ghText(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
     return this.requests.ghText(profile, request);
@@ -86,20 +86,20 @@ export class GitHubPendingReviews {
 
   /** This reader's own review-list read, on the default media type a write-safety read has always used. */
   private async readReviews(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<PullRequestReviewsRead> {
     return classifyPullRequestReviews(
       await this.ghJson(input.profile, {
         kind: "rest",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews?per_page=100&page=1`,
       }),
     );
   }
 
   async getViewerPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly account: GitHubLogin;
     /** The pull request's review list, when the caller already read it; otherwise this reader reads it. */
@@ -110,7 +110,7 @@ export class GitHubPendingReviews {
       return this.commandFailure(
         "get_pending_review",
         reviews.failure,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     if (reviews._tag === "Unparsable") return invalid("get_pending_review");
     const pending = reviews.reviews.filter(
@@ -152,7 +152,7 @@ export class GitHubPendingReviews {
 
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: pendingReviewThreadsQuery,
       variables: [
         { kind: "typed", name: "owner", value: input.pr.owner },
@@ -164,7 +164,7 @@ export class GitHubPendingReviews {
       return this.commandFailure(
         "get_pending_review",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const threads = v.safeParse(
       pendingReviewThreadsResponseSchema,
@@ -235,7 +235,7 @@ export class GitHubPendingReviews {
   }
 
   async startPendingReviewWithThread(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
     readonly anchor: PendingReviewAnchor;
@@ -243,7 +243,7 @@ export class GitHubPendingReviews {
   }): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
     const created = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "POST",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews`,
       jsonBody: JSON.stringify({
@@ -276,7 +276,7 @@ export class GitHubPendingReviews {
   }
 
   async addPendingReviewThread(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly reviewId: GitHubReviewNodeId;
     readonly anchor: PendingReviewAnchor;
@@ -292,7 +292,7 @@ export class GitHubPendingReviews {
     const appendQuery = addPendingReviewThreadMutation(side, startLine);
     const appended = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: appendQuery,
       variables: [
         { kind: "typed", name: "reviewId", value: input.reviewId },
@@ -328,7 +328,7 @@ export class GitHubPendingReviews {
 
   /** Read the confirmed owner after a write; an unreconciled write is unavailable. */
   private async pendingReviewAfterWrite(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     pr: PullRequestRef,
     expected: {
       readonly restId?: string;
@@ -339,7 +339,7 @@ export class GitHubPendingReviews {
       readonly body?: string;
     },
   ): Promise<Result<PendingReviewThreadWrite, GitHubWriteFailure>> {
-    const account = parseGitHubLogin(profile.ghAccount);
+    const account = parseGitHubLogin(profile.github.account);
     if (account._tag === "err") {
       return err({
         _tag: "GitHubWriteFailure",
@@ -422,7 +422,7 @@ export class GitHubPendingReviews {
   }
 
   async discardPendingReview(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly reviewId: GitHubReviewRestId;
   }): Promise<Result<void, GitHubWriteFailure>> {
@@ -432,7 +432,7 @@ export class GitHubPendingReviews {
     // the caller; a timeout is an unavailable outcome.
     const response = await this.ghText(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "DELETE",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/reviews/${input.reviewId}`,
     });

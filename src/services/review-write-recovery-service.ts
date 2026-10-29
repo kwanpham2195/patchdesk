@@ -132,9 +132,9 @@ export class ReviewWriteRecoveryService {
     const comments = await this.github.getPullRequestComments({
       profile: fresh.value.profile,
       pr: {
-        host: fresh.value.session.key.host,
-        owner: fresh.value.session.key.owner,
-        repo: fresh.value.session.key.repo,
+        host: fresh.value.session.key.identityKey.host,
+        owner: fresh.value.session.key.identityKey.owner,
+        repo: fresh.value.session.key.identityKey.repo,
         number: fresh.value.session.key.source.prNumber,
       },
     });
@@ -161,9 +161,9 @@ export class ReviewWriteRecoveryService {
     const feedback = await read({
       profile,
       pr: {
-        host: session.key.host,
-        owner: session.key.owner,
-        repo: session.key.repo,
+        host: session.key.identityKey.host,
+        owner: session.key.identityKey.owner,
+        repo: session.key.identityKey.repo,
         number: session.key.source.prNumber,
       },
     });
@@ -197,9 +197,9 @@ export class ReviewWriteRecoveryService {
     const pullRequest = await this.github.getPullRequest({
       profile: current.value.profile,
       pr: {
-        host: current.value.session.key.host,
-        owner: current.value.session.key.owner,
-        repo: current.value.session.key.repo,
+        host: current.value.session.key.identityKey.host,
+        owner: current.value.session.key.identityKey.owner,
+        repo: current.value.session.key.identityKey.repo,
         number: current.value.session.key.source.prNumber,
       },
     });

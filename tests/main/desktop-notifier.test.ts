@@ -16,9 +16,9 @@ import {
 } from "#tests/services/pull-request-metadata-fixtures";
 
 const pullRequest = {
-  host: sessionKey.host,
-  owner: sessionKey.owner,
-  repo: sessionKey.repo,
+  host: sessionKey.identityKey.host,
+  owner: sessionKey.identityKey.owner,
+  repo: sessionKey.identityKey.repo,
   number: sessionKey.source.prNumber,
 };
 

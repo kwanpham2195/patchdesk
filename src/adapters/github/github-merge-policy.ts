@@ -15,7 +15,7 @@ import type {
 import { type GitSha, parseGitSha } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import type { GitHubWriteFailure } from "#src/domain/github-write";
 import {
   maxMergePolicyPages,
@@ -87,7 +87,7 @@ export class GitHubMergePolicyReader {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -102,7 +102,7 @@ export class GitHubMergePolicyReader {
   }
 
   async getMergePolicy(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly expectedHeadSha: GitSha;
   }): Promise<Result<MergePolicySnapshot, GitHubReadFailure>> {
@@ -112,7 +112,7 @@ export class GitHubMergePolicyReader {
     for (let page = 0; page < maxMergePolicyPages; page += 1) {
       const response = await this.ghJson(input.profile, {
         kind: "graphql",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         document: mergePolicyQuery,
         variables: [
           { kind: "typed", name: "owner", value: input.pr.owner },
@@ -127,7 +127,7 @@ export class GitHubMergePolicyReader {
         return this.commandFailure(
           "get_merge_policy",
           response.error,
-          input.profile.githubHost,
+          input.profile.github.host,
         );
       const raw = v.safeParse(mergePolicyResponseSchema, response.value);
       if (!raw.success) return invalid("get_merge_policy");
@@ -160,7 +160,7 @@ export class GitHubMergePolicyReader {
 
     const required = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(policyPage.baseBranch)}/protection/required_status_checks`,
     });
     // GitHub returns 404 when the branch has no classic required-status-check
@@ -187,20 +187,20 @@ export class GitHubMergePolicyReader {
   }
 
   async getRepositoryPermission(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly account: string;
   }): Promise<Result<RepositoryPermissionEvidence, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/collaborators/${encodeURIComponent(input.account)}/permission`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "get_repository_permission",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const parsed = v.safeParse(repositoryPermissionSchema, response.value);
     if (!parsed.success) return invalid("get_repository_permission");
@@ -228,7 +228,7 @@ export class GitHubMergePolicyReader {
   }
 
   async getBranchProtection(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<Result<BranchProtectionEvidence, GitHubReadFailure>> {
@@ -241,22 +241,22 @@ export class GitHubMergePolicyReader {
    * merge evidence spends one gh call rather than two.
    */
   async readBranchProtection(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly branch: string;
   }): Promise<BranchProtectionRead> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/branches/${encodeURIComponent(input.branch)}/protection`,
     });
     return {
-      dismissal: this.dismissalEvidence(input.profile.githubHost, response),
+      dismissal: this.dismissalEvidence(input.profile.github.host, response),
       evidence: parseOptionalPolicyResponse(
         response,
         "branchProtection",
         (operation, failure) =>
-          this.commandFailure(operation, failure, input.profile.githubHost),
+          this.commandFailure(operation, failure, input.profile.github.host),
       ),
     };
   }
@@ -284,7 +284,7 @@ export class GitHubMergePolicyReader {
   }
 
   async getMergePolicyEvidence(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly branch: string;
     readonly branchProtection?: BranchProtectionRead;
@@ -293,12 +293,12 @@ export class GitHubMergePolicyReader {
       input.branchProtection ?? this.readBranchProtection(input),
       this.ghJson(input.profile, {
         kind: "rest",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         path: `repos/${input.pr.owner}/${input.pr.repo}/rules/branches/${encodeURIComponent(input.branch)}`,
       }),
     ]);
     const classify: CommandFailureClassifier = (operation, failure) =>
-      this.commandFailure(operation, failure, input.profile.githubHost);
+      this.commandFailure(operation, failure, input.profile.github.host);
     const branch = branchProtection.evidence;
     if (branch._tag === "err") return branch;
     const rules = parseOptionalPolicyResponse(
@@ -311,7 +311,7 @@ export class GitHubMergePolicyReader {
   }
 
   async mergePullRequest(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
     readonly method: "merge" | "squash" | "rebase";
@@ -320,7 +320,7 @@ export class GitHubMergePolicyReader {
   > {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "PUT",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/merge`,
       jsonBody: JSON.stringify({

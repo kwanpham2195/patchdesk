@@ -1,3 +1,4 @@
+import { githubRepositoryKeyFixture } from "#tests/domain/repository-fixtures";
 import {
   access,
   mkdir,
@@ -61,9 +62,7 @@ async function fixture() {
   const profileId = must(parseWorkspaceProfileId("acme"));
   const sessionId = createReviewSessionId({
     profileId,
-    host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("octo-org")),
-    repo: must(parseGitHubRepoName("patchdesk")),
+    identityKey: githubRepositoryKeyFixture(),
     source: {
       kind: "pull_request",
       prNumber: must(parsePullRequestNumber(42)),
@@ -213,9 +212,7 @@ function persistedSession(
   return createReviewSession({
     key: {
       profileId: subject.profileId,
-      host,
-      owner,
-      repo,
+      identityKey: githubRepositoryKeyFixture({ host, owner, repo }),
       source: { kind: "pull_request", prNumber },
       headSha,
       baseSha: headSha,
@@ -263,9 +260,11 @@ describe("ReviewPreparationJournal", () => {
     const headSha = parseGitSha("abcdef1234567890abcdef1234567890abcdef12");
     const sessionId = createReviewSessionId({
       profileId: must(profileId),
-      host: must(host),
-      owner: must(owner),
-      repo: must(repo),
+      identityKey: githubRepositoryKeyFixture({
+        host: must(host),
+        owner: must(owner),
+        repo: must(repo),
+      }),
       source: { kind: "pull_request", prNumber: must(prNumber) },
       headSha: must(headSha),
       baseSha: must(headSha),
@@ -519,9 +518,7 @@ describe("ReviewPreparationJournal", () => {
     expect((await journal.record(target))._tag).toBe("ok");
     expect((await journal.markCommitting())._tag).toBe("ok");
     const persisted = persistedSession(subject);
-    const sessions = {
-      load: async () => ok(persisted),
-    };
+    const sessions = { load: async () => ok(persisted) };
 
     await expect(
       ReviewPreparationJournal.recover(

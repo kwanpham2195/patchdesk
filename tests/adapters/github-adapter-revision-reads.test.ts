@@ -154,7 +154,7 @@ describe("GitHubAdapter revision and commit reads", () => {
         "gh",
         "api",
         "--hostname",
-        profile.githubHost,
+        profile.github.kind === "connected" ? profile.github.host : "",
         "-H",
         "Accept: application/vnd.github.v3.diff",
         `repos/${pr.owner}/${pr.repo}/compare/${baseSha}...${headSha}`,

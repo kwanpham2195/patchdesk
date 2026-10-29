@@ -51,9 +51,12 @@ const patchHash = must(parseContentHash("a".repeat(64)));
 const now = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const identity: ReviewIdentity = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
 };
 const readable = createReview({

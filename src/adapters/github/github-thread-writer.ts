@@ -10,7 +10,7 @@ import {
 } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import type { GitHubWriteFailure } from "#src/domain/github-write";
 import type { GitHubReviewCoordinates } from "#src/domain/patch";
 import {
@@ -42,7 +42,7 @@ export class GitHubThreadWriter {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -57,7 +57,7 @@ export class GitHubThreadWriter {
    * not turn the already successful comment write into a failure.
    */
   private async confirmPublishedCommentThread(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     pr: PullRequestRef,
     input: { readonly commentId: string; readonly body: string },
   ): Promise<GitHubThreadId | undefined> {
@@ -66,7 +66,7 @@ export class GitHubThreadWriter {
       if (backoffMs > 0) await wait(backoffMs);
       const response = await this.ghJson(profile, {
         kind: "graphql",
-        host: profile.githubHost,
+        host: profile.github.host,
         document: confirmCreatedCommentThreadQuery,
         variables: [
           { kind: "typed", name: "owner", value: pr.owner },
@@ -91,7 +91,7 @@ export class GitHubThreadWriter {
   }
 
   async createInlineComment(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
     readonly coordinates: GitHubReviewCoordinates;
@@ -110,7 +110,7 @@ export class GitHubThreadWriter {
   > {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "POST",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/${input.pr.number}/comments`,
       jsonBody: JSON.stringify({
@@ -164,7 +164,7 @@ export class GitHubThreadWriter {
   }
 
   async createThreadReply(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly threadId: GitHubThreadId;
     readonly body: string;
   }): Promise<
@@ -175,7 +175,7 @@ export class GitHubThreadWriter {
   > {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: addThreadReplyMutation,
       variables: [
         { kind: "typed", name: "threadId", value: input.threadId },
@@ -207,13 +207,13 @@ export class GitHubThreadWriter {
   }
 
   async setReviewThreadState(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly threadId: GitHubThreadId;
     readonly state: "resolved" | "open";
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: reviewThreadStateMutation(input.state),
       variables: [{ kind: "typed", name: "threadId", value: input.threadId }],
     });
@@ -224,13 +224,13 @@ export class GitHubThreadWriter {
   }
 
   async updateThreadComment(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: updateThreadCommentMutation,
       variables: [
         { kind: "typed", name: "commentId", value: input.commentId },
@@ -247,12 +247,12 @@ export class GitHubThreadWriter {
   }
 
   async deleteThreadComment(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: deleteThreadCommentMutation,
       variables: [{ kind: "typed", name: "commentId", value: input.commentId }],
     });
@@ -262,14 +262,14 @@ export class GitHubThreadWriter {
   }
 
   async updateReviewComment(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly commentId: string;
     readonly body: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "PATCH",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
       jsonBody: JSON.stringify({ body: input.body }),
@@ -280,13 +280,13 @@ export class GitHubThreadWriter {
   }
 
   async deleteReviewComment(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<void, GitHubWriteFailure>> {
     const response = await this.requests.ghText(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       method: "DELETE",
       path: `repos/${input.pr.owner}/${input.pr.repo}/pulls/comments/${input.commentId}`,
     });

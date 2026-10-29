@@ -73,9 +73,9 @@ function viewerPendingReview(
     nodeId,
     author: viewer,
     pr: {
-      host: values.identity.host,
-      owner: values.identity.owner,
-      repo: values.identity.repo,
+      host: values.identity.identityKey.host,
+      owner: values.identity.identityKey.owner,
+      repo: values.identity.identityKey.repo,
       number: values.identity.source.prNumber,
     },
     headSha,

@@ -45,7 +45,13 @@ describe("ReviewWorkbenchProjectionService durable write lifecycle", () => {
     const value = fixture();
     value.profiles.load.mockResolvedValueOnce(
       // SAFETY: this fixture deliberately bypasses persisted-profile parsing to prove projection fails closed.
-      ok({ ghAccount: "a".repeat(40) }) as never,
+      ok({
+        github: {
+          kind: "connected",
+          account: "a".repeat(40),
+          host: "github.com",
+        },
+      }) as never,
     );
     await expect(
       value.service.loadRepresented({

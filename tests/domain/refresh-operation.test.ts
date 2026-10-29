@@ -21,9 +21,12 @@ function must<Value>(result: Result<Value, unknown>): Value {
 
 const identity = {
   profileId: must(parseWorkspaceProfileId("acme")),
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo")),
-  repo: must(parseGitHubRepoName("widgets")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo")),
+    repo: must(parseGitHubRepoName("widgets")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(7)),

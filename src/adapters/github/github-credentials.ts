@@ -1,6 +1,10 @@
 import { type GitHubHost } from "#src/domain/ids";
 import { err, ok, type Result } from "#src/domain/result";
-import { type WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import {
+  type WorkspaceProfileConfig,
+  type GitHubConnection,
+  isConnectedWorkspaceProfile,
+} from "#src/domain/workspace-profile";
 import { type CommandFailure, type CommandRunner } from "./command-runner";
 
 const credentialTimeoutMs = 10_000;
@@ -59,16 +63,20 @@ export class GitHubCliCredentials implements GitHubCredentials {
   async environmentFor(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<GitHubCommandEnvironment, CommandFailure>> {
+    if (!isConnectedWorkspaceProfile(profile))
+      return err({ _tag: "CommandAuthenticationRequired" });
     const token = await this.tokenFor(profile);
     return token._tag === "err"
       ? token
-      : ok(tokenEnvironment(profile.githubHost, token.value));
+      : ok(tokenEnvironment(profile.github.host, token.value));
   }
 
   async tokenFor(
     profile: WorkspaceProfileConfig,
   ): Promise<Result<string, CommandFailure>> {
-    const key = accountKey(profile);
+    if (!isConnectedWorkspaceProfile(profile))
+      return err({ _tag: "CommandAuthenticationRequired" });
+    const key = accountKey(profile.github);
     const cached = this.cached.get(key);
     if (cached !== undefined && cached.expiresAt > Date.now()) {
       return ok(cached.token);
@@ -82,9 +90,9 @@ export class GitHubCliCredentials implements GitHubCredentials {
         "auth",
         "token",
         "--hostname",
-        profile.githubHost,
+        profile.github.host,
         "--user",
-        profile.ghAccount,
+        profile.github.account,
       ],
       timeoutMs: credentialTimeoutMs,
     });
@@ -97,11 +105,13 @@ export class GitHubCliCredentials implements GitHubCredentials {
   }
 
   forget(profile: WorkspaceProfileConfig): void {
-    this.cached.delete(accountKey(profile));
+    if (isConnectedWorkspaceProfile(profile))
+      this.cached.delete(accountKey(profile.github));
   }
 
   verifiedAccount(profile: WorkspaceProfileConfig): string | undefined {
-    const cached = this.cached.get(accountKey(profile));
+    if (!isConnectedWorkspaceProfile(profile)) return undefined;
+    const cached = this.cached.get(accountKey(profile.github));
     return cached !== undefined && cached.expiresAt > Date.now()
       ? cached.verifiedAccount
       : undefined;
@@ -111,7 +121,8 @@ export class GitHubCliCredentials implements GitHubCredentials {
     profile: WorkspaceProfileConfig,
     account: string,
   ): void {
-    const key = accountKey(profile);
+    if (!isConnectedWorkspaceProfile(profile)) return;
+    const key = accountKey(profile.github);
     const cached = this.cached.get(key);
     // Bound to the exact cached token: once it expires or `forget` drops it,
     // the proof goes with it and the next call re-reads GitHub.
@@ -120,8 +131,10 @@ export class GitHubCliCredentials implements GitHubCredentials {
   }
 }
 
-function accountKey(profile: WorkspaceProfileConfig): string {
-  return `${profile.githubHost}\u0000${profile.ghAccount}`;
+function accountKey(
+  connection: Extract<GitHubConnection, { kind: "connected" }>,
+): string {
+  return `${connection.host}\u0000${connection.account}`;
 }
 
 function tokenEnvironment(

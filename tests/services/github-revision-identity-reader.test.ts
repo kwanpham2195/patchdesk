@@ -42,8 +42,14 @@ const profile = must(
   parseWorkspaceProfileConfig({
     id: profileId,
     label: "ACME",
-    githubHost: "github.com",
-    ghAccount: "fixture",
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: {
+      kind: "connected" as const,
+      host: "github.com",
+      account: "fixture",
+    },
+
     rulePaths: [],
     repos: [],
   }),
@@ -214,9 +220,12 @@ async function makeSession(
   const input: MutableCreateReviewSessionInput = {
     key: {
       profileId,
-      host: pr.host,
-      owner: pr.owner,
-      repo: pr.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pr.host,
+        owner: pr.owner,
+        repo: pr.repo,
+      },
       source: { kind: "pull_request", prNumber: pr.number },
       headSha,
       baseSha,

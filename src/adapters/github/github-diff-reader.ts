@@ -21,7 +21,7 @@ import {
 } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { err, ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import {
   checkRunsSchema,
   commitStatusesSchema,
@@ -55,7 +55,7 @@ export class GitHubDiffReader {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -63,7 +63,7 @@ export class GitHubDiffReader {
 
   /** Run a request that returns text as the profile's configured GitHub account. */
   private async ghText(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<string, CommandFailure>> {
     return this.requests.ghText(profile, request);
@@ -78,19 +78,19 @@ export class GitHubDiffReader {
   }
 
   async getPullRequestChecks(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly headSha: GitSha;
   }): Promise<Result<CheckSummary, GitHubReadFailure>> {
     const [checkRunsResponse, statusesResponse] = await Promise.all([
       this.ghJson(input.profile, {
         kind: "rest",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         path: `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/check-runs`,
       }),
       this.ghJson(input.profile, {
         kind: "rest",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         path: `repos/${input.pr.owner}/${input.pr.repo}/commits/${input.headSha}/status`,
       }),
     ]);
@@ -98,7 +98,7 @@ export class GitHubDiffReader {
       return this.commandFailure(
         "get_checks",
         checkRunsResponse.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const checks =
       checkRunsResponse._tag === "ok"
@@ -132,7 +132,7 @@ export class GitHubDiffReader {
 
   async getPullRequestDiff(
     input: {
-      readonly profile: WorkspaceProfileConfig;
+      readonly profile: ConnectedWorkspaceProfile;
       readonly pr: PullRequestRef;
     } & PullRequestDiffSource,
   ): Promise<Result<string, GitHubReadFailure>> {
@@ -156,24 +156,24 @@ export class GitHubDiffReader {
         : this.commandFailure(
             "get_diff",
             exact.error,
-            input.profile.githubHost,
+            input.profile.github.host,
           );
     }
 
     const exact = await this.ghText(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       accept: "application/vnd.github.v3.diff",
       path: `repos/${input.pr.owner}/${input.pr.repo}/compare/${input.snapshot.baseSha}...${input.snapshot.headSha}`,
     });
     return exact._tag === "ok"
       ? exact
-      : this.commandFailure("get_diff", exact.error, input.profile.githubHost);
+      : this.commandFailure("get_diff", exact.error, input.profile.github.host);
   }
 
   /** The temporary file belongs to this capture until a successful atomic rename. */
   async capturePullRequestDiff(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly fetchedRefs: FetchedDiffRefs;
     readonly path: string;
   }): Promise<Result<void, GitHubReadFailure>> {
@@ -205,7 +205,7 @@ export class GitHubDiffReader {
         return this.commandFailure(
           "get_diff",
           captured.error,
-          input.profile.githubHost,
+          input.profile.github.host,
         );
       await handle.sync();
       await handle.close();
@@ -226,7 +226,7 @@ export class GitHubDiffReader {
   }
 
   async getFileContents(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly sha: GitSha;
     readonly path: RepoRelativePath;
@@ -237,14 +237,14 @@ export class GitHubDiffReader {
       .join("/");
     const response = await this.ghJson(input.profile, {
       kind: "rest",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       path: `repos/${input.pr.owner}/${input.pr.repo}/contents/${encodedPath}?ref=${input.sha}`,
     });
     if (response._tag === "err")
       return this.commandFailure(
         "get_file",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     const parsed = v.safeParse(repositoryFileSchema, response.value);
     if (!parsed.success || parsed.output.type !== "file")

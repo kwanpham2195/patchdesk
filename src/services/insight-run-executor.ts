@@ -750,7 +750,8 @@ export class InsightRunExecutor {
       outcome,
     } as const;
     if (isPullRequestReview(review)) {
-      const { host, owner, repo, source } = review.identity;
+      const { source } = review.identity;
+      const { host, owner, repo } = review.identity.identityKey;
       postDesktopNotification(notifier, {
         ...settled,
         pullRequest: { host, owner, repo, number: source.prNumber },

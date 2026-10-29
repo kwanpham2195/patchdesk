@@ -34,9 +34,12 @@ const must = <T>(result: Result<T, unknown>): T => {
 const profileId = must(parseWorkspaceProfileId("acme"));
 const reviewId = createReviewId({
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
 });
 const sessionId = must(

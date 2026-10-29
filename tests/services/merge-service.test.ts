@@ -14,9 +14,12 @@ const session = {
   id: "github.com__octo-org__patchdesk__pr-1__sha-abcdef12__base-00000000__0123456789ab",
   key: {
     profileId: "acme",
-    host: "github.com",
-    owner: "octo-org",
-    repo: "patchdesk",
+    identityKey: {
+      kind: "github" as const,
+      host: "github.com",
+      owner: "octo-org",
+      repo: "patchdesk",
+    },
     source: { kind: "pull_request", prNumber: 1 },
     headSha: sha,
   },
@@ -24,7 +27,9 @@ const session = {
   patchPath: "/tmp/does-not-exist",
 } as never;
 // SAFETY: This fixture supplies the profile fields exercised by mergePullRequest.
-const profile = { githubHost: "github.com", ghAccount: "fixture" } as never;
+const profile = {
+  github: { kind: "connected", account: "fixture", host: "github.com" },
+} as never;
 describe("merge service", () => {
   it("fails closed when complete revision proof is unavailable", async () => {
     const merge = async () => ({ _tag: "ok" as const, value: {} });

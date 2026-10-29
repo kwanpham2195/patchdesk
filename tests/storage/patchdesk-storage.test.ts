@@ -176,9 +176,12 @@ describe("ReviewSession storage", () => {
     const profileId = must(parseWorkspaceProfileId("acme"));
     const key = {
       profileId,
-      host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("octo-org")),
-      repo: must(parseGitHubRepoName("patchdesk")),
+      identityKey: {
+        kind: "github" as const,
+        host: must(parseGitHubHost("github.com")),
+        owner: must(parseGitHubOwner("octo-org")),
+        repo: must(parseGitHubRepoName("patchdesk")),
+      },
       source: {
         kind: "pull_request" as const,
         prNumber: must(parsePullRequestNumber(42)),
@@ -243,9 +246,12 @@ describe("ReviewSession storage", () => {
     const profileId = must(parseWorkspaceProfileId("acme"));
     const key = {
       profileId,
-      host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("octo-org")),
-      repo: must(parseGitHubRepoName("patchdesk")),
+      identityKey: {
+        kind: "github" as const,
+        host: must(parseGitHubHost("github.com")),
+        owner: must(parseGitHubOwner("octo-org")),
+        repo: must(parseGitHubRepoName("patchdesk")),
+      },
       source: {
         kind: "branch" as const,
         branch: must(parseLocalBranchName("feat/login")),
@@ -298,9 +304,12 @@ describe("ReviewSession storage", () => {
     const profileId = must(parseWorkspaceProfileId("acme"));
     const key = {
       profileId,
-      host: must(parseGitHubHost("github.com")),
-      owner: must(parseGitHubOwner("octo-org")),
-      repo: must(parseGitHubRepoName("patchdesk")),
+      identityKey: {
+        kind: "github" as const,
+        host: must(parseGitHubHost("github.com")),
+        owner: must(parseGitHubOwner("octo-org")),
+        repo: must(parseGitHubRepoName("patchdesk")),
+      },
       source: {
         kind: "local_branch" as const,
         branch: must(parseLocalBranchName("feat/login")),

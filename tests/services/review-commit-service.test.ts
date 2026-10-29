@@ -27,9 +27,12 @@ const commitSha = must(parseGitSha("2".repeat(40)));
 const at = must(parseIsoTimestamp("2026-08-01T00:00:00.000Z"));
 const identity = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(42)),
@@ -55,9 +58,9 @@ const snapshot = {
   schemaVersion: 1 as const,
   pullRequest: {
     ref: {
-      host: identity.host,
-      owner: identity.owner,
-      repo: identity.repo,
+      host: identity.identityKey.host,
+      owner: identity.identityKey.owner,
+      repo: identity.identityKey.repo,
       number: identity.source.prNumber,
     },
     headSha,
@@ -87,7 +90,9 @@ const snapshot = {
 const profiles = {
   async load() {
     // SAFETY: the service reads only `ghAccount` from the profile.
-    return ok({ ghAccount: "Viewer" } as never);
+    return ok({
+      github: { kind: "connected", account: "Viewer", host: "github.com" },
+    } as never);
   },
 };
 const session = {
@@ -234,7 +239,16 @@ describe("ReviewCommitService", () => {
     const staleSessions = [
       { ...session, key: { ...session.key, headSha: commitSha } },
       // SAFETY: a plain owner string already satisfies GitHubOwner's runtime shape.
-      { ...session, key: { ...session.key, owner: "someone-else" as never } },
+      {
+        ...session,
+        key: {
+          ...session.key,
+          identityKey: {
+            ...session.key.identityKey,
+            owner: "someone-else" as never,
+          },
+        },
+      },
     ];
     for (const stale of staleSessions) {
       const service = new ReviewCommitService(

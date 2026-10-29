@@ -29,9 +29,12 @@ const must = <T>(result: Result<T, unknown>): T =>
 const profileId = must(parseWorkspaceProfileId("acme"));
 const identity = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(42)),
@@ -44,9 +47,9 @@ const snapshot: ReviewRemoteSnapshot = {
   schemaVersion: 1,
   pullRequest: {
     ref: {
-      host: identity.host,
-      owner: identity.owner,
-      repo: identity.repo,
+      host: identity.identityKey.host,
+      owner: identity.identityKey.owner,
+      repo: identity.identityKey.repo,
       number: identity.source.prNumber,
     },
     headSha,

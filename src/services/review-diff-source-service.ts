@@ -167,7 +167,10 @@ export class ReviewDiffSourceService {
       profileId: profileId.value,
       sessionId: sessionId.value,
       sourceKind: pullRequest ? "pull_request" : "local",
-      localPath: configuredLocalPath(profile.value, session.value.key),
+      localPath: configuredLocalPath(
+        profile.value,
+        session.value.key.identityKey,
+      ),
     });
     if (restored._tag === "err")
       return ok({ state: "unavailable", reason: "worktree_missing" });

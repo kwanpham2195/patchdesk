@@ -196,9 +196,12 @@ export class ReviewRefreshService {
       return err({ reason: "storage" });
     if (
       currentSession.value.key.profileId !== review.identity.profileId ||
-      currentSession.value.key.host !== review.identity.host ||
-      currentSession.value.key.owner !== review.identity.owner ||
-      currentSession.value.key.repo !== review.identity.repo ||
+      currentSession.value.key.identityKey.host !==
+        review.identity.identityKey.host ||
+      currentSession.value.key.identityKey.owner !==
+        review.identity.identityKey.owner ||
+      currentSession.value.key.identityKey.repo !==
+        review.identity.identityKey.repo ||
       currentSession.value.key.source.prNumber !==
         review.identity.source.prNumber
     ) {
@@ -702,9 +705,9 @@ function latestRepresentedMoment(
 
 function ref(review: PullRequestReview): PullRequestRef {
   return {
-    host: review.identity.host,
-    owner: review.identity.owner,
-    repo: review.identity.repo,
+    host: review.identity.identityKey.host,
+    owner: review.identity.identityKey.owner,
+    repo: review.identity.identityKey.repo,
     number: review.identity.source.prNumber,
   };
 }

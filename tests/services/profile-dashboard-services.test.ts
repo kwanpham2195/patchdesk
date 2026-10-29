@@ -1,3 +1,4 @@
+import { LocalRepositoryUpgrade } from "#src/services/local-repository-upgrade";
 import { readBoundedInsightArtifactFile } from "#src/adapters/storage/insight-artifact-files";
 import { execFileSync } from "node:child_process";
 import {
@@ -89,8 +90,14 @@ const profile = mustParse(
   parseWorkspaceProfileConfig({
     id: "acme",
     label: "ACME",
-    githubHost: "github.com",
-    ghAccount: "octo-dev",
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: {
+      kind: "connected" as const,
+      host: "github.com",
+      account: "octo-dev",
+    },
+
     rulePaths: [],
     repos: [
       {
@@ -221,8 +228,14 @@ describe("profile settings and dashboard services", () => {
       value: {
         id: "default",
         label: "Default",
-        githubHost: "github.com",
-        ghAccount: "octocat",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration: expect.any(String),
+        github: {
+          kind: "connected" as const,
+          host: "github.com",
+          account: "octocat",
+        },
+
         repos: [],
       },
     });
@@ -232,7 +245,7 @@ describe("profile settings and dashboard services", () => {
     expect(executor.requests.map((request) => request.argv[0])).toEqual(["gh"]);
   });
 
-  it("falls back to an empty ghAccount, never a fabricated identity, when gh detection fails", async () => {
+  it("returns a disconnected profile when gh detection fails", async () => {
     const commands = new CommandRunner(
       new FakeCommandExecutor({ _tag: "Unavailable" }),
     );
@@ -242,8 +255,10 @@ describe("profile settings and dashboard services", () => {
       value: {
         id: "default",
         label: "Default",
-        githubHost: "github.com",
-        ghAccount: "",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration: expect.any(String),
+        github: { kind: "disconnected" },
+
         repos: [],
       },
     });
@@ -269,12 +284,16 @@ describe("profile settings and dashboard services", () => {
       const listed = await controller.listProfiles();
       expect(listed).toMatchObject({
         _tag: "ok",
-        value: [{ id: "default", ghAccount: "octocat" }],
+        value: [
+          { id: "default", github: { kind: "connected", account: "octocat" } },
+        ],
       });
 
       expect(await store.list()).toMatchObject({
         _tag: "ok",
-        value: [{ id: "default", ghAccount: "octocat" }],
+        value: [
+          { id: "default", github: { kind: "connected", account: "octocat" } },
+        ],
       });
       expect(await store.loadConfig()).toMatchObject({
         _tag: "ok",
@@ -305,11 +324,10 @@ describe("profile settings and dashboard services", () => {
       const listed = await controller.listProfiles();
       expect(listed).toMatchObject({
         _tag: "ok",
-        value: [{ id: "default", ghAccount: "" }],
+        value: [{ id: "default", github: { kind: "disconnected" } }],
       });
 
-      // The profile schema requires a non-empty ghAccount (workspace-profile.ts),
-      // so an undetectable account must never be written to disk or auto-selected.
+      // Account detection alone does not opt the maintainer into a local workspace.
       expect(await store.list()).toEqual({ _tag: "ok", value: [] });
       expect(await store.loadConfig()).toEqual({
         _tag: "err",
@@ -602,21 +620,33 @@ class BlockingFirstConfigSaveStore extends ProfileStore {
 }
 
 describe("workspace roots retired in #641", () => {
-  it("loads a v0.0.12 profile that lists workspaceRoots and writes the list back empty", async () => {
+  it("upgrades a v0.0.12 profile and drops retired workspace roots on save", async () => {
     const root = await mkdtemp(`${tmpdir()}/patchdesk-v0012-profile-`);
     try {
       const paths = PatchdeskPaths.forTest(root);
       const store = new ProfileStore(paths);
-      await store.save(profile);
       const file = paths.profileFile(profile.id);
-      const stored: unknown = JSON.parse(await readFile(file, "utf8"));
+      await mkdir(join(paths.configDirectory(), "profiles"), {
+        recursive: true,
+      });
       await writeFile(
         file,
         JSON.stringify({
-          ...(stored as object),
-          workspaceRoots: ["/Users/maintainer"],
+          id: profile.id,
+          label: profile.label,
+          githubHost: "github.com",
+          ghAccount: "octo-dev",
+          rulePaths: profile.rulePaths,
+          repos: profile.repos,
+          workspaceRoots: ["/tmp/legacy-root"],
         }),
       );
+      const upgraded = await new LocalRepositoryUpgrade(
+        paths,
+        new CommandRunner(),
+        { write() {} },
+      ).run();
+      expect(upgraded._tag).toBe("ok");
       const controller = new DashboardController(
         store,
         new FakeGitHubAdapter({}),
@@ -644,7 +674,7 @@ describe("workspace roots retired in #641", () => {
         label: "ACME renamed",
         repos: [{ repo: "patchdesk", localPath: "/workspace/patchdesk" }],
       });
-      expect(rewritten).toMatchObject({ workspaceRoots: [] });
+      expect(rewritten).not.toHaveProperty("workspaceRoots");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

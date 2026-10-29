@@ -125,7 +125,10 @@ export class LocalReviewSessionPreparation {
   > {
     const profile = await this.loadProfile(profileId);
     if (profile._tag === "err") return profile;
-    const localPath = configuredLocalPath(profile.value, repository);
+    const localPath = configuredLocalPath(profile.value, {
+      kind: "github",
+      ...repository,
+    });
     if (localPath === undefined) return err({ _tag: "RepositoryNotLocal" });
     const missing = await missingCheckout(localPath);
     if (missing !== undefined) return err(missing);
@@ -207,9 +210,12 @@ export class LocalReviewSessionPreparation {
       ...checkout.value,
       identity: {
         profileId: input.profileId,
-        host: input.repository.host,
-        owner: input.repository.owner,
-        repo: input.repository.repo,
+        identityKey: {
+          kind: "github",
+          host: input.repository.host,
+          owner: input.repository.owner,
+          repo: input.repository.repo,
+        },
         source: {
           ...resolved.value.source,
           ...definedProps({ checkout: checkout.value.checkout }),

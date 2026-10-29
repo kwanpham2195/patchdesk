@@ -167,7 +167,10 @@ export class ReviewCommitService {
       reviews: snapshot.conversation.entries.flatMap((entry) =>
         entry._tag === "ReviewSummary" ? [entry.review] : [],
       ),
-      viewerLogin: profile.value.ghAccount,
+      viewerLogin:
+        profile.value.github.kind === "connected"
+          ? profile.value.github.account
+          : "",
       headSha: session.key.headSha,
       commits: snapshot.commits,
     });
@@ -227,10 +230,11 @@ export class ReviewCommitService {
     if (snapshot._tag === "err") return err({ reason: "storage" });
     const snapshotIdentity = snapshot.value.pullRequest.ref;
     if (
+      !isPullRequestReview(review) ||
       snapshot.value.pullRequest.headSha !== review.currentHeadSha ||
-      snapshotIdentity.host !== review.identity.host ||
-      snapshotIdentity.owner !== review.identity.owner ||
-      snapshotIdentity.repo !== review.identity.repo ||
+      snapshotIdentity.host !== review.identity.identityKey.host ||
+      snapshotIdentity.owner !== review.identity.identityKey.owner ||
+      snapshotIdentity.repo !== review.identity.identityKey.repo ||
       !isPullRequestReview(review) ||
       snapshotIdentity.number !== review.identity.source.prNumber
     )

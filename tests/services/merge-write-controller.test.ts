@@ -231,9 +231,9 @@ function createMergePolicy(
 ): MergePolicySnapshot {
   return {
     pr: {
-      host: fixtureValues.identity.host,
-      owner: fixtureValues.identity.owner,
-      repo: fixtureValues.identity.repo,
+      host: fixtureValues.identity.identityKey.host,
+      owner: fixtureValues.identity.identityKey.owner,
+      repo: fixtureValues.identity.identityKey.repo,
       number: fixtureValues.identity.source.prNumber,
     },
     headSha: fixtureValues.headSha,
@@ -675,9 +675,9 @@ describe("MergeWriteController", () => {
     expect(current.gateway.mergeRequests[0]).toMatchObject({
       profile: current.profile,
       pr: {
-        host: current.session.key.host,
-        owner: current.session.key.owner,
-        repo: current.session.key.repo,
+        host: current.session.key.identityKey.host,
+        owner: current.session.key.identityKey.owner,
+        repo: current.session.key.identityKey.repo,
         number: current.session.key.source.prNumber,
       },
       headSha: current.headSha,

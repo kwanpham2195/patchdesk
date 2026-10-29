@@ -263,9 +263,9 @@ describe("ReviewRefreshService", () => {
     const { service, calls } = createReviewRefreshFixture({
       mergePolicyResult: ok({
         pr: {
-          host: identity.host,
-          owner: identity.owner,
-          repo: identity.repo,
+          host: identity.identityKey.host,
+          owner: identity.identityKey.owner,
+          repo: identity.identityKey.repo,
           number: identity.source.prNumber,
         },
         headSha,

@@ -6,11 +6,14 @@ const identity = {
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
   profileId: "acme" as never,
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  host: "github.com" as never,
-  // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  owner: "octo-org" as never,
-  // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
-  repo: "patchdesk" as never,
+  identityKey: {
+    kind: "github" as const,
+    host: "github.com" as never,
+    // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
+    owner: "octo-org" as never,
+    // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
+    repo: "patchdesk" as never,
+  },
   // SAFETY: This test fixture uses well-formed literals for branded domain values; the runtime shape is established by the fixture and the production behavior is under test.
   source: { kind: "pull_request" as const, prNumber: 42 as never },
 };

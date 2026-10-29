@@ -617,7 +617,9 @@ export class LocalReviewOpening {
   async branchMismatch(
     review: Review<LocalReviewSource>,
   ): Promise<LocalBranchMismatch | undefined> {
-    const { profileId, host, owner, repo, source } = review.identity;
+    const { profileId, identityKey, source } = review.identity;
+    if (identityKey.kind !== "github") return undefined;
+    const { host, owner, repo } = identityKey;
     if (source.kind !== "local_branch") return undefined;
     const request = reopenLocalSourceRequest(source);
     if (request === undefined) return undefined;
@@ -650,7 +652,9 @@ export class LocalReviewOpening {
         reason: stored.error.reason === "not_found" ? "not_found" : "storage",
       });
     if (!isLocalReview(stored.value)) return err({ reason: "not_applicable" });
-    const { host, owner, repo, source } = stored.value.identity;
+    const { identityKey, source } = stored.value.identity;
+    if (identityKey.kind !== "github") return err({ reason: "not_applicable" });
+    const { host, owner, repo } = identityKey;
     // A working-tree or branch Review stored before the shared Review (#555) is not read again.
     if (source.kind === "working_tree" || source.kind === "branch")
       return err({ reason: "not_applicable" });

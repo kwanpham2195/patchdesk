@@ -94,7 +94,7 @@ describe("maintainer inbox cache store", () => {
           latestReview: {
             reviewId: createReviewId({
               profileId: acme,
-              ...repository,
+              identityKey: { kind: "github", ...repository },
               source: {
                 kind: "pull_request",
                 prNumber: must(parsePullRequestNumber(42)),
@@ -108,9 +108,7 @@ describe("maintainer inbox cache store", () => {
           labels: [],
           headMovedSinceLastLooked: true,
           categories: ["updated_since_review"] as const,
-          recommendedAction: {
-            kind: "run_review" as const,
-          },
+          recommendedAction: { kind: "run_review" as const },
           dataFreshness: "fresh" as const,
         },
       ],
@@ -217,9 +215,7 @@ describe("maintainer inbox cache store", () => {
           labels: [],
           headMovedSinceLastLooked: false,
           categories: [],
-          recommendedAction: {
-            kind: "run_review" as const,
-          },
+          recommendedAction: { kind: "run_review" as const },
           dataFreshness: "fresh" as const,
         },
       ],
@@ -382,9 +378,7 @@ describe("maintainer inbox cache store", () => {
           labelCount: 5,
           headMovedSinceLastLooked: false,
           categories: ["updated_since_review"] as const,
-          recommendedAction: {
-            kind: "run_review" as const,
-          },
+          recommendedAction: { kind: "run_review" as const },
           dataFreshness: "fresh" as const,
         },
       ],
@@ -429,9 +423,7 @@ describe("maintainer inbox cache store", () => {
           reviewState: "none",
           mergeability: "unknown",
           categories: ["updated_since_review"],
-          recommendedAction: {
-            kind: "run_review",
-          },
+          recommendedAction: { kind: "run_review" },
           dataFreshness: "fresh",
         },
       ],
@@ -482,9 +474,7 @@ describe("maintainer inbox cache store", () => {
           mergeability: "unknown",
           labels: [],
           categories: [],
-          recommendedAction: {
-            kind: "run_review",
-          },
+          recommendedAction: { kind: "run_review" },
           dataFreshness: "fresh",
         },
       ],
@@ -615,9 +605,7 @@ describe("maintainer inbox cache store", () => {
           labels: [],
           headMovedSinceLastLooked: false,
           categories: [],
-          recommendedAction: {
-            kind: "run_review" as const,
-          },
+          recommendedAction: { kind: "run_review" as const },
           dataFreshness: "fresh" as const,
         },
       ],
@@ -680,9 +668,7 @@ describe("maintainer inbox cache store", () => {
           labels: [],
           headMovedSinceLastLooked: false,
           categories: [],
-          recommendedAction: {
-            kind: "run_review" as const,
-          },
+          recommendedAction: { kind: "run_review" as const },
           dataFreshness: "fresh" as const,
         },
       ],

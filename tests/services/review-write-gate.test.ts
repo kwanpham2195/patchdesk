@@ -39,9 +39,12 @@ const must = <T>(result: Result<T, unknown>): T =>
 const profileId = must(parseWorkspaceProfileId("acme"));
 const key = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(42)),
@@ -71,8 +74,15 @@ describe("ReviewWriteGate", () => {
       parseWorkspaceProfileConfig({
         id: profileId,
         label: "ACME",
-        githubHost: "github.com",
-        ghAccount: "fixture",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration:
+          "12345678-1234-4234-8234-123456789abc",
+        github: {
+          kind: "connected" as const,
+          host: "github.com",
+          account: "fixture",
+        },
+
         rulePaths: [],
         repos: [],
       }),
@@ -118,9 +128,9 @@ describe("ReviewWriteGate", () => {
       schemaVersion: 1,
       pullRequest: {
         ref: {
-          host: key.host,
-          owner: key.owner,
-          repo: key.repo,
+          host: key.identityKey.host,
+          owner: key.identityKey.owner,
+          repo: key.identityKey.repo,
           number: key.source.prNumber,
         },
         headSha: key.headSha,
@@ -145,9 +155,12 @@ describe("ReviewWriteGate", () => {
       reviewId: createReview({
         identity: {
           profileId: key.profileId,
-          host: key.host,
-          owner: key.owner,
-          repo: key.repo,
+          identityKey: {
+            kind: "github" as const,
+            host: key.identityKey.host,
+            owner: key.identityKey.owner,
+            repo: key.identityKey.repo,
+          },
           source: { kind: "pull_request", prNumber: key.source.prNumber },
         },
         currentSessionId: storedSession.id,
@@ -161,9 +174,12 @@ describe("ReviewWriteGate", () => {
       ...createReview({
         identity: {
           profileId: key.profileId,
-          host: key.host,
-          owner: key.owner,
-          repo: key.repo,
+          identityKey: {
+            kind: "github" as const,
+            host: key.identityKey.host,
+            owner: key.identityKey.owner,
+            repo: key.identityKey.repo,
+          },
           source: { kind: "pull_request", prNumber: key.source.prNumber },
         },
         currentSessionId: storedSession.id,
@@ -265,9 +281,12 @@ describe("ReviewWriteGate", () => {
 describe("ReviewWriteGate revision agreement", () => {
   const identity = {
     profileId: key.profileId,
-    host: key.host,
-    owner: key.owner,
-    repo: key.repo,
+    identityKey: {
+      kind: "github" as const,
+      host: key.identityKey.host,
+      owner: key.identityKey.owner,
+      repo: key.identityKey.repo,
+    },
     source: key.source,
   };
   const movedHeadSha = must(parseGitSha("9".repeat(40)));
@@ -275,8 +294,14 @@ describe("ReviewWriteGate revision agreement", () => {
     parseWorkspaceProfileConfig({
       id: profileId,
       label: "ACME",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      schemaVersion: 1 as const,
+      localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+      github: {
+        kind: "connected" as const,
+        host: "github.com",
+        account: "fixture",
+      },
+
       rulePaths: [],
       repos: [],
     }),
@@ -302,9 +327,9 @@ describe("ReviewWriteGate revision agreement", () => {
     schemaVersion: 1,
     pullRequest: {
       ref: {
-        host: key.host,
-        owner: key.owner,
-        repo: key.repo,
+        host: key.identityKey.host,
+        owner: key.identityKey.owner,
+        repo: key.identityKey.repo,
         number: key.source.prNumber,
       },
       headSha: key.headSha,
@@ -362,9 +387,24 @@ describe("ReviewWriteGate revision agreement", () => {
       value: { session: { id: "session-1" } },
     });
     for (const mismatch of [
-      { host: must(parseGitHubHost("ghe.example.com")) },
-      { owner: must(parseGitHubOwner("someone-else")) },
-      { repo: must(parseGitHubRepoName("other-repo")) },
+      {
+        identityKey: {
+          ...key.identityKey,
+          host: must(parseGitHubHost("ghe.example.com")),
+        },
+      },
+      {
+        identityKey: {
+          ...key.identityKey,
+          owner: must(parseGitHubOwner("someone-else")),
+        },
+      },
+      {
+        identityKey: {
+          ...key.identityKey,
+          repo: must(parseGitHubRepoName("other-repo")),
+        },
+      },
       {
         source: {
           kind: "pull_request" as const,

@@ -44,9 +44,12 @@ export const sessionId = must(
 );
 export const sessionKey = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(42)),
@@ -59,7 +62,7 @@ export const makeGate = () => ({
   requireCurrentSession: vi.fn(async () => {
     // SAFETY: metadata services read only the profile account and parsed session identity supplied by this fixture.
     const currentSession = {
-      profile: { ghAccount: "octocat" },
+      profile: { github: { kind: "connected", account: "octocat" } },
       review: {},
       session: { id: sessionId, key: sessionKey },
     } as never;

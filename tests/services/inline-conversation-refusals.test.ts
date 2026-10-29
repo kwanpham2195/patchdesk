@@ -30,9 +30,12 @@ const reviewId = must(
 const headSha = must(parseGitSha("1".repeat(40)));
 const sessionKey = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "pull_request" as const,
     prNumber: must(parsePullRequestNumber(42)),
@@ -47,7 +50,9 @@ const makeGate = () => ({
     // is forwarded opaquely into the gateway mocks below, which ignore it.
     ok({
       session: { key: sessionKey },
-      profile: { ghAccount: "reviewer" },
+      profile: {
+        github: { kind: "connected", account: "reviewer", host: "github.com" },
+      },
     } as never),
   ),
 });

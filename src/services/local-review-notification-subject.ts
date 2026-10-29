@@ -17,11 +17,14 @@ export async function localReviewNotificationSubject(
 ): Promise<LocalReviewNotificationSubject> {
   const listed = await profiles.list();
   const saved = listed._tag === "ok" ? listed.value : [];
-  const { profileId, host, owner, repo, source } = review.identity;
+  const { profileId, identityKey, source } = review.identity;
   const profile = saved.find((candidate) => candidate.id === profileId);
   const localPath = profile?.repos.find(
     (entry) =>
-      entry.host === host && entry.owner === owner && entry.repo === repo,
+      identityKey.kind === "github" &&
+      entry.host === identityKey.host &&
+      entry.owner === identityKey.owner &&
+      entry.repo === identityKey.repo,
   )?.localPath;
   const localTitle = reviewSourceTitle({
     ...source,

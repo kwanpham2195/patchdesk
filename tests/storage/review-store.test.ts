@@ -56,13 +56,11 @@ function makeReview(
   profile = profileId,
   repository = repo,
 ) {
-  const identity: ReviewIdentity = {
+  const identity = {
     profileId: profile,
-    host,
-    owner,
-    repo: repository,
+    identityKey: { kind: "github" as const, host, owner, repo: repository },
     source: { kind: "pull_request", prNumber },
-  };
+  } satisfies ReviewIdentity;
   return createReview({
     identity,
     currentSessionId: createReviewSessionId({ ...identity, headSha, baseSha }),
@@ -148,7 +146,11 @@ describe("ReviewStore", () => {
     await expect(store.save(readable)).resolves.toMatchObject({ _tag: "ok" });
     const corrupt = createReviewId({
       ...readable.identity,
-      repo: anotherRepo,
+      identityKey: {
+        ...readable.identity.identityKey,
+        kind: "github",
+        repo: anotherRepo,
+      },
     });
     await mkdir(paths.reviewDirectory(profileId, corrupt), { recursive: true });
     await writeFile(paths.reviewFile(profileId, corrupt), "{}", "utf8");
@@ -165,7 +167,11 @@ describe("ReviewStore", () => {
     await expect(store.save(readable)).resolves.toMatchObject({ _tag: "ok" });
     const vanished = createReviewId({
       ...readable.identity,
-      repo: anotherRepo,
+      identityKey: {
+        ...readable.identity.identityKey,
+        kind: "github",
+        repo: anotherRepo,
+      },
     });
     await mkdir(paths.reviewDirectory(profileId, vanished), {
       recursive: true,
@@ -199,7 +205,14 @@ describe("ReviewStore", () => {
     });
     await expect(
       store.findOwner(
-        createReviewId({ ...review.identity, repo: anotherRepo }),
+        createReviewId({
+          ...review.identity,
+          identityKey: {
+            ...review.identity.identityKey,
+            kind: "github",
+            repo: anotherRepo,
+          },
+        }),
       ),
     ).resolves.toEqual({ _tag: "ok", value: undefined });
   });

@@ -63,7 +63,10 @@ function pullRequestRead(pullRequests: PullRequestReads | undefined) {
 
 const reads = {
   resolveAuthenticatedAccount: async () =>
-    ok({ host: values.identity.host, account: "fixture" }),
+    ok({
+      host: values.identity.identityKey.host,
+      account: "fixture",
+    }),
   getRepositoryPermission: async () =>
     ok({
       account: "fixture",

@@ -18,9 +18,12 @@ describe("MaintainerInboxService last-looked head", () => {
   const session = {
     key: {
       profileId: "acme",
-      host: "github.com",
-      owner: "octo-org",
-      repo: "patchdesk",
+      identityKey: {
+        kind: "github" as const,
+        host: "github.com",
+        owner: "octo-org",
+        repo: "patchdesk",
+      },
       source: { kind: "pull_request", prNumber: 42 },
       headSha,
     },
@@ -81,7 +84,10 @@ describe("MaintainerInboxService last-looked head", () => {
     );
     // SAFETY: only the profile fields the service reads are set.
     const listed = await service.list(
-      { id: "acme", ghAccount: "fixture" } as never,
+      {
+        id: "acme",
+        github: { kind: "connected", account: "fixture", host: "github.com" },
+      } as never,
       repository,
     );
     if (listed._tag === "err") throw new Error("expected an inbox page");

@@ -97,7 +97,9 @@ export async function listOpenSharedReviews(
   const shared: Array<OpenSharedReview> = [];
   for (const review of listed.value.reviews) {
     if (!isLocalReview(review) || review.status._tag === "Terminal") continue;
-    const { host, owner, repo, source } = review.identity;
+    const { identityKey, source } = review.identity;
+    if (identityKey.kind !== "github") continue;
+    const { host, owner, repo } = identityKey;
     if (
       source.kind === "local_branch" &&
       (branch === undefined || source.branch === branch) &&

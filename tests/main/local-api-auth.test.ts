@@ -1,3 +1,7 @@
+import {
+  parseWorkspaceProfileFixture,
+  githubRepositoryKeyFixture,
+} from "#tests/domain/repository-fixtures";
 import { createInProcessInsightResourceBundle } from "#src/services/insight-resource-bundle";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,7 +23,6 @@ import {
   parsePullRequestNumber,
   parseWorkspaceProfileId,
 } from "#src/domain/ids";
-import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { PatchdeskPaths } from "#src/adapters/storage/patchdesk-paths";
 import {
   createReadOnlyGitExecutor,
@@ -185,13 +188,13 @@ describe("local API current Review capability boundary", () => {
       (
         await new ProfileStore(paths).save(
           must(
-            parseWorkspaceProfileConfig({
+            parseWorkspaceProfileFixture({
               id: "profile",
               label: "Profile",
-              githubHost: "github.com",
-              ghAccount: "fixture",
               rulePaths: [],
               repos: [],
+              host: "github.com",
+              account: "fixture",
             }),
           ),
         )
@@ -199,9 +202,7 @@ describe("local API current Review capability boundary", () => {
     ).toBe("ok");
     const sessionId = createReviewSessionId({
       profileId,
-      host,
-      owner,
-      repo,
+      identityKey: githubRepositoryKeyFixture({ host, owner, repo }),
       source: { kind: "pull_request", prNumber: number },
       headSha,
       baseSha,
@@ -222,9 +223,7 @@ describe("local API current Review capability boundary", () => {
           createReviewSession({
             key: {
               profileId,
-              host,
-              owner,
-              repo,
+              identityKey: githubRepositoryKeyFixture({ host, owner, repo }),
               source: { kind: "pull_request", prNumber: number },
               headSha,
               baseSha,
@@ -441,11 +440,8 @@ describe("local API current Review capability boundary", () => {
     expect(calls).toEqual([{ operation: "clearCache", profileId: "profile" }]);
 
     expect(
-      (
-        await post(api, "v1/storage/clear-local-data", {
-          profileId: "profile",
-        })
-      ).status,
+      (await post(api, "v1/storage/clear-local-data", { profileId: "profile" }))
+        .status,
     ).toBe(200);
     expect(calls).toEqual([
       { operation: "clearCache", profileId: "profile" },
@@ -528,11 +524,9 @@ describe("GET /v1/inbox request boundaries", () => {
       (
         await new ProfileStore(paths).save(
           must(
-            parseWorkspaceProfileConfig({
+            parseWorkspaceProfileFixture({
               id: "profile",
               label: "Profile",
-              githubHost: "github.com",
-              ghAccount: "fixture",
               rulePaths: [],
               repos: [
                 {
@@ -541,6 +535,8 @@ describe("GET /v1/inbox request boundaries", () => {
                   repo: "patchdesk",
                 },
               ],
+              host: "github.com",
+              account: "fixture",
             }),
           ),
         )
@@ -557,9 +553,7 @@ describe("GET /v1/inbox request boundaries", () => {
     });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_input",
-    });
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
     expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
@@ -688,9 +682,7 @@ describe("GET /v1/inbox request boundaries", () => {
     });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_input",
-    });
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
     expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
@@ -814,9 +806,7 @@ describe("GET /v1/inbox request boundaries", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_input",
-    });
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
     expect(adapter.calls.searchMaintainerPullRequests).toHaveLength(0);
   });
 
@@ -860,11 +850,9 @@ describe("GET /v1/inbox/labels", () => {
       (
         await new ProfileStore(paths).save(
           must(
-            parseWorkspaceProfileConfig({
+            parseWorkspaceProfileFixture({
               id: "profile",
               label: "Profile",
-              githubHost: "github.com",
-              ghAccount: "fixture",
               rulePaths: [],
               repos: [
                 {
@@ -873,6 +861,8 @@ describe("GET /v1/inbox/labels", () => {
                   repo: "patchdesk",
                 },
               ],
+              host: "github.com",
+              account: "fixture",
             }),
           ),
         )
@@ -899,9 +889,7 @@ describe("GET /v1/inbox/labels", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_input",
-    });
+    await expect(response.json()).resolves.toEqual({ error: "invalid_input" });
     expect(adapter.calls.listRepositoryLabels).toHaveLength(0);
   });
 

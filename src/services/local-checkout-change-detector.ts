@@ -75,10 +75,12 @@ export class LocalCheckoutChangeDetector {
     if (profile._tag === "err") return failed("profile_unreadable");
     if (session._tag === "err" || isPullRequestReviewSession(session.value))
       return failed("session_unreadable");
+    if (identity.identityKey.kind !== "github")
+      return failed("profile_unreadable");
     const checkout = await resolveLocalReviewCheckout(
       { git: this.git, paths: this.dependencies.paths },
       profile.value,
-      identity,
+      identity.identityKey,
       source.checkout,
     );
     if (checkout._tag === "err") return failed(checkout.error._tag);

@@ -210,7 +210,9 @@ describe("required-check classification from the snapshot merge policy", () => {
     const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
     const gate = await mergePullRequest({
       // SAFETY: the profile fields `mergePullRequest` reads are both here.
-      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      profile: {
+        github: { kind: "connected", account: "fixture", host: "github.com" },
+      } as never,
       session: session(),
       // SAFETY: this fake gateway stubs only the methods
       // `mergePullRequest` calls; `changedFileCount: 0` matches the empty
@@ -278,7 +280,9 @@ describe("required-check classification from the snapshot merge policy", () => {
     const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
     const gate = await mergePullRequest({
       // SAFETY: the profile fields `mergePullRequest` reads are both here.
-      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      profile: {
+        github: { kind: "connected", account: "fixture", host: "github.com" },
+      } as never,
       session: session(),
       // SAFETY: this fake gateway stubs only the methods
       // `mergePullRequest` calls; `changedFileCount: 0` matches the empty
@@ -375,7 +379,9 @@ describe("mergeability classification from the snapshot merge policy", () => {
     const merge = vi.fn(async () => ({ _tag: "ok" as const, value: {} }));
     const gate = await mergePullRequest({
       // SAFETY: the profile fields `mergePullRequest` reads are both here.
-      profile: { githubHost: "github.com", ghAccount: "fixture" } as never,
+      profile: {
+        github: { kind: "connected", account: "fixture", host: "github.com" },
+      } as never,
       session: session(),
       // SAFETY: this fake gateway stubs only the methods
       // `mergePullRequest` calls; `changedFileCount: 0` matches the empty

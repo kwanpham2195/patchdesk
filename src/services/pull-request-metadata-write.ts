@@ -92,9 +92,9 @@ export function pullRequestRefForSession(
   key: ReviewSessionKey<PullRequestReviewSource>,
 ): PullRequestRef {
   return {
-    host: key.host,
-    owner: key.owner,
-    repo: key.repo,
+    host: key.identityKey.host,
+    owner: key.identityKey.owner,
+    repo: key.identityKey.repo,
     number: key.source.prNumber,
   };
 }
@@ -179,7 +179,8 @@ export async function resolvePullRequestWritePermission<Permission>(input: {
   const account = await input.github.resolveAuthenticatedAccount(input.profile);
   const evidence =
     account._tag === "ok" &&
-    account.value.account === input.profile.ghAccount &&
+    input.profile.github.kind === "connected" &&
+    account.value.account === input.profile.github.account &&
     input.github.getRepositoryPermission !== undefined
       ? await input.github.getRepositoryPermission({
           profile: input.profile,

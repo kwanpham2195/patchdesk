@@ -248,8 +248,14 @@ async function setup(
     parseWorkspaceProfileConfig({
       id: profileId,
       label: "ACME",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      schemaVersion: 1 as const,
+      localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+      github: {
+        kind: "connected" as const,
+        host: "github.com",
+        account: "fixture",
+      },
+
       rulePaths: [],
       repos:
         options.localPath === undefined
@@ -518,9 +524,12 @@ describe("ReviewSessionPreparation", () => {
     const fixture = await setup({ localPath: localRepo });
     const worktreeSessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
@@ -611,9 +620,12 @@ describe("ReviewSessionPreparation", () => {
         _tag: "PreparationFinished",
         reviewId: createReviewId({
           profileId,
-          host: pullRequest.host,
-          owner: pullRequest.owner,
-          repo: pullRequest.repo,
+          identityKey: {
+            kind: "github" as const,
+            host: pullRequest.host,
+            owner: pullRequest.owner,
+            repo: pullRequest.repo,
+          },
           source: { kind: "pull_request", prNumber: pullRequest.number },
         }),
         pullRequest,
@@ -662,9 +674,12 @@ describe("ReviewSessionPreparation", () => {
     });
     const sessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
@@ -696,9 +711,12 @@ describe("ReviewSessionPreparation", () => {
     });
     const sessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
@@ -722,9 +740,12 @@ describe("ReviewSessionPreparation", () => {
     const fixture = await setup();
     const sessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
@@ -823,9 +844,12 @@ describe("ReviewSessionPreparation", () => {
     const fixture = await setup();
     const sessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,
@@ -873,9 +897,12 @@ describe("ReviewSessionPreparation", () => {
     const fixture = await setup();
     const sessionId = createReviewSessionId({
       profileId,
-      host: pullRequest.host,
-      owner: pullRequest.owner,
-      repo: pullRequest.repo,
+      identityKey: {
+        kind: "github" as const,
+        host: pullRequest.host,
+        owner: pullRequest.owner,
+        repo: pullRequest.repo,
+      },
       source: { kind: "pull_request", prNumber: pullRequest.number },
       headSha,
       baseSha,

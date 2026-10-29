@@ -1,3 +1,4 @@
+import { parseRepositoryIdentityKey } from "#src/domain/local-repository";
 import * as v from "valibot";
 import { readdir } from "node:fs/promises";
 
@@ -5,16 +6,12 @@ import {
   createReviewSessionId,
   parseAbsolutePath,
   parseContentHash,
-  parseGitHubHost,
-  parseGitHubOwner,
-  parseGitHubRepoName,
   parseGitSha,
   parseIsoTimestamp,
   parsePullRequestNumber,
   parseReviewSessionId,
   parseWorkspaceProfileId,
   type GitSha,
-  type PullRequestNumber,
   type ReviewSessionId,
   type WorkspaceProfileId,
 } from "#src/domain/ids";
@@ -29,7 +26,6 @@ import { parseDirectSummaryReviewState } from "#src/domain/direct-summary-review
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { mapConcurrent } from "#src/domain/map-concurrent";
 import {
-  isPullRequestReviewSession,
   type LocalCommit,
   type LocalReviewSession,
   type LocalSessionRound,
@@ -156,8 +152,25 @@ const localSessionSchema = v.strictObject({
   ),
 });
 
+const localSessionV7Schema = v.strictObject({
+  ...localSessionSchema.entries,
+  schemaVersion: v.literal(7),
+  key: v.strictObject({
+    profileId: v.string(),
+    identityKey: v.strictObject({
+      kind: v.literal("local"),
+      localRepositoryId: v.string(),
+    }),
+    source: storedLocalReviewSourceSchema,
+    headSha: v.string(),
+    baseSha: v.string(),
+  }),
+});
+
 type RawPullRequestSession = v.InferOutput<typeof pullRequestSessionSchema>;
-type RawLocalSession = v.InferOutput<typeof localSessionSchema>;
+type RawLocalSession =
+  | v.InferOutput<typeof localSessionSchema>
+  | v.InferOutput<typeof localSessionV7Schema>;
 
 type InvalidSessionEntry = {
   readonly entryName: string;
@@ -308,28 +321,44 @@ function buildFindingReviewContext(
  * pull request key is written flat with `prNumber`, as before local sources
  * existed; a local key is written with its `source`.
  */
-function serializeReviewSession(session: ReviewSession): StoredReviewSession {
-  if (!isPullRequestReviewSession(session)) return session;
-  const { source, ...key } = session.key;
-  return { ...session, key: { ...key, prNumber: source.prNumber } };
+function serializeReviewSession(session: ReviewSession) {
+  const { source, identityKey, profileId, headSha, baseSha } = session.key;
+  if (identityKey.kind === "local")
+    return {
+      ...session,
+      key: { profileId, identityKey, source, headSha, baseSha },
+    };
+  const { kind: _kind, ...triple } = identityKey;
+  return {
+    ...session,
+    key:
+      source.kind === "pull_request"
+        ? { profileId, ...triple, headSha, baseSha, prNumber: source.prNumber }
+        : { profileId, ...triple, source, headSha, baseSha },
+  };
 }
 
-type StoredReviewSession =
-  | (Omit<PullRequestReviewSession, "key"> & {
-      readonly key: Omit<ReviewSessionKey, "source"> & {
-        readonly prNumber: PullRequestNumber;
-      };
-    })
-  | LocalReviewSession;
-
-/** Parses one current schema-6 session and rejects all removed authority fields. */
 export function parseStoredReviewSession(
   input: unknown,
 ): Result<ReviewSession, StorageFailure> {
-  const pullRequest = v.safeParse(pullRequestSessionSchema, input);
-  if (pullRequest.success) return parsePullRequestSession(pullRequest.output);
-  const local = v.safeParse(localSessionSchema, input);
-  return local.success ? parseLocalSession(local.output) : invalidRead();
+  // The discriminator selects the durable schema; union members differ only by source within schema 6.
+  const version = v.safeParse(
+    v.object({ schemaVersion: v.picklist([6, 7]) }),
+    input,
+  );
+  if (!version.success) return invalidRead();
+  if (version.output.schemaVersion === 7) {
+    const local = v.safeParse(localSessionV7Schema, input);
+    return local.success ? parseLocalSession(local.output) : invalidRead();
+  }
+  const current = v.safeParse(
+    v.union([pullRequestSessionSchema, localSessionSchema]),
+    input,
+  );
+  if (!current.success) return invalidRead();
+  return "pr" in current.output
+    ? parsePullRequestSession(current.output)
+    : parseLocalSession(current.output);
 }
 
 function parsePullRequestSession(
@@ -361,9 +390,9 @@ function parsePullRequestSession(
   if (
     pendingReview.value !== undefined &&
     !pendingReviewMatchesSession(pendingReview.value, {
-      host: key.host,
-      owner: key.owner,
-      repo: key.repo,
+      host: key.identityKey.host,
+      owner: key.identityKey.owner,
+      repo: key.identityKey.repo,
       number: key.source.prNumber,
     })
   ) {
@@ -416,6 +445,12 @@ function parseLocalSession(
 ): Result<LocalReviewSession, StorageFailure> {
   const source = parseStoredLocalReviewSource(raw.key.source);
   if (source._tag === "err") return invalidRead();
+  if (
+    raw.schemaVersion === 7 &&
+    source.value.kind !== "local_branch" &&
+    source.value.kind !== "commit"
+  )
+    return invalidRead();
   const fields = parseSessionFields(raw, source.value);
   if (fields._tag === "err") return fields;
   // A shared Review's session always records the checkout HEAD its snapshot
@@ -524,9 +559,16 @@ function parseSessionFields<Source extends ReviewSource>(
   StorageFailure
 > {
   const profileId = parseWorkspaceProfileId(raw.key.profileId);
-  const host = parseGitHubHost(raw.key.host);
-  const owner = parseGitHubOwner(raw.key.owner);
-  const repo = parseGitHubRepoName(raw.key.repo);
+  const identityKey = parseRepositoryIdentityKey(
+    "identityKey" in raw.key
+      ? raw.key.identityKey
+      : {
+          kind: "github",
+          host: raw.key.host,
+          owner: raw.key.owner,
+          repo: raw.key.repo,
+        },
+  );
   const headSha = parseGitSha(raw.key.headSha);
   const baseSha = parseGitSha(raw.key.baseSha);
   const id = parseReviewSessionId(raw.id);
@@ -541,9 +583,7 @@ function parseSessionFields<Source extends ReviewSource>(
   const updatedAt = parseIsoTimestamp(raw.updatedAt);
   if (
     profileId._tag === "err" ||
-    host._tag === "err" ||
-    owner._tag === "err" ||
-    repo._tag === "err" ||
+    identityKey._tag === "err" ||
     headSha._tag === "err" ||
     baseSha._tag === "err" ||
     id._tag === "err" ||
@@ -556,11 +596,12 @@ function parseSessionFields<Source extends ReviewSource>(
   ) {
     return invalidRead();
   }
+  if (source.kind === "pull_request" && identityKey.value.kind !== "github")
+    return invalidRead();
   const key: ReviewSessionKey<Source> = {
     profileId: profileId.value,
-    host: host.value,
-    owner: owner.value,
-    repo: repo.value,
+    // SAFETY: pull-request sources were checked against the GitHub key above.
+    identityKey: identityKey.value as ReviewSessionKey<Source>["identityKey"],
     source,
     headSha: headSha.value,
     baseSha: baseSha.value,
@@ -572,7 +613,7 @@ function parseSessionFields<Source extends ReviewSource>(
     return invalidRead();
   }
   return ok({
-    schemaVersion: 6,
+    schemaVersion: raw.schemaVersion,
     id: id.value,
     key,
     patchPath: patchPath.value,

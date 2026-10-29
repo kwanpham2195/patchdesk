@@ -1,3 +1,4 @@
+import { LocalRepositoryUpgrade } from "#src/services/local-repository-upgrade";
 import { randomUUID } from "node:crypto";
 
 import { buildLocalApiStores, type LocalApiStores } from "./local-api-stores";
@@ -192,6 +193,12 @@ export async function buildLocalApiContainer(
     watchedPullRequests,
     storageManagement,
   } = built.stores;
+  const upgraded = await new LocalRepositoryUpgrade(
+    paths,
+    commands,
+    logs,
+  ).run();
+  if (upgraded._tag === "err") return { _tag: "recovery-failed" };
   // Built here rather than by the caller so the Insight context pack reads
   // GitHub through this container's adapter and credential cache (issue #311).
   // Kept ahead of the recovery below, where the coordinator's own run recovery

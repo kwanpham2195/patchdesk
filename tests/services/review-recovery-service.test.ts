@@ -33,9 +33,12 @@ function must<T>(result: Result<T, unknown>): T {
 
 const storedIdentity: PullRequestReviewIdentity = {
   profileId: must(parseWorkspaceProfileId("acme")),
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: { kind: "pull_request", prNumber: must(parsePullRequestNumber(42)) },
 };
 const storedReviewId = createReviewId(storedIdentity);
@@ -320,9 +323,9 @@ describe("ReviewRecoveryService", () => {
         reviewId: storedReviewId,
         sessionId: storedSessionId,
         pr: {
-          host: storedIdentity.host,
-          owner: storedIdentity.owner,
-          repo: storedIdentity.repo,
+          host: storedIdentity.identityKey.host,
+          owner: storedIdentity.identityKey.owner,
+          repo: storedIdentity.identityKey.repo,
           number: storedIdentity.source.prNumber,
         },
         expectedHeadSha: storedHeadSha,

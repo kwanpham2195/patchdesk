@@ -37,9 +37,12 @@ function must<T>(result: Result<T, unknown>): T {
 const profileId = must(parseWorkspaceProfileId("acme"));
 const identity: ReviewIdentity<LocalReviewSource> = {
   profileId,
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
   source: {
     kind: "working_tree",
     branch: must(parseLocalBranchName("feat/x")),
@@ -74,8 +77,14 @@ beforeEach(async () => {
     parseWorkspaceProfileConfig({
       id: "acme",
       label: "ACME",
-      githubHost: "github.com",
-      ghAccount: "fixture",
+      schemaVersion: 1 as const,
+      localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+      github: {
+        kind: "connected" as const,
+        host: "github.com",
+        account: "fixture",
+      },
+
       rulePaths: [],
       repos: [
         {

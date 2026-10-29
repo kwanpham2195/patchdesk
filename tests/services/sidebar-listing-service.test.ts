@@ -69,9 +69,7 @@ function review(input: {
 }): Review {
   const identity: ReviewIdentity = {
     profileId,
-    host,
-    owner,
-    repo,
+    identityKey: { kind: "github" as const, host, owner, repo },
     source: {
       kind: "pull_request",
       prNumber: must(parsePullRequestNumber(input.number)),
@@ -128,9 +126,12 @@ function localReview(
   const kind = options.kind ?? "local_branch";
   const identity: ReviewIdentity = {
     profileId,
-    host,
-    owner,
-    repo: must(parseGitHubRepoName(options.repo ?? "patchdesk")),
+    identityKey: {
+      kind: "github" as const,
+      host,
+      owner,
+      repo: must(parseGitHubRepoName(options.repo ?? "patchdesk")),
+    },
     source:
       kind === "commit"
         ? { kind, commitSha: headSha, ...checkout }

@@ -55,8 +55,14 @@ export type FixtureServer = {
 const profileResult = parseWorkspaceProfileConfig({
   id: "acme",
   label: "ACME",
-  githubHost: "github.com",
-  ghAccount: "octo-dev",
+  schemaVersion: 1 as const,
+  localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+  github: {
+    kind: "connected" as const,
+    host: "github.com",
+    account: "octo-dev",
+  },
+
   rulePaths: [],
   repos: [],
 });

@@ -1,3 +1,4 @@
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
 import { ReviewRefreshService } from "#src/services/review-refresh-service";
 import {
@@ -161,9 +162,12 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
   const profileId = must(parseWorkspaceProfileId("acme"));
   const identity = {
     profileId,
-    host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("octo-org")),
-    repo: must(parseGitHubRepoName("patchdesk")),
+    identityKey: {
+      kind: "github" as const,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+    },
     source: {
       kind: "pull_request",
       prNumber: must(parsePullRequestNumber(42)),
@@ -176,9 +180,9 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
     schemaVersion: 1,
     pullRequest: {
       ref: {
-        host: identity.host,
-        owner: identity.owner,
-        repo: identity.repo,
+        host: identity.identityKey.host,
+        owner: identity.identityKey.owner,
+        repo: identity.identityKey.repo,
         number: identity.source.prNumber,
       },
       headSha,
@@ -222,14 +226,19 @@ export function createReviewRefreshFixtureValues(): ReviewRefreshFixtureValues {
   const profile: WorkspaceProfileConfig = {
     id: profileId,
     label: "Fixture",
-    githubHost: identity.host,
-    ghAccount: "fixture",
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: githubConnectionFixture({
+      host: identity.identityKey.host,
+      account: "fixture",
+    }),
+
     rulePaths: [],
     repos: [
       {
-        host: identity.host,
-        owner: identity.owner,
-        repo: identity.repo,
+        host: identity.identityKey.host,
+        owner: identity.identityKey.owner,
+        repo: identity.identityKey.repo,
       },
     ],
   };
@@ -437,9 +446,9 @@ function createMergePolicy(
 ): MergePolicySnapshot {
   return {
     pr: {
-      host: values.identity.host,
-      owner: values.identity.owner,
-      repo: values.identity.repo,
+      host: values.identity.identityKey.host,
+      owner: values.identity.identityKey.owner,
+      repo: values.identity.identityKey.repo,
       number: values.identity.source.prNumber,
     },
     headSha: currentPullRequest.headSha,
@@ -469,9 +478,9 @@ function createProjection(
       id: session.id,
       key: {
         profileId: session.key.profileId,
-        host: session.key.host,
-        owner: session.key.owner,
-        repo: session.key.repo,
+        host: session.key.identityKey.host,
+        owner: session.key.identityKey.owner,
+        repo: session.key.identityKey.repo,
         source: session.key.source,
         headSha: session.key.headSha,
       },

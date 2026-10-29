@@ -444,11 +444,7 @@ describe("GitHubAdapter repository label permission", () => {
         orderedTransport([JSON.stringify({ role_name })]),
       );
       await expect(
-        adapter.getRepositoryPermission({
-          profile,
-          pr,
-          account: "octo-dev",
-        }),
+        adapter.getRepositoryPermission({ profile, pr, account: "octo-dev" }),
       ).resolves.toMatchObject({
         _tag: "ok",
         value: { permission: role_name, canManageLabels },

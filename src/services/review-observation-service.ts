@@ -951,9 +951,9 @@ function containsRecentWrites(
 
 function reviewRef(review: PullRequestReview) {
   return {
-    host: review.identity.host,
-    owner: review.identity.owner,
-    repo: review.identity.repo,
+    host: review.identity.identityKey.host,
+    owner: review.identity.identityKey.owner,
+    repo: review.identity.identityKey.repo,
     number: review.identity.source.prNumber,
   };
 }

@@ -124,7 +124,9 @@ export class SidebarListingService {
         if (row !== undefined) pullRequestRows.push(row);
         continue;
       }
-      const { host, owner, repo, source } = review.identity;
+      const { identityKey, source } = review.identity;
+      if (identityKey.kind !== "github") continue;
+      const { host, owner, repo } = identityKey;
       // Working-tree and branch Reviews stored before the shared Review (#555) are not listed.
       if (source.kind === "working_tree" || source.kind === "branch") continue;
       const key = JSON.stringify([host, owner, repo, source.checkout ?? null]);
@@ -215,8 +217,10 @@ export class SidebarListingService {
 }
 
 function pullRequestRow(review: Review): SidebarPullRequestRow | undefined {
-  const { source, owner, repo } = review.identity;
-  if (source.kind !== "pull_request") return undefined;
+  const { source, identityKey } = review.identity;
+  if (source.kind !== "pull_request" || identityKey.kind !== "github")
+    return undefined;
+  const { owner, repo } = identityKey;
   return {
     reviewId: review.id,
     owner,
@@ -254,7 +258,10 @@ function localRepositoryRow(
         latest === undefined || opened > latest ? opened : latest,
       undefined,
     );
-  const { host, owner, repo, source } = newest.identity;
+  const { identityKey, source } = newest.identity;
+  if (identityKey.kind !== "github")
+    throw new Error("Sidebar group requires GitHub repository identity");
+  const { host, owner, repo } = identityKey;
   return {
     host,
     owner,

@@ -149,8 +149,14 @@ describe("GitHubAdapter workspace-profile GitHub account", () => {
     parseWorkspaceProfileConfig({
       id: "opn",
       label: "OPN",
-      githubHost: "github.opn.example",
-      ghAccount: "matthew-opn",
+      schemaVersion: 1 as const,
+      localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+      github: {
+        kind: "connected" as const,
+        host: "github.opn.example",
+        account: "matthew-opn",
+      },
+
       rulePaths: [],
       repos: [],
     }),

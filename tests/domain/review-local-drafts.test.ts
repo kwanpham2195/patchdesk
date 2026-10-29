@@ -49,9 +49,12 @@ function must<T>(result: Result<T, unknown>): T {
 
 const repository = {
   profileId: must(parseWorkspaceProfileId("acme")),
-  host: must(parseGitHubHost("github.com")),
-  owner: must(parseGitHubOwner("octo-org")),
-  repo: must(parseGitHubRepoName("patchdesk")),
+  identityKey: {
+    kind: "github" as const,
+    host: must(parseGitHubHost("github.com")),
+    owner: must(parseGitHubOwner("octo-org")),
+    repo: must(parseGitHubRepoName("patchdesk")),
+  },
 };
 const headSha = must(parseGitSha("1".repeat(40)));
 const baseSha = must(parseGitSha("b".repeat(40)));

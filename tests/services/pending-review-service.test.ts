@@ -1,3 +1,5 @@
+import { pendingReviewSessionFixture } from "./pending-review-session-fixture";
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,33 +133,11 @@ function session(
   state?: PendingReviewState,
   findingReviewReceipts?: PullRequestReviewSession["findingReviewReceipts"],
 ): PullRequestReviewSession {
-  const base = {
-    schemaVersion: 6 as const,
-    id: sessionId,
-    // SAFETY: these literals match their branded parsers' accepted formats
-    // (a bare hostname, slug-shaped owner/repo names, and a positive integer).
-    key: {
-      profileId,
-      host: "github.com" as never,
-      owner: "octo-org" as never,
-      repo: "patchdesk" as never,
-      source: { kind: "pull_request" as const, prNumber: 42 as never },
-      headSha,
-      baseSha,
-    },
-    pr: { headSha, baseSha, isDraft: false, isOpen: true },
-    // SAFETY: this literal matches parseAbsolutePath's format (a leading-slash path).
-    patchPath: "/tmp/patch" as never,
-    // SAFETY: this literal matches parseAbsolutePath's format (a leading-slash path).
-    worktree: { path: "/tmp/worktree" as never, headSha },
-    createdAt: now,
-    updatedAt: now,
-  };
-  const withPendingReview =
-    state === undefined ? base : { ...base, pendingReview: state };
-  return findingReviewReceipts === undefined
-    ? withPendingReview
-    : { ...withPendingReview, findingReviewReceipts };
+  return pendingReviewSessionFixture(
+    { id: sessionId, profileId, headSha, baseSha, at: now },
+    state,
+    findingReviewReceipts,
+  );
 }
 /** Finish reads the pending review before submitting; this one still exists. */
 function stillPendingOnGitHub() {
@@ -188,10 +168,10 @@ function fixture(
   };
   const gate = {
     requireFresh: vi.fn(async () =>
-      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+      ok({ profile: { github: githubConnectionFixture() }, session: stored }),
     ),
     requireCurrentSession: vi.fn(async () =>
-      ok({ profile: { ghAccount: "fixture" }, session: stored }),
+      ok({ profile: { github: githubConnectionFixture() }, session: stored }),
     ),
   };
   const github = {
@@ -955,7 +935,10 @@ describe("PendingReviewService reconcile compare-and-swap", () => {
       requireCurrentSession: vi.fn(async () => {
         const loaded = await sessions.load(profileId, seeded.id);
         if (loaded._tag === "err") throw new Error("fixture");
-        return ok({ profile: { ghAccount: "fixture" }, session: loaded.value });
+        return ok({
+          profile: { github: githubConnectionFixture() },
+          session: loaded.value,
+        });
       }),
     };
     const service = new PendingReviewService(

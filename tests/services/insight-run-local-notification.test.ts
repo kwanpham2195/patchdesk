@@ -1,3 +1,4 @@
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -29,8 +30,10 @@ const profiles = [
   {
     id: profileId,
     label: "Personal",
-    githubHost: host,
-    ghAccount: "fixture",
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: githubConnectionFixture({ host: host, account: "fixture" }),
+
     rulePaths: [],
     repos: [
       {

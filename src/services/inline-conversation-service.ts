@@ -200,9 +200,9 @@ export class InlineConversationService {
             : "not_found",
       );
     const pr = {
-      host: fresh.value.session.key.host,
-      owner: fresh.value.session.key.owner,
-      repo: fresh.value.session.key.repo,
+      host: fresh.value.session.key.identityKey.host,
+      owner: fresh.value.session.key.identityKey.owner,
+      repo: fresh.value.session.key.identityKey.repo,
       number: fresh.value.session.key.source.prNumber,
     };
     const current = await requireCurrentHead(
@@ -220,7 +220,11 @@ export class InlineConversationService {
     switch (input.command._tag) {
       case "CreateComment": {
         const command = input.command;
-        const actor = parseGitHubLogin(fresh.value.profile.ghAccount);
+        const actor = parseGitHubLogin(
+          fresh.value.profile.github.kind === "connected"
+            ? fresh.value.profile.github.account
+            : undefined,
+        );
         const path = parseRepoRelativePath(command.anchor.path);
         if (actor._tag === "err" || path._tag === "err")
           return err("invalid_input");
@@ -267,7 +271,11 @@ export class InlineConversationService {
       }
       case "Reply": {
         const command = input.command;
-        const actor = parseGitHubLogin(fresh.value.profile.ghAccount);
+        const actor = parseGitHubLogin(
+          fresh.value.profile.github.kind === "connected"
+            ? fresh.value.profile.github.account
+            : undefined,
+        );
         if (actor._tag === "err") return err("invalid_input");
         const createThreadReply = this.github.createThreadReply?.bind(
           this.github,

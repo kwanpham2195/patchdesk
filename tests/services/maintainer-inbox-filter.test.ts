@@ -36,8 +36,14 @@ const profile = requireFixture(
   parseWorkspaceProfileConfig({
     id: "acme",
     label: "Fixture",
-    githubHost: parsedRepository.host,
-    ghAccount: "fixture",
+    schemaVersion: 1 as const,
+    localRepositoryCatalogGeneration: "12345678-1234-4234-8234-123456789abc",
+    github: {
+      kind: "connected" as const,
+      host: parsedRepository.host,
+      account: "fixture",
+    },
+
     rulePaths: [],
     repos: [
       {

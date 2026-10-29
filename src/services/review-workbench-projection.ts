@@ -1,3 +1,4 @@
+import type { LocalRepositoryKey } from "#src/domain/local-repository";
 import type { RetainedGuide } from "#src/domain/guide";
 import type { AgentRunRequest } from "#src/domain/agent-run-request";
 import type { GitHubReader } from "#src/adapters/github/github-adapter";
@@ -123,12 +124,16 @@ type WorkbenchSessionProjection = {
   readonly id: ReviewSessionId;
   readonly key: {
     readonly profileId: WorkspaceProfileId;
-    readonly host: GitHubHost;
-    readonly owner: GitHubOwner;
-    readonly repo: GitHubRepoName;
     readonly source: ReviewSource;
     readonly headSha: GitSha;
-  };
+  } & (
+    | {
+        readonly host: GitHubHost;
+        readonly owner: GitHubOwner;
+        readonly repo: GitHubRepoName;
+      }
+    | { readonly identityKey: LocalRepositoryKey }
+  );
 };
 /** Bounded renderer view of the one durable Review write awaiting recovery. */
 type RemoteWriteRecoveryProjection = {
@@ -537,7 +542,9 @@ export class ReviewWorkbenchProjectionService {
       readonly unavailable: boolean;
     },
   ): Promise<Result<ReviewWorkbenchProjection, WorkbenchProjectionFailure>> {
-    const viewerLogin = parseGitHubLogin(profile.ghAccount);
+    const viewerLogin = parseGitHubLogin(
+      profile.github.kind === "connected" ? profile.github.account : undefined,
+    );
     if (viewerLogin._tag === "err")
       return err({ _tag: "SessionStorageUnavailable" });
     const [hashedPatch, storedInsights, viewed, walkthroughSummary] =
@@ -568,9 +575,9 @@ export class ReviewWorkbenchProjectionService {
           ? undefined
           : {
               ref: {
-                host: pullRequestSession.key.host,
-                owner: pullRequestSession.key.owner,
-                repo: pullRequestSession.key.repo,
+                host: pullRequestSession.key.identityKey.host,
+                owner: pullRequestSession.key.identityKey.owner,
+                repo: pullRequestSession.key.identityKey.repo,
                 number: pullRequestSession.key.source.prNumber,
               },
               ...pullRequestSession.prContext,
@@ -894,23 +901,26 @@ function directSummaryDecision(
   profile: WorkspaceProfileConfig,
   pullRequest: PullRequestSummary | undefined,
 ): "allowed" | "blocked_author" | "unknown" {
-  if (pullRequest?.author === undefined || profile.ghAccount.length === 0)
+  if (pullRequest?.author === undefined || profile.github.kind !== "connected")
     return "unknown";
-  return pullRequest.author.toLowerCase() === profile.ghAccount.toLowerCase()
+  return pullRequest.author.toLowerCase() ===
+    profile.github.account.toLowerCase()
     ? "blocked_author"
     : "allowed";
 }
 
 function projectSession(session: ReviewSession): WorkbenchSessionProjection {
+  const { identityKey, profileId, source, headSha } = session.key;
+  const common = { profileId, source, headSha };
+  if (identityKey.kind === "local")
+    return { id: session.id, key: { ...common, identityKey } };
   return {
     id: session.id,
     key: {
-      profileId: session.key.profileId,
-      host: session.key.host,
-      owner: session.key.owner,
-      repo: session.key.repo,
-      source: session.key.source,
-      headSha: session.key.headSha,
+      ...common,
+      host: identityKey.host,
+      owner: identityKey.owner,
+      repo: identityKey.repo,
     },
   };
 }

@@ -1,3 +1,4 @@
+import { githubConnectionFixture } from "#tests/domain/repository-fixtures";
 import { ProfileStore } from "#src/adapters/storage/profile-store";
 import { GuideGenerationService } from "#src/services/guide-generation-service";
 import { WalkthroughGenerationService } from "#src/services/walkthrough-generation-service";
@@ -115,8 +116,11 @@ export function contextPackFixture(
           return ok({
             id: profileId,
             label: "Fixture",
-            githubHost: must(parseGitHubHost("github.com")),
-            ghAccount: "fixture",
+            schemaVersion: 1 as const,
+            localRepositoryCatalogGeneration:
+              "12345678-1234-4234-8234-123456789abc",
+            github: githubConnectionFixture(),
+
             rulePaths: [],
             repos: [],
           });
@@ -201,9 +205,12 @@ export async function fixture(
     : undefined;
   const identity = {
     profileId,
-    host: must(parseGitHubHost("github.com")),
-    owner: must(parseGitHubOwner("octo-org")),
-    repo: must(parseGitHubRepoName("patchdesk")),
+    identityKey: {
+      kind: "github" as const,
+      host: must(parseGitHubHost("github.com")),
+      owner: must(parseGitHubOwner("octo-org")),
+      repo: must(parseGitHubRepoName("patchdesk")),
+    },
   };
   // SAFETY: "placeholder" only needs to satisfy the ReviewSessionId-branded
   // parameter type; both paths are recomputed from the real session id below.
@@ -291,8 +298,11 @@ export async function fixture(
       await new ProfileStore(paths).save({
         id: profileId,
         label: "Fixture",
-        githubHost: "github.com",
-        ghAccount: "fixture",
+        schemaVersion: 1 as const,
+        localRepositoryCatalogGeneration:
+          "12345678-1234-4234-8234-123456789abc",
+        github: githubConnectionFixture(),
+
         rulePaths: [],
         repos: [],
       }),

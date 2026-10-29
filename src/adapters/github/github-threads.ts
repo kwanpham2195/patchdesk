@@ -15,7 +15,7 @@ import type {
 import { type GitHubThreadId, parseGitHubThreadId } from "#src/domain/ids";
 import type { PullRequestRef } from "#src/domain/pull-request";
 import { ok, type Result } from "#src/domain/result";
-import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
+import type { ConnectedWorkspaceProfile } from "#src/domain/workspace-profile";
 import {
   maxReviewCommentPages,
   maxReviewComments,
@@ -49,7 +49,7 @@ export class GitHubThreadReader {
 
   /** Run a request that returns JSON as the profile's configured GitHub account. */
   private async ghJson(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     request: GitHubRequest,
   ): Promise<Result<unknown, CommandFailure>> {
     return this.requests.ghJson(profile, request);
@@ -64,7 +64,7 @@ export class GitHubThreadReader {
   }
 
   async getPullRequestComments(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
   }): Promise<Result<GitHubComments, GitHubReadFailure>> {
     const threads: Array<GitHubConversationThread> = [];
@@ -78,7 +78,7 @@ export class GitHubThreadReader {
     ) {
       const response = await this.ghJson(input.profile, {
         kind: "graphql",
-        host: input.profile.githubHost,
+        host: input.profile.github.host,
         document: threadQuery,
         variables: [
           { kind: "typed", name: "owner", value: input.pr.owner },
@@ -93,7 +93,7 @@ export class GitHubThreadReader {
         return this.commandFailure(
           "get_comments",
           response.error,
-          input.profile.githubHost,
+          input.profile.github.host,
         );
       }
       const parsed = v.safeParse(threadResponseSchema, response.value);
@@ -180,7 +180,7 @@ export class GitHubThreadReader {
   }
 
   private async loadThreadReplies(
-    profile: WorkspaceProfileConfig,
+    profile: ConnectedWorkspaceProfile,
     threadId: string,
     initial: ReadonlyArray<GitHubComment>,
     initialCursor: string | null,
@@ -200,7 +200,7 @@ export class GitHubThreadReader {
       if (cursor === null) return { comments, complete: false };
       const response = await this.ghJson(profile, {
         kind: "graphql",
-        host: profile.githubHost,
+        host: profile.github.host,
         document: threadCommentsQuery,
         variables: [
           { kind: "typed", name: "id", value: threadId },
@@ -241,13 +241,13 @@ export class GitHubThreadReader {
   }
 
   async getReviewThreadTarget(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly threadId: GitHubThreadId;
   }): Promise<Result<GitHubThreadTarget, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: reviewThreadTargetQuery,
       variables: [{ kind: "typed", name: "id", value: input.threadId }],
     });
@@ -255,7 +255,7 @@ export class GitHubThreadReader {
       return this.lookupFailure(
         "get_thread_target",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     }
     const parsed = v.safeParse(reviewThreadTargetSchema, response.value);
@@ -272,13 +272,13 @@ export class GitHubThreadReader {
   }
 
   async getReviewCommentTarget(input: {
-    readonly profile: WorkspaceProfileConfig;
+    readonly profile: ConnectedWorkspaceProfile;
     readonly pr: PullRequestRef;
     readonly commentId: string;
   }): Promise<Result<GitHubCommentTarget, GitHubReadFailure>> {
     const response = await this.ghJson(input.profile, {
       kind: "graphql",
-      host: input.profile.githubHost,
+      host: input.profile.github.host,
       document: reviewCommentTargetQuery,
       variables: [{ kind: "typed", name: "id", value: input.commentId }],
     });
@@ -286,7 +286,7 @@ export class GitHubThreadReader {
       return this.lookupFailure(
         "get_comment_target",
         response.error,
-        input.profile.githubHost,
+        input.profile.github.host,
       );
     }
     const parsed = v.safeParse(reviewCommentTargetSchema, response.value);
