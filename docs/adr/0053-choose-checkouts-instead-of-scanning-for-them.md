@@ -5,6 +5,11 @@
 > stays"). Amends ADR 0050's rule that a local source needs a profile
 > repository with a `localPath`: how that path is set. Terms in bold are
 > defined in [the product glossary](../product-description/glossary.md).
+>
+> **Amended by [ADR 0058](0058-review-local-checkouts-without-github.md)**
+> (2026-10-29): a local Review no longer needs a watched repository or a
+> matching `origin`. The origin check below applies only to watched
+> repository checkouts.
 
 Patchdesk found local checkouts by scanning folders. A first-run profile
 saved the home directory as its one workspace root, and discovery ran
