@@ -2,8 +2,13 @@ import type {
   LocalRepositoryService,
   LocalRepositoryFailure,
   RegisteredCheckout,
+  RelocatedCheckout,
+  RelocationFailure,
 } from "./local-repository-service";
-import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
+import {
+  parseLocalRepositoryId,
+  type LocalRepositoryRegistration,
+} from "#src/domain/local-repository";
 import type { GitHubConnection } from "#src/domain/workspace-profile";
 import type { CommandRunner } from "#src/adapters/github/command-runner";
 import type { AbsolutePath, WorkspaceProfileId } from "#src/domain/ids";
@@ -75,7 +80,8 @@ export type WorkspaceSetupFailure = {
     | "checkout_origin_mismatch"
     | "invalid_input"
     | "storage"
-    | LocalRepositoryFailure["reason"];
+    | LocalRepositoryFailure["reason"]
+    | RelocationFailure["reason"];
 };
 
 type SetupDashboard = Pick<
@@ -99,7 +105,7 @@ export class WorkspaceSetupService {
       readonly dashboard: SetupDashboard;
       readonly repositories: Pick<
         LocalRepositoryService,
-        "register" | "list" | "setWatchedCheckout"
+        "register" | "list" | "setWatchedCheckout" | "relocate"
       >;
       readonly git: GitReadExecutor;
       readonly commands: CommandRunner;
@@ -171,6 +177,16 @@ export class WorkspaceSetupService {
     folder: AbsolutePath,
   ): Promise<Result<RegisteredCheckout, WorkspaceSetupFailure>> {
     return this.dependencies.repositories.register(folder);
+  }
+
+  async relocateCheckout(
+    repositoryId: string,
+    folder: AbsolutePath,
+    confirm: boolean,
+  ): Promise<Result<RelocatedCheckout, WorkspaceSetupFailure>> {
+    const id = parseLocalRepositoryId(repositoryId);
+    if (id._tag === "err") return err({ reason: "invalid_input" });
+    return this.dependencies.repositories.relocate(id.value, folder, confirm);
   }
 
   /**

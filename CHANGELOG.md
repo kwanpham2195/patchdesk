@@ -7,6 +7,7 @@
 - Fixed Choose checkout and `patchdesk setup set-checkout` leaving Local Reviews on the previous checkout after a repository change. #817
 
 - Fixed Settings → Workspace silently connecting a disconnected workspace; Connect GitHub now starts account discovery explicitly. #817
+- Added `patchdesk setup relocate-checkout` to point a local repository at its moved checkout, keeping its Reviews, and `patchdesk setup status` now lists a missing local checkout as a step to do. #817
 - Added Local Reviews without GitHub: open a local checkout from first run or the titlebar, or register it with `patchdesk setup add-checkout`. #817
 - Fixed Analysis omitting "Ran without a change intent" after a Change intent is added to a local Review. #499
 - Fixed cancelled Insights replacing a previous result after provider completion, and forwarded cancellation through Brief Reach calculation. #813

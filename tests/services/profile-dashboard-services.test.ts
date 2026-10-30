@@ -38,6 +38,7 @@ import { parseWorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import { err, ok, type Result } from "#src/domain/result";
 import { DashboardController } from "#src/services/dashboard-controller";
 import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
+import { noReviews } from "#tests/services/local-repository-fixture";
 import {
   addWatchedRepo,
   detectDefaultWorkspaceProfile,
@@ -803,5 +804,6 @@ function checkoutRegistrations(
     git,
     paths,
     logs: { write: () => undefined },
+    reviews: noReviews,
   });
 }

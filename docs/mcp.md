@@ -96,11 +96,15 @@ and exits 0:
 
 ```text
 Usage: patchdesk mcp [--check]
-       patchdesk setup <status | add-repo | set-checkout> [--cwd <path>] [--json]
+       patchdesk setup <status | add-checkout | relocate-checkout | add-repo | set-checkout> [--cwd <path>] [--json]
 
   patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
   patchdesk mcp --check         Call list_repositories on the running app and print the result.
   patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
+  patchdesk setup add-checkout Register the checkout at --cwd (default: here), without GitHub.
+  patchdesk setup relocate-checkout --repository-id <id> --cwd <path> --confirm
+                                Point a missing local repository at its moved checkout, keeping its Reviews.
+                                Without --confirm it only lists the Reviews it would keep.
   patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
                                 checkout. Creates the workspace from the active gh account if there is none.
   patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.
@@ -124,7 +128,15 @@ They make the same change as Settings and are checked the same way.
 - `patchdesk setup set-checkout` points a watched repository at the checkout
   it moved to. It never adds a repository.
 
-Both refuse a checkout whose `origin` names another host than the
+- `patchdesk setup relocate-checkout --repository-id <id> --cwd <path>`
+  points a local repository whose checkout was moved on disk at its new folder.
+  Without `--confirm` it lists the Reviews that keep their IDs and changes
+  nothing (exit 1). With `--confirm` it updates the saved checkout location
+  only. It refuses a repository whose checkout still exists, a folder that is
+  not a Git checkout, and a folder that already belongs to another registered
+  repository, such as an independent clone with the same `origin`.
+
+`add-repo` and `set-checkout` refuse a checkout whose `origin` names another host than the
 workspace's GitHub host, such as GitLab or an SSH host alias like
 `git@github-work:owner/repo.git`.
 

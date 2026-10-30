@@ -99,6 +99,8 @@ Setup stays on screen after the first repository is watched and ends when the ma
 
 ## Edge cases
 
+- When a registered local checkout is moved on disk, `patchdesk setup status` lists it as missing and names `patchdesk setup relocate-checkout --repository-id <id> --cwd <path> --confirm`. Relocation keeps the repository ID and its Reviews; the app has no relocate action yet.
+
 - If first local setup stops before the workspace becomes active, repeat Open local checkout or `patchdesk setup add-checkout`. Setup keeps any saved repository registrations and adds the requested checkout if needed. A damaged registration catalog is refused without replacing it.
 - The Git line appears only when the environment read says Git is missing. A missing or unauthenticated GitHub CLI is reported by the account card itself, not by a separate tools list.
 - A workspace that already watches a repository does not show setup, even when the latest read returns no pull request; that is a different settled state.

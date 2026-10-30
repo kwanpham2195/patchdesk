@@ -288,6 +288,7 @@ export async function buildLocalApiContainer(
     git: readOnlyGit,
     paths,
     logs,
+    reviews,
   });
   const reviewPreparation = new ReviewSessionPreparation({
     profiles,

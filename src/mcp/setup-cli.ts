@@ -1,4 +1,7 @@
-import type { RegisteredCheckout } from "#src/services/local-repository-service";
+import type {
+  RegisteredCheckout,
+  RelocatedCheckout,
+} from "#src/services/local-repository-service";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -14,6 +17,7 @@ const setupSubcommands = {
   "add-repo": "setup_add_repo",
   "add-checkout": "setup_add_checkout",
   "set-checkout": "setup_set_checkout",
+  "relocate-checkout": "setup_relocate_checkout",
 } as const satisfies Record<string, SetupCommandName>;
 
 type SetupCliIo = {
@@ -24,7 +28,7 @@ type SetupCliIo = {
 };
 
 /**
- * `patchdesk setup <status|add-checkout|add-repo|set-checkout> [--cwd <path>] [--json]`
+ * `patchdesk setup <status|add-checkout|relocate-checkout|add-repo|set-checkout> [--cwd <path>] [--json]`
  * (#702). Returns the exit code, or undefined when the arguments name no
  * setup command, so the caller prints its usage.
  */
@@ -36,7 +40,12 @@ export async function runSetupCommand(
   try {
     parsed = parseArgs({
       args: [...args],
-      options: { cwd: { type: "string" }, json: { type: "boolean" } },
+      options: {
+        cwd: { type: "string" },
+        json: { type: "boolean" },
+        "repository-id": { type: "string" },
+        confirm: { type: "boolean" },
+      },
       allowPositionals: true,
       strict: true,
     });
@@ -50,32 +59,51 @@ export async function runSetupCommand(
   if (command === undefined || rest.length > 0) return undefined;
   if (command === "setup_status" && parsed.values.cwd !== undefined)
     return undefined;
+  const relocation = command === "setup_relocate_checkout";
+  const repositoryId = parsed.values["repository-id"];
+  if (
+    relocation !== (repositoryId !== undefined) ||
+    (!relocation && parsed.values.confirm !== undefined)
+  )
+    return undefined;
+  const folder = { cwd: resolve(io.cwd, parsed.values.cwd ?? ".") };
   const call = await callPatchdeskApp(io.socketPath, {
     tool: command,
     arguments:
       command === "setup_status"
         ? {}
-        : { cwd: resolve(io.cwd, parsed.values.cwd ?? ".") },
+        : relocation
+          ? {
+              ...folder,
+              repositoryId,
+              confirm: parsed.values.confirm === true,
+            }
+          : folder,
   });
   if (!call.reply.ok) {
     io.report(`${call.reply.error}: ${call.reply.message}`);
     return 1;
   }
+  // A relocation without --confirm only previews; it is not a success.
+  // SAFETY: the dispatcher replies to setup_relocate_checkout with a RelocatedCheckout.
+  const previewOnly =
+    relocation && (call.reply.result as RelocatedCheckout).relocated === false;
   if (parsed.values.json === true) {
     io.out(`${JSON.stringify(call.reply.result, null, 2)}\n`);
-    return 0;
+    return previewOnly ? 1 : 0;
   }
   // SAFETY: the app answered this command ok, and its setup dispatcher replies
-  // to setup_status with a WorkspaceSetupStatus and to the other two with a
-  // WorkspaceRepositorySet; both sides build from this repository.
+  // with the result type this command names; both sides build from this repository.
   io.out(
     command === "setup_status"
       ? describeStatus(call.reply.result as WorkspaceSetupStatus)
       : command === "setup_add_checkout"
         ? describeRegisteredCheckout(call.reply.result as RegisteredCheckout)
-        : describeRepositorySet(call.reply.result as WorkspaceRepositorySet),
+        : relocation
+          ? describeRelocation(call.reply.result as RelocatedCheckout)
+          : describeRepositorySet(call.reply.result as WorkspaceRepositorySet),
   );
-  return 0;
+  return previewOnly ? 1 : 0;
 }
 
 /** The status as lines a person or an agent reads, ending with the steps still to do. */
@@ -128,6 +156,14 @@ function nextSteps(status: WorkspaceSetupStatus): ReadonlyArray<string> {
     steps.push(
       "Run patchdesk setup add-checkout --cwd <path> to register a checkout.",
     );
+  for (const registration of status.localRepositories)
+    if (
+      registration.state === "missing" &&
+      registration.identityKey.kind === "local"
+    )
+      steps.push(
+        `Run patchdesk setup relocate-checkout --repository-id ${registration.id} --cwd <path> --confirm in the moved checkout of ${registration.displayName}.`,
+      );
   for (const repository of status.repositories) {
     const name = `${repository.owner}/${repository.repo}`;
     if (repository.checkout === "missing")
@@ -138,6 +174,22 @@ function nextSteps(status: WorkspaceSetupStatus): ReadonlyArray<string> {
       steps.push(`Run patchdesk setup add-repo in a checkout of ${name}.`);
   }
   return steps;
+}
+
+function describeRelocation(moved: RelocatedCheckout): string {
+  const { registration } = moved;
+  const reviews = moved.affectedReviews.map(
+    (review) =>
+      `  ${review.reviewId}${review.title === undefined ? "" : ` ${review.title}`}`,
+  );
+  const header = `${moved.relocated ? "Relocated" : "Not relocated: rerun with --confirm to move"} ${registration.displayName} (${registration.id}) to ${moved.checkout}.`;
+  return `${[
+    header,
+    moved.affectedReviews.length === 0
+      ? "No Reviews belong to it."
+      : `Reviews that keep their IDs (${moved.affectedReviews.length}):`,
+    ...reviews,
+  ].join("\n")}\n`;
 }
 
 function describeRegisteredCheckout(set: RegisteredCheckout): string {

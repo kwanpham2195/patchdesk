@@ -11,10 +11,16 @@ import {
   parseLocalRepositoryId,
   type LocalRepositoryRegistration,
 } from "#src/domain/local-repository";
+import { ok } from "#src/domain/result";
 import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import { DashboardController } from "#src/services/dashboard-controller";
 import { readCanonicalGitCommonDirectory } from "#src/services/local-checkout";
 import { LocalRepositoryService } from "#src/services/local-repository-service";
+
+/** A Review store with no saved Reviews, for tests that do not relocate. */
+export const noReviews = {
+  list: () => Promise.resolve(ok({ reviews: [], unreadable: 0, invalid: [] })),
+};
 
 export async function localRepositoryFixture(paths: PatchdeskPaths) {
   const profiles = new ProfileStore(paths);
@@ -70,5 +76,6 @@ export async function localRepositoryFixture(paths: PatchdeskPaths) {
       readBoundedInsightArtifactFile,
     ),
     logs: { write: () => undefined },
+    reviews: noReviews,
   });
 }

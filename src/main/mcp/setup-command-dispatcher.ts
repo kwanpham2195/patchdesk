@@ -1,4 +1,7 @@
-import type { RegisteredCheckout } from "#src/services/local-repository-service";
+import type {
+  RegisteredCheckout,
+  RelocatedCheckout,
+} from "#src/services/local-repository-service";
 import { safeParse } from "valibot";
 
 import { parseAbsolutePath } from "#src/domain/ids";
@@ -19,7 +22,10 @@ import type {
 } from "#src/services/workspace-setup-service";
 
 export type SetupCommandReply = Result<
-  WorkspaceSetupStatus | WorkspaceRepositorySet | RegisteredCheckout,
+  | WorkspaceSetupStatus
+  | WorkspaceRepositorySet
+  | RegisteredCheckout
+  | RelocatedCheckout,
   McpToolRefusal
 >;
 
@@ -27,7 +33,13 @@ const setupRefusalMessages = {
   repository_not_local:
     "Run patchdesk setup add-checkout --cwd <path> to register this checkout.",
   checkout_missing:
-    "The configured checkout is missing. Restore it before retrying.",
+    "The configured checkout is missing. Restore it, or run patchdesk setup relocate-checkout --repository-id <id> --cwd <path> --confirm.",
+  repository_not_found:
+    "The active workspace has no local repository with that ID. Run patchdesk setup status to list them.",
+  checkout_registered_elsewhere:
+    "That checkout already belongs to another registered repository. Choose the moved checkout of this repository.",
+  repository_not_missing:
+    "That repository's checkout still exists; only a missing checkout can be relocated.",
   registration_conflict:
     "This checkout has conflicting registrations. Resolve the catalog conflict before retrying.",
   no_github_account:
@@ -74,6 +86,19 @@ export async function dispatchSetupCommand(
   if (!parsed.success) return refused("invalid_input");
   const folder = parseAbsolutePath(parsed.output.cwd);
   if (folder._tag === "err") return refused("invalid_input");
+  if (request.tool === "setup_relocate_checkout") {
+    const relocation = safeParse(
+      setupCommandInputSchemas.setup_relocate_checkout,
+      request.arguments,
+    );
+    if (!relocation.success) return refused("invalid_input");
+    const moved = await setup.relocateCheckout(
+      relocation.output.repositoryId,
+      folder.value,
+      relocation.output.confirm,
+    );
+    return moved._tag === "ok" ? moved : refused(moved.error.reason);
+  }
   const set =
     request.tool === "setup_add_checkout"
       ? await setup.addCheckout(folder.value)

@@ -13,7 +13,7 @@ import { MCP_SOCKET_ENV, resolveMcpSocketPath } from "./socket-protocol";
  * diagnostic goes to stderr.
  */
 const usage = `Usage: patchdesk mcp [--check]
-       patchdesk setup <status | add-repo | set-checkout> [--cwd <path>] [--json]
+       patchdesk setup <status | add-checkout | relocate-checkout | add-repo | set-checkout> [--cwd <path>] [--json]
 
   patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
   patchdesk mcp --check         Call list_repositories on the running app and print the result.
@@ -21,6 +21,9 @@ const usage = `Usage: patchdesk mcp [--check]
   patchdesk setup add-checkout Register the checkout at --cwd (default: here), without GitHub.
   patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
                                 checkout. Creates the workspace from the active gh account if there is none.
+  patchdesk setup relocate-checkout --repository-id <id> --cwd <path> --confirm
+                                Point a missing local repository at its moved checkout, keeping its Reviews.
+                                Without --confirm it only lists the Reviews it would keep.
   patchdesk setup set-checkout  Use the checkout at --cwd for the repository it belongs to, as after a move.
 `;
 

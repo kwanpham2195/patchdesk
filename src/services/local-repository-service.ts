@@ -4,15 +4,18 @@ import { basename } from "node:path";
 
 import type { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
 import type { ProfileStore } from "#src/adapters/storage/profile-store";
+import type { ReviewStore } from "#src/adapters/storage/review-store";
 import {
   parseAbsolutePath,
   parseWorkspaceProfileId,
   type AbsolutePath,
+  type ReviewId,
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import {
   parseLocalRepositoryId,
   sameRepositoryIdentityKey,
+  type LocalRepositoryId,
   type LocalRepositoryRegistration,
   type RepositoryIdentityKey,
 } from "#src/domain/local-repository";
@@ -20,6 +23,7 @@ import { definedProps } from "#src/domain/defined-props";
 import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import { mapConcurrent } from "#src/domain/map-concurrent";
 import { err, ok, type Result } from "#src/domain/result";
+import { isLocalReview } from "#src/domain/review";
 import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { AppLogService } from "./app-log-service";
 import {
@@ -47,6 +51,26 @@ export type RegisteredCheckout = {
   readonly repositoryAdded: boolean;
 };
 
+export type RelocationFailure = {
+  readonly reason:
+    | LocalRepositoryFailure["reason"]
+    | "repository_not_found"
+    | "repository_not_missing"
+    | "checkout_registered_elsewhere";
+  readonly localPath?: AbsolutePath;
+};
+/** `relocated` is false for a preview: nothing is saved until the caller confirms. */
+export type RelocatedCheckout = {
+  readonly registration: LocalRepositoryRegistration;
+  readonly checkout: AbsolutePath;
+  readonly relocated: boolean;
+  /** The Reviews keyed to the registration; relocation keeps all of them. */
+  readonly affectedReviews: ReadonlyArray<{
+    readonly reviewId: ReviewId;
+    readonly title?: string;
+  }>;
+};
+
 export class LocalRepositoryService {
   private registrationTail: Promise<void> = Promise.resolve();
 
@@ -61,6 +85,7 @@ export class LocalRepositoryService {
       readonly git: GitReadExecutor;
       readonly paths: Pick<PatchdeskPaths, "cacheDirectory">;
       readonly logs: Pick<AppLogService, "write">;
+      readonly reviews: Pick<ReviewStore, "list">;
     },
   ) {}
 
@@ -158,6 +183,128 @@ export class LocalRepositoryService {
       () => undefined,
     );
     return scheduled;
+  }
+
+  /**
+   * Points a missing registration at the checkout in `folder` (ADR 0058,
+   * "Relocation and conflicting locators"), keeping its ID and Reviews. Only
+   * the locators change. Without `confirm` it validates and reports the
+   * affected Reviews and saves nothing.
+   */
+  async relocate(
+    repositoryId: LocalRepositoryId,
+    folder: AbsolutePath,
+    confirm: boolean,
+  ): Promise<Result<RelocatedCheckout, RelocationFailure>> {
+    const scheduled = this.registrationTail.then(() =>
+      this.relocateRegistration(repositoryId, folder, confirm),
+    );
+    this.registrationTail = scheduled.then(
+      () => undefined,
+      () => undefined,
+    );
+    return scheduled;
+  }
+
+  private async relocateRegistration(
+    repositoryId: LocalRepositoryId,
+    folder: AbsolutePath,
+    confirm: boolean,
+  ): Promise<Result<RelocatedCheckout, RelocationFailure>> {
+    const saved = await this.dependencies.dashboard.savedProfiles();
+    if (saved._tag === "err")
+      return saved.error.reason === "no_profile"
+        ? this.refused(undefined, "repository_not_found")
+        : err({ reason: "storage" });
+    const profile = saved.value.active;
+    const catalog = await this.dependencies.catalog.load(profile.id);
+    if (catalog._tag === "err") return err({ reason: "storage" });
+    const registration = catalog.value.repositories.find(
+      (entry) => entry.id === repositoryId,
+    );
+    if (registration === undefined)
+      return this.refused(profile.id, "repository_not_found");
+    const [current] = await this.list(profile.id).then((listed) =>
+      listed._tag === "ok"
+        ? listed.value.filter((entry) => entry.id === repositoryId)
+        : [],
+    );
+    if (current === undefined) return err({ reason: "storage" });
+    if (current.state !== "missing")
+      return this.refused(profile.id, "repository_not_missing");
+    const candidate = await this.discover(folder);
+    if (candidate._tag === "err") {
+      this.log(profile.id, candidate.error.reason);
+      return candidate;
+    }
+    if (
+      catalog.value.repositories.some(
+        (entry) =>
+          entry.id !== repositoryId &&
+          entry.canonicalCommonDirectory === candidate.value.common,
+      )
+    )
+      return this.refused(profile.id, "checkout_registered_elsewhere");
+    const listed = await this.dependencies.reviews.list(profile.id);
+    if (listed._tag === "err" || listed.value.unreadable > 0)
+      return this.refused(profile.id, "storage");
+    const affectedReviews = listed.value.reviews.flatMap((review) =>
+      isLocalReview(review) &&
+      sameRepositoryIdentityKey(
+        review.identity.identityKey,
+        registration.identityKey,
+      )
+        ? [
+            {
+              reviewId: review.id,
+              ...definedProps({ title: review.title }),
+            },
+          ]
+        : [],
+    );
+    const relocated: LocalRepositoryRegistration = {
+      id: registration.id,
+      identityKey: registration.identityKey,
+      displayName: registration.displayName,
+      state: "resolved",
+      configuredRoot: candidate.value.root,
+      canonicalCommonDirectory: candidate.value.common,
+    };
+    if (!confirm)
+      return ok({
+        registration: relocated,
+        checkout: candidate.value.root,
+        relocated: false,
+        affectedReviews,
+      });
+    const published = await this.dependencies.catalog.save({
+      ...catalog.value,
+      revision: catalog.value.revision + 1,
+      repositories: catalog.value.repositories.map((entry) =>
+        entry.id === repositoryId ? relocated : entry,
+      ),
+    });
+    if (published._tag === "err") return this.refused(profile.id, "storage");
+    if (
+      profile.repos.some((entry) => entry.localRepositoryId === repositoryId)
+    ) {
+      const watched = await this.dependencies.profiles.save({
+        ...profile,
+        repos: profile.repos.map((entry) =>
+          entry.localRepositoryId === repositoryId
+            ? { ...entry, localPath: candidate.value.root }
+            : entry,
+        ),
+      });
+      if (watched._tag === "err") return this.refused(profile.id, "storage");
+    }
+    this.log(profile.id, "checkout_relocated", repositoryId);
+    return ok({
+      registration: relocated,
+      checkout: candidate.value.root,
+      relocated: true,
+      affectedReviews,
+    });
   }
 
   async list(
@@ -413,11 +560,14 @@ export class LocalRepositoryService {
     return ok({ root: parsedRoot.value, common: parsedCommon.value });
   }
 
-  private refused(
-    profileId: WorkspaceProfileId,
-    reason: LocalRepositoryFailure["reason"],
+  private refused<Reason extends RelocationFailure["reason"]>(
+    profileId: WorkspaceProfileId | undefined,
+    reason: Reason,
     localPath?: AbsolutePath,
-  ): Result<never, LocalRepositoryFailure> {
+  ): Result<
+    never,
+    { readonly reason: Reason; readonly localPath?: AbsolutePath }
+  > {
     this.log(profileId, reason);
     return err({ reason, ...definedProps({ localPath }) });
   }
@@ -425,7 +575,8 @@ export class LocalRepositoryService {
   private log(
     profileId: WorkspaceProfileId | undefined,
     reason:
-      | LocalRepositoryFailure["reason"]
+      | RelocationFailure["reason"]
+      | "checkout_relocated"
       | "watched_checkout_set"
       | "checkout_resolved"
       | "checkout_registered"

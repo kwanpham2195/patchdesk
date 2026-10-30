@@ -21,6 +21,7 @@ import { createReadOnlyGitExecutor } from "#src/main/local-api-stores";
 import { DashboardController } from "#src/services/dashboard-controller";
 import type { GitHubEnvironmentSnapshot } from "#src/services/github-environment-probe";
 import { WorkspaceSetupService } from "#src/services/workspace-setup-service";
+import { noReviews } from "#tests/services/local-repository-fixture";
 
 const git = createReadOnlyGitExecutor(new CommandRunner());
 
@@ -98,6 +99,7 @@ async function setUp(gh: CommandExecution = signedIn) {
       git,
       paths,
       logs: { write: () => undefined },
+      reviews: noReviews,
     }),
     git,
     commands,

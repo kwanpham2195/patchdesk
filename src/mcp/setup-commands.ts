@@ -13,6 +13,7 @@ const setupCommandNames = [
   "setup_add_repo",
   "setup_add_checkout",
   "setup_set_checkout",
+  "setup_relocate_checkout",
 ] as const;
 
 export type SetupCommandName = (typeof setupCommandNames)[number];
@@ -34,4 +35,9 @@ export const setupCommandInputSchemas = {
   setup_add_repo: folderInputSchema,
   setup_add_checkout: folderInputSchema,
   setup_set_checkout: folderInputSchema,
+  setup_relocate_checkout: v.strictObject({
+    ...folderInputSchema.entries,
+    repositoryId: v.pipe(v.string(), v.maxLength(64)),
+    confirm: v.boolean(),
+  }),
 } as const satisfies Record<SetupCommandName, v.GenericSchema>;
