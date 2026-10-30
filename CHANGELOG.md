@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed first local setup staying blocked after an interruption between saving the repository catalog and activating the workspace. Retrying preserves the saved repository IDs. #817
 - Fixed Choose checkout and `patchdesk setup set-checkout` leaving Local Reviews on the previous checkout after a repository change. #817
 
 - Fixed Settings → Workspace silently connecting a disconnected workspace; Connect GitHub now starts account discovery explicitly. #817

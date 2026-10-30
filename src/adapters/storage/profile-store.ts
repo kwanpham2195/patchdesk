@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { LocalRepositoryStore } from "./local-repository-store";
 import { parseContentHash } from "#src/domain/ids";
 import {
@@ -25,6 +26,8 @@ import type { PatchdeskPaths } from "./patchdesk-paths";
 
 /** Owns the profile JSON boundary and never persists ambient credentials. */
 export class ProfileStore {
+  private static readonly saveLocks = new KeyedMutex();
+
   constructor(private readonly paths: PatchdeskPaths) {}
 
   async loadRepositories(profileId: WorkspaceProfileId) {
@@ -72,13 +75,20 @@ export class ProfileStore {
       });
     }
 
+    return ProfileStore.saveLocks.run(
+      this.paths.profileFile(parsed.value.id),
+      () => this.saveLocked(parsed.value),
+    );
+  }
+
+  private async saveLocked(
+    profile: WorkspaceProfileConfig,
+  ): Promise<Result<void, StorageFailure>> {
     const catalogStore = new LocalRepositoryStore(this.paths);
-    const catalog = await catalogStore.load(parsed.value.id);
+    const catalog = await catalogStore.load(profile.id);
     if (catalog._tag === "err") {
       if (catalog.error.reason !== "not_found") return catalog;
-      const existing = await readJsonFile(
-        this.paths.profileFile(parsed.value.id),
-      );
+      const existing = await readJsonFile(this.paths.profileFile(profile.id));
       if (existing._tag === "ok" || existing.error.reason !== "not_found")
         return err({
           _tag: "StorageFailure",
@@ -96,26 +106,30 @@ export class ProfileStore {
         });
       const created = await catalogStore.save({
         format: 1,
-        profileId: parsed.value.id,
-        generationId: parsed.value.localRepositoryCatalogGeneration,
+        profileId: profile.id,
+        generationId: profile.localRepositoryCatalogGeneration,
         revision: 1,
         repositories: [],
         bootstrapInputFingerprint: fingerprint.value,
       });
       if (created._tag === "err") return created;
     } else if (
-      catalog.value.generationId !==
-      parsed.value.localRepositoryCatalogGeneration
-    )
-      return err({
-        _tag: "StorageFailure",
-        operation: "write",
-        reason: "invalid_stored_value",
-      });
-    return writeAtomicJson(
-      this.paths.profileFile(parsed.value.id),
-      parsed.value,
-    );
+      catalog.value.generationId !== profile.localRepositoryCatalogGeneration
+    ) {
+      const existing = await readJsonFile(this.paths.profileFile(profile.id));
+      if (existing._tag === "ok" || existing.error.reason !== "not_found")
+        return err({
+          _tag: "StorageFailure",
+          operation: "write",
+          reason: "invalid_stored_value",
+        });
+      // A published catalog survives interrupted activation and owns its IDs.
+      profile = {
+        ...profile,
+        localRepositoryCatalogGeneration: catalog.value.generationId,
+      };
+    }
+    return writeAtomicJson(this.paths.profileFile(profile.id), profile);
   }
 
   async load(

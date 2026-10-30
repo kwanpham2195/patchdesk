@@ -99,6 +99,7 @@ Setup stays on screen after the first repository is watched and ends when the ma
 
 ## Edge cases
 
+- If first local setup stops before the workspace becomes active, repeat Open local checkout or `patchdesk setup add-checkout`. Setup keeps any saved repository registrations and adds the requested checkout if needed. A damaged registration catalog is refused without replacing it.
 - The Git line appears only when the environment read says Git is missing. A missing or unauthenticated GitHub CLI is reported by the account card itself, not by a separate tools list.
 - A workspace that already watches a repository does not show setup, even when the latest read returns no pull request; that is a different settled state.
 - A late Review-opening result from a prior workspace is ignored when the current one reaches setup.

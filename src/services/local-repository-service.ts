@@ -284,6 +284,9 @@ export class LocalRepositoryService {
       };
       if ((await this.dependencies.profiles.save(profile))._tag === "err")
         return err({ reason: "storage" });
+      const activated = await this.dependencies.profiles.load(profile.id);
+      if (activated._tag === "err") return err({ reason: "storage" });
+      profile = activated.value;
     }
     const catalog = await this.dependencies.catalog.load(profile.id);
     if (catalog._tag === "err") return err({ reason: "storage" });
