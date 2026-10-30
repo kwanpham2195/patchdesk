@@ -301,7 +301,9 @@ export class LocalRepositoryService {
             : entry,
         ),
       });
-      if (watched._tag === "err") return this.refused(profile.id, "storage");
+      // The published catalog is the relocation; a stale watched path does not undo it.
+      if (watched._tag === "err")
+        this.log(profile.id, "watched_checkout_path_unsaved", repositoryId);
     }
     this.log(profile.id, "checkout_relocated", repositoryId);
     return ok({
@@ -582,6 +584,7 @@ export class LocalRepositoryService {
     reason:
       | RelocationFailure["reason"]
       | "checkout_relocated"
+      | "watched_checkout_path_unsaved"
       | "watched_checkout_set"
       | "checkout_resolved"
       | "checkout_registered"

@@ -179,8 +179,7 @@ function nextSteps(status: WorkspaceSetupStatus): ReadonlyArray<string> {
 function describeRelocation(moved: RelocatedCheckout): string {
   const { registration } = moved;
   const reviews = moved.affectedReviews.map(
-    (review) =>
-      `  ${review.reviewId}${review.title === undefined ? "" : ` ${review.title}`}`,
+    (review) => `  ${review.reviewId} ${review.title}`,
   );
   const header = `${moved.relocated ? "Relocated" : "Not relocated: rerun with --confirm to move"} ${registration.displayName} (${registration.id}) to ${moved.checkout}.`;
   return `${[
