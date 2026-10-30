@@ -16,6 +16,8 @@ import {
 export type LocalCheckoutTarget = LocalRepositoryTarget & {
   readonly checkout?: string;
   readonly displayName?: string;
+  /** Set when the registration's checkout folder is gone: the row opens this stored Review without reading the checkout (ADR 0058). */
+  readonly missingReviewId?: string;
 };
 
 /** What a sidebar local row's click drives: the open, and the dialog it may show instead. */
@@ -39,9 +41,11 @@ type LocalRowOpenControls = {
 export function useLocalRowOpen({
   profileId,
   openLocalReview,
+  openStoredReviewById,
   reportOpenError,
 }: {
   readonly profileId: string | undefined;
+  readonly openStoredReviewById: InboxReviewOpeningControls["openStoredReviewById"];
   readonly openLocalReview: InboxReviewOpeningControls["openLocalReview"];
   readonly reportOpenError: InboxReviewOpeningControls["reportOpenError"];
 }): LocalRowOpenControls {
@@ -53,6 +57,18 @@ export function useLocalRowOpen({
         leave();
         reportOpenError(message);
       };
+      // A moved checkout cannot be read, so its Review opens from storage; the Review then offers Relocate.
+      if (target.missingReviewId !== undefined) {
+        await openStoredReviewById(
+          profileId,
+          target.missingReviewId,
+          () => true,
+          undefined,
+          undefined,
+          leave,
+        );
+        return;
+      }
       let listing;
       try {
         listing = parseLocalBranches(
@@ -85,7 +101,7 @@ export function useLocalRowOpen({
         );
       }
     },
-    [openLocalReview, profileId, reportOpenError],
+    [openLocalReview, openStoredReviewById, profileId, reportOpenError],
   );
   const closeDialog = useCallback(() => setDialogTarget(undefined), []);
   return { openRow, dialogTarget, closeDialog };

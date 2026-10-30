@@ -78,6 +78,8 @@ The vocabulary for Patchdesk product and engineering documents. Use these terms 
 
 **Patch view.** One of a _shared Review_'s three diffs of the same session: Combined, from the merge base to the Local snapshot; Committed, from the merge base to the checkout's `HEAD`; and Uncommitted, from `HEAD` to the Local snapshot. Switching views moves neither the Review nor its session. Notes keep their state across views, Viewed marks belong to one view, and Insights run on Combined.
 
+**Missing checkout.** A Local repository registration whose configured folder no longer holds its Git checkout, as after a move. Its Reviews open read-only from storage until the maintainer relocates it, which points the registration at the moved folder and keeps its ID and Reviews.
+
 **Local Review.** A Review of a branch or commit in a local checkout the workspace profile lists, opened before any pull request exists. It has no Conversation, checks, merge, or pending review.
 
 **Local snapshot.** The commit object Patchdesk writes to record a working tree: every staged, unstaged, and untracked file not ignored, committed with a fixed identity so the same content always has the same SHA. The maintainer's index and branches never see it.

@@ -72,6 +72,15 @@ type SidebarLocalRepositoryRow = {
   readonly lastOpenedAt?: IsoTimestamp;
   /** Present while one of them has an agent run request awaiting approval or its approved run active (ADR 0052 "Sidebar marker"). */
   readonly agent?: true;
+  /**
+   * Present when the registration's checkout folder no longer exists. The row
+   * then opens `reviewId`, the newest of its Reviews, from storage without
+   * reading the checkout (ADR 0058, "Relocation and conflicting locators").
+   */
+  readonly checkoutMissing?: {
+    readonly reviewId: ReviewId;
+    readonly path?: AbsolutePath;
+  };
 } & (
   | {
       readonly host: GitHubHost;
@@ -273,6 +282,7 @@ function localRepositoryRow(
       undefined,
     );
   const { identityKey, source } = newest.identity;
+  let checkoutMissing: SidebarLocalRepositoryRow["checkoutMissing"];
   let repository:
     | {
         readonly host: GitHubHost;
@@ -291,6 +301,11 @@ function localRepositoryRow(
       (entry) => entry.id === identityKey.localRepositoryId,
     );
     if (registration === undefined) return err({ reason: "storage" });
+    if (registration.state === "missing")
+      checkoutMissing = {
+        reviewId: newest.id,
+        ...definedProps({ path: registration.configuredRoot }),
+      };
     repository = {
       localRepositoryId: registration.id,
       displayName: registration.displayName,
@@ -301,6 +316,7 @@ function localRepositoryRow(
     reviewIds: reviews.map((review) => review.id),
     sortedAt: sortedAt(newest),
     ...definedProps({
+      checkoutMissing,
       lastOpenedAt,
       checkout: source.checkout,
       checkoutName:

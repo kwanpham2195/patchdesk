@@ -24,6 +24,7 @@ import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import { mapConcurrent } from "#src/domain/map-concurrent";
 import { err, ok, type Result } from "#src/domain/result";
 import { isLocalReview } from "#src/domain/review";
+import { reviewSourceTitle } from "#src/domain/review-source";
 import type { WorkspaceProfileConfig } from "#src/domain/workspace-profile";
 import type { AppLogService } from "./app-log-service";
 import {
@@ -67,7 +68,8 @@ export type RelocatedCheckout = {
   /** The Reviews keyed to the registration; relocation keeps all of them. */
   readonly affectedReviews: ReadonlyArray<{
     readonly reviewId: ReviewId;
-    readonly title?: string;
+    /** The stored title, else the one the source names, as the Review header shows. */
+    readonly title: string;
   }>;
 };
 
@@ -257,7 +259,10 @@ export class LocalRepositoryService {
         ? [
             {
               reviewId: review.id,
-              ...definedProps({ title: review.title }),
+              title:
+                review.title === undefined || review.title === ""
+                  ? reviewSourceTitle(review.identity.source)
+                  : review.title,
             },
           ]
         : [],

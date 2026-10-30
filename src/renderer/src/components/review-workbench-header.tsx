@@ -257,7 +257,14 @@ export function ReviewWorkbenchHeader({
             variant="ghost"
             size="xs"
             className="shrink-0"
-            disabled={actions.refreshing === true}
+            disabled={
+              actions.refreshing === true || actions.checkoutMissing === true
+            }
+            title={
+              actions.checkoutMissing === true
+                ? "Relocate the checkout to refresh"
+                : undefined
+            }
             onClick={() => void actions.refresh()}
           >
             {actions.refreshing === true ? (

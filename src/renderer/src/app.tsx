@@ -375,14 +375,19 @@ function AppContent({
     dashboard,
     onOpenWorkbench: openWorkbench,
   });
-  const { openLocalReview, openPullRequestByRef, reportOpenError } =
-    reviewOpening;
+  const {
+    openLocalReview,
+    openPullRequestByRef,
+    openStoredReviewById,
+    reportOpenError,
+  } = reviewOpening;
   // The open that waits behind the leave-confirmation for a local row click (#479).
   const [parkedLocalOpen, setParkedLocalOpen] = useState<LocalCheckoutTarget>();
   const profileId = dashboard?.profile.id;
   const localRowOpen = useLocalRowOpen({
     profileId,
     openLocalReview,
+    openStoredReviewById,
     reportOpenError,
   });
   const { openRow: openLocalRow } = localRowOpen;
@@ -396,7 +401,10 @@ function AppContent({
               displayName: row.displayName,
             }
           : { host: row.host, owner: row.owner, repo: row.repo }),
-        ...definedProps({ checkout: row.checkout }),
+        ...definedProps({
+          checkout: row.checkout,
+          missingReviewId: row.checkoutMissing?.reviewId,
+        }),
       };
       if (navigationState !== "clear") {
         setParkedLocalOpen(target);
@@ -634,6 +642,7 @@ function AppContent({
           onClose={() => setLocalCheckoutEntry(undefined)}
           onWorkspaceReload={loadWorkspace}
           onOpen={openLocalReview}
+          onRelocated={() => setVisitedReloadKey((key) => key + 1)}
         />
       ) : null}
       {rowDialogTarget === undefined || profileId === undefined ? null : (
@@ -741,6 +750,7 @@ function AppContent({
               else void readingOwner.navigate(() => setWorkbench(next));
             }}
             onNavigationStateChange={setNavigationState}
+            onCheckoutRelocated={() => setVisitedReloadKey((key) => key + 1)}
           />
         </Suspense>
       </RouteLoadBoundary>,

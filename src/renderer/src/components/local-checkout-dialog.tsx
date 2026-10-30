@@ -1,3 +1,4 @@
+import { definedProps } from "#src/domain/defined-props";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as v from "valibot";
 import { requestJson, selectDirectory } from "#src/renderer/src/api-client";
@@ -8,6 +9,12 @@ import { useApiProbe } from "#src/renderer/src/hooks/use-api-probe";
 import type { InboxReviewOpeningControls } from "#src/renderer/src/flows/use-inbox-review-opening";
 import { localReviewOpenFailure } from "#src/renderer/src/flows/use-inbox-review-opening";
 import { LocalReviewSourceDialog } from "./local-review-source-dialog";
+import {
+  RelocateCheckoutDialog,
+  type RelocatableRepository,
+} from "./relocate-checkout-dialog";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { InlineError } from "./ui/inline-error";
 import {
@@ -30,16 +37,20 @@ export function LocalCheckoutDialog({
   onClose,
   onWorkspaceReload,
   onOpen,
+  onRelocated,
 }: {
   readonly profileId: string;
   readonly pickOnOpen: boolean;
   readonly onClose: () => void;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly onOpen: InboxReviewOpeningControls["openLocalReview"];
+  /** Told after a missing checkout is relocated, so the sidebar drops its hint. */
+  readonly onRelocated: () => void;
 }): React.JSX.Element {
   const path = `/v1/local-repositories?${new URLSearchParams({ profileId })}`;
+  const [listingReads, setListingReads] = useState(0);
   const listing = useApiProbe(
-    { path, restartKey: path },
+    { path, restartKey: `${path}#${listingReads}` },
     parseLocalRepositoryListing,
   );
   const [selected, setSelected] = useState<{
@@ -48,6 +59,8 @@ export function LocalCheckoutDialog({
     readonly profileId: string;
   }>();
   const [error, setError] = useState<string>();
+  const [missingNotice, setMissingNotice] = useState<string>();
+  const [relocating, setRelocating] = useState<RelocatableRepository>();
   const [pending, setPending] = useState(false);
   const choose = useCallback(async () => {
     setPending(true);
@@ -82,6 +95,19 @@ export function LocalCheckoutDialog({
     initialPickerStarted.current = true;
     void choose();
   }, [pickOnOpen, choose]);
+  if (relocating !== undefined)
+    return (
+      <RelocateCheckoutDialog
+        repository={relocating}
+        onRelocated={async () => {
+          setRelocating(undefined);
+          setListingReads((reads) => reads + 1);
+          onRelocated();
+          await onWorkspaceReload();
+        }}
+        onClose={() => setRelocating(undefined)}
+      />
+    );
   if (selected !== undefined) {
     const target = { localRepositoryId: selected.id };
     return (
@@ -113,22 +139,59 @@ export function LocalCheckoutDialog({
           </DialogDescription>
         </DialogHeader>
         {error === undefined ? null : <InlineError>{error}</InlineError>}
+        {missingNotice === undefined ? null : (
+          <Alert variant="warning" role="status">
+            <AlertDescription>{missingNotice}</AlertDescription>
+          </Alert>
+        )}
         {listing.kind === "error" ? (
           <p role="status">Registered repositories could not be read.</p>
         ) : null}
         {listing.kind === "loaded"
           ? listing.value.map((repository) => (
-              <Button
-                key={repository.id}
-                variant="outline"
-                disabled={pending || repository.state !== "resolved"}
-                onClick={() => setSelected({ ...repository, profileId })}
-              >
-                {repository.displayName}
-                {repository.state === "resolved"
-                  ? ""
-                  : ` · ${repository.state}`}
-              </Button>
+              <div key={repository.id} className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="min-w-0 flex-1 justify-start"
+                  disabled={pending || repository.state === "unresolved"}
+                  onClick={() => {
+                    if (repository.state === "missing") {
+                      setMissingNotice(
+                        `${repository.displayName}'s folder is missing${repository.configuredRoot === undefined ? "" : ` (${repository.configuredRoot})`}. Choose Relocate to point Patchdesk at its new location.`,
+                      );
+                      return;
+                    }
+                    setMissingNotice(undefined);
+                    setError(undefined);
+                    setSelected({ ...repository, profileId });
+                  }}
+                >
+                  <span className="truncate">{repository.displayName}</span>
+                  {repository.state === "missing" ? (
+                    <Badge variant="warning">Missing</Badge>
+                  ) : null}
+                  {repository.state === "unresolved" ? (
+                    <Badge variant="outline">Unresolved</Badge>
+                  ) : null}
+                </Button>
+                {repository.state === "missing" ? (
+                  <Button
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => {
+                      setError(undefined);
+                      setMissingNotice(undefined);
+                      setRelocating({
+                        id: repository.id,
+                        displayName: repository.displayName,
+                        ...definedProps({ path: repository.configuredRoot }),
+                      });
+                    }}
+                  >
+                    Relocate…
+                  </Button>
+                ) : null}
+              </div>
             ))
           : null}
         <Button disabled={pending} onClick={() => void choose()}>

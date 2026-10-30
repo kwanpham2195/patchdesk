@@ -306,7 +306,21 @@ function VisitedRow({
           <span className="flex min-w-0 items-baseline tabular-nums">
             {reference === "" ? null : (
               // Truncation drops the separator's trailing space, so padding stands in for it.
-              <span className="min-w-0 truncate pr-1">{reference}</span>
+              <span
+                className={cn(
+                  "min-w-0 truncate pr-1",
+                  isSidebarLocalRepositoryRow(row) &&
+                    row.checkoutMissing !== undefined &&
+                    "text-status-warning",
+                )}
+                title={
+                  isSidebarLocalRepositoryRow(row)
+                    ? row.checkoutMissing?.path
+                    : undefined
+                }
+              >
+                {reference}
+              </span>
             )}
             {row.lastOpenedAt === undefined ? null : (
               <time
@@ -497,6 +511,7 @@ export function visitedRowLabels(
         | "reviewIds"
         | "lastOpenedAt"
         | "checkoutName"
+        | "checkoutMissing"
       >,
   scope: VisitedLabelScope,
 ): VisitedRowLabels {
@@ -509,7 +524,7 @@ export function visitedRowLabels(
             ? row.displayName
             : `${row.owner}/${row.repo}`
           : `${"localRepositoryId" in row ? row.displayName : `${row.owner}/${row.repo}`} · ${row.checkoutName}`,
-      reference: `local${separator}`,
+      reference: `${"checkoutMissing" in row && row.checkoutMissing !== undefined ? "checkout missing" : "local"}${separator}`,
     };
   const repository = visitedRepositoryLabel(row, scope);
   if (row.title === undefined)

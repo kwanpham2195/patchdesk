@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a read-only Review, a "Checkout folder not found" banner, Missing badges and a Relocate flow in the app for a local checkout that moved; its sidebar row now says "checkout missing" instead of dropping you on setup. #817
 - Changed the startup error for a refused profile upgrade to name the profile, the reason and the file to restore, instead of a generic message. #817
 - Fixed first local setup staying blocked after an interruption between saving the repository catalog and activating the workspace. Retrying preserves the saved repository IDs. #817
 - Fixed Choose checkout and `patchdesk setup set-checkout` leaving Local Reviews on the previous checkout after a repository change. #817

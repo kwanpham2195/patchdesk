@@ -32,6 +32,7 @@ import {
   parseWorkspaceProfileId,
 } from "#src/domain/ids";
 import type { InboxRepositoryRef } from "#src/services/maintainer-inbox-service";
+import { parseLocalRepositoryId } from "#src/domain/local-repository";
 import { readObjectField } from "#src/services/read-object-field";
 import type { LocalApiContainer } from "#src/main/local-api-container";
 import { repositoryLabelListResponse } from "./github-listing-response";
@@ -76,6 +77,35 @@ export function registerDashboardRoutes(
       context,
       await container.localRepositories.list(profileId.value),
     );
+  });
+  // Points a missing registration at a moved checkout (ADR 0058). Without `confirm` it only previews the Reviews that keep their IDs.
+  app.post("/v1/local-repositories/relocate", async (context) => {
+    const body = await jsonBody(context);
+    const confirm = readObjectField(body, "confirm") === true;
+    const stage = confirm ? "confirm" : "preview";
+    const logRefusal = (reason: string): void =>
+      container.logs.write({
+        process: "main",
+        level: "info",
+        topic: "local-repository",
+        message: "Relocate checkout refused",
+        meta: { reason, stage },
+      });
+    const repositoryId = parseLocalRepositoryId(
+      readObjectField(body, "repositoryId"),
+    );
+    const folder = parseAbsolutePath(readObjectField(body, "cwd"));
+    if (repositoryId._tag === "err" || folder._tag === "err") {
+      logRefusal("invalid_input");
+      return context.json({ error: "invalid_input" }, 400);
+    }
+    const relocated = await container.localRepositories.relocate(
+      repositoryId.value,
+      folder.value,
+      confirm,
+    );
+    if (relocated._tag === "err") logRefusal(relocated.error.reason);
+    return response(context, relocated);
   });
   app.get("/v1/workspace/connection", async (context) => {
     const profiles = await dashboard.savedProfiles();

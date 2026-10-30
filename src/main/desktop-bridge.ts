@@ -67,6 +67,7 @@ const requestSchema = union([
 const allowedRoutes = new Set([
   "GET /v1/local-repositories",
   "POST /v1/local-repositories",
+  "POST /v1/local-repositories/relocate",
   "GET /v1/workspace/connection",
   "GET /v1/profiles",
   "POST /v1/profiles",

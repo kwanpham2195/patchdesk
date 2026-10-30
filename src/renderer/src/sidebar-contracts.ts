@@ -37,6 +37,13 @@ const sidebarLocalRepositoryFields = {
   lastOpenedAt: v.optional(v.pipe(v.string(), v.minLength(1))),
   // Present while an agent's request awaits approval or its approved run is active (ADR 0052).
   agent: v.optional(v.literal(true)),
+  // Present when the registration's checkout folder is gone; the row opens `reviewId` from storage.
+  checkoutMissing: v.optional(
+    v.strictObject({
+      reviewId: v.pipe(v.string(), v.minLength(1)),
+      path: v.optional(v.pipe(v.string(), v.minLength(1))),
+    }),
+  ),
 };
 const sidebarLocalRepositoryRowSchema = v.union([
   v.strictObject({

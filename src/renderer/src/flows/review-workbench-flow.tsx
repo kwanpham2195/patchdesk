@@ -1,3 +1,4 @@
+import { definedProps } from "#src/domain/defined-props";
 import { useGuideReadingState } from "#src/renderer/src/hooks/use-guide-reading-state";
 import { useGuideReadingCommands } from "#src/renderer/src/hooks/use-guide-reading-flush";
 import { GuideReadingSaveError } from "#src/renderer/src/components/guide-reader";
@@ -16,6 +17,8 @@ import { useAgentExplanationDismiss } from "./use-agent-explanation-dismiss";
 import { useLocalDrafts } from "./use-local-drafts";
 import { useLocalPatchView } from "./use-local-patch-view";
 import { useLocalRefresh } from "./use-local-refresh";
+import { useMissingLocalCheckout } from "./use-missing-local-checkout";
+import { MissingCheckoutBanner } from "#src/renderer/src/components/missing-checkout-banner";
 import { useChangeIntent } from "./use-change-intent";
 import { useDirectConversationActions } from "./use-direct-conversation-actions";
 import { useDirectSummaryActions } from "./use-direct-summary-actions";
@@ -51,6 +54,8 @@ export type ReviewWorkbenchFlowProps = {
   ) => void;
   /** Reports in-screen position changes so a reload can restore them. */
   readonly onUiStateChange?: (state: WorkbenchPosition) => void;
+  /** Told after a missing checkout is relocated, so the sidebar drops its "checkout missing" hint. */
+  readonly onCheckoutRelocated?: () => void;
   /** The Review's workspace profile label, set when more than one profile is configured. */
   readonly profileLabel?: string;
 };
@@ -63,6 +68,7 @@ export function ReviewWorkbenchFlow({
   onWorkbenchPatch,
   onNavigationStateChange,
   onUiStateChange,
+  onCheckoutRelocated,
   profileLabel,
 }: ReviewWorkbenchFlowProps): React.JSX.Element {
   const {
@@ -190,6 +196,11 @@ export function ReviewWorkbenchFlow({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
   });
+  const missingCheckout = useMissingLocalCheckout({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+    ...definedProps({ onCheckoutRelocated }),
+  });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
 
@@ -231,6 +242,7 @@ export function ReviewWorkbenchFlow({
             refreshing: localRefresh.refreshing,
             refreshError: undefined,
           },
+    checkoutMissing: missingCheckout !== undefined,
     merge: mergeAction,
     pendingReviewComposer:
       pendingReviewComposer === undefined || !findingBatchRunning
@@ -246,6 +258,9 @@ export function ReviewWorkbenchFlow({
 
   return (
     <>
+      {missingCheckout === undefined ? null : (
+        <MissingCheckoutBanner controls={missingCheckout} />
+      )}
       <ReviewWorkbench
         model={workbench}
         {...(initialUiState === undefined

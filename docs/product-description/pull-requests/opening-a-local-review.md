@@ -416,10 +416,13 @@ When Patchdesk cannot prove the outcome, for example the app quits while `git ap
 - A patch larger than Patchdesk's 2 MiB command output limit is refused `patch_too_large`, naming the largest changed files (#493). On a shared Review this holds for each of the three Patch views, and the files named are those of the view over the limit (#556).
 - When the agent commits a change and then undoes it in the working tree, Combined shows no change to that file while Committed and Uncommitted show opposite patches. A note on it stays listed, and switching views does not mark it Needs attention.
 - A branch that merged an unrelated history lists that history's root commit, and selecting it shows every file the root adds as new (#557).
+- A registered checkout whose folder was moved or deleted is marked in the sidebar with "checkout missing" (#817). Its row opens the newest stored Review from storage, read-only: the captured diff and notes show, Refresh is disabled, and a banner at the top reads "Checkout folder not found" with the old path and a Relocate checkout button. The picker then a confirmation dialog show the old and new folder and the Reviews that keep their notes and IDs; Relocate reopens the same Review live. A folder that is another registered clone or is not a Git checkout is refused with a sentence naming the folder. Open local checkout marks the same registration Missing and offers Relocate; its name does not open a Review.
 - A checkout chosen from the first local Review step is the same one Settings shows; choosing it again from either place replaces it.
 - On a branch with more than 250 commits since the base, the Commits badge shows the total, the list holds the newest 250, and a selected commit's position counts against the total, such as `3 of 400`.
 
 ## Open questions and verification
+
+- Relocating a missing checkout (#817) was checked live in the dev app: the sidebar hint, the read-only Review with its banner, the confirmation listing, both refusals (another registered clone, a folder that is not Git), and Refresh after a relocation. Reviews of a linked worktree of a missing registration were not checked.
 
 - Live checks of earlier local Reviews covered snapshots, Findings, Apply, notes, Change intent, and checkout choice, but not the full shared Review opening flow.
 - Patch views were checked live: a note on an uncommitted line appeared in Combined and Uncommitted, not Committed; a refused note could be restored after switching views. Viewed marks stayed separate by view and Refresh carried marks for unchanged files. Commits and Notes remain unverified live; see [LOCAL-48 to LOCAL-54](../verification/pull-requests.md).

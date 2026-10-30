@@ -33,6 +33,8 @@ export type ReviewWorkbenchActions = {
   readonly refreshing?: boolean;
   /** True when the last explicit refresh failed; surfaces bounded error copy. */
   readonly refreshError?: boolean;
+  /** True on a local Review whose checkout folder is gone: Refresh is disabled until it is relocated. */
+  readonly checkoutMissing?: true;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
   readonly loadSinceReviewDiff: () => Promise<SinceReviewDiffResponse>;
   /** A shared local Review's Since last Refresh patch for the named session. */
