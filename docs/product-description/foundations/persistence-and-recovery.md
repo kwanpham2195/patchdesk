@@ -27,7 +27,7 @@ stateDiagram-v2
 
 ### Arrive
 
-Startup creates the local API, recovers Insight run state, recovers preparation journals and Review state through their owners, sweeps retained storage, and opens the window only after the local service passes its health check. If the local service cannot start, Patchdesk shows a native error and exits without beginning a Review or GitHub write.
+Startup creates the local API, recovers Insight run state, recovers preparation journals and Review state through their owners, sweeps retained storage, and opens the window only after the local service passes its health check. If the local service cannot start, Patchdesk shows a native error and exits without beginning a Review or GitHub write. When the cause is a refused workspace-profile upgrade (damaged repository list, unreadable saved Local Review, conflicting checkout paths), the error names the profile, a fixed reason code, the file to restore, and the pre-upgrade profile backup when one exists; the same fields go to the log.
 
 Missing configuration is a normal first-run state. Missing optional Review records can be an empty state. Invalid JSON, invalid domain values, sensitive content, or inconsistent artifacts are failures and never become rendered product state.
 

@@ -1,6 +1,7 @@
 import { LocalRepositoryStore } from "#src/adapters/storage/local-repository-store";
 import { LocalRepositoryService } from "#src/services/local-repository-service";
 import { LocalRepositoryUpgrade } from "#src/services/local-repository-upgrade";
+import type { UpgradeRefusal } from "#src/services/local-repository-upgrade-refusal";
 import { randomUUID } from "node:crypto";
 
 import { buildLocalApiStores, type LocalApiStores } from "./local-api-stores";
@@ -163,6 +164,7 @@ export type LocalApiContainer = {
 export type LocalApiContainerResult =
   | { readonly _tag: "ok"; readonly container: LocalApiContainer }
   | { readonly _tag: "invalid-configuration" }
+  | { readonly _tag: "upgrade-refused"; readonly detail: UpgradeRefusal }
   | { readonly _tag: "recovery-failed" };
 
 /** Builds every service the loopback API's routes are registered against. */
@@ -201,7 +203,8 @@ export async function buildLocalApiContainer(
     commands,
     logs,
   ).run();
-  if (upgraded._tag === "err") return { _tag: "recovery-failed" };
+  if (upgraded._tag === "err")
+    return { _tag: "upgrade-refused", detail: upgraded.error };
   // Built here rather than by the caller so the Insight context pack reads
   // GitHub through this container's adapter and credential cache (issue #311).
   // Kept ahead of the recovery below, where the coordinator's own run recovery

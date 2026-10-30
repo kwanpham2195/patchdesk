@@ -24,6 +24,7 @@ import {
   createDesktopLifecycle,
   startDesktopBesideLoginShellImport,
   type StartedLocalApi,
+  upgradeRefusalMessage,
 } from "./app-lifecycle";
 import { createDesktopMenuTemplate } from "./desktop-menu";
 import { createDesktopInsightArtifactLifecycle } from "./desktop-insight-artifact-lifecycle";
@@ -537,6 +538,13 @@ function registerDesktopEvents(): void {
       importLoginShellEnvironmentOnce,
     );
     const result = await started;
+    if (!stopping && result._tag === "upgrade-refused") {
+      dialog.showErrorBox(
+        "Patchdesk could not start",
+        upgradeRefusalMessage(result.detail, paths),
+      );
+      app.exit(1);
+    }
     if (!stopping && result._tag === "local-api-unavailable") {
       dialog.showErrorBox(
         "Patchdesk could not start",

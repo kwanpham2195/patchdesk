@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Changed the startup error for a refused profile upgrade to name the profile, the reason and the file to restore, instead of a generic message. #817
 - Fixed first local setup staying blocked after an interruption between saving the repository catalog and activating the workspace. Retrying preserves the saved repository IDs. #817
 - Fixed Choose checkout and `patchdesk setup set-checkout` leaving Local Reviews on the previous checkout after a repository change. #817
 
