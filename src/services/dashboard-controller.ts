@@ -460,6 +460,9 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
+    // Before any credential or GitHub work, as the inbox does.
+    if (profile.value.github.kind !== "connected")
+      return failure("github_disconnected");
     if (
       repository !== undefined &&
       !isWatchedRepository(profile.value, repository)

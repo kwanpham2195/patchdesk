@@ -37,8 +37,9 @@ export function DisconnectGitHubRow({
         method: "POST",
         body: { profileId },
       });
-      setOpen(false);
+      // Reload before closing so a reload error shows in the open dialog.
       await onDisconnected();
+      setOpen(false);
     } catch (cause: unknown) {
       setFailure(
         cause instanceof Error

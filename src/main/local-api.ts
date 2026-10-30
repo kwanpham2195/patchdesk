@@ -79,6 +79,14 @@ export async function startLocalApiServer(
   const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
     profiles: async () => {
       const listed = await container.dashboard.listProfiles();
+      if (listed._tag === "err")
+        logs.write({
+          process: "main",
+          level: "warn",
+          topic: "watched-pull-requests",
+          message: "skipped",
+          meta: { reason: "profiles_unreadable" },
+        });
       return listed._tag === "ok" ? listed.value : [];
     },
     watched: container.watchedPullRequests,

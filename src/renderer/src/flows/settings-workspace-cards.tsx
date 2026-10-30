@@ -99,7 +99,7 @@ export function RepositoriesCard({
             {githubConnected
               ? "Pull requests are listed from watched repositories. A local review needs the repository's checkout."
               : repositories.length > 0
-                ? "Kept while GitHub is disconnected. Connect GitHub to see their pull requests."
+                ? "Watching is paused while GitHub is disconnected. These repositories are kept and resume when you connect."
                 : "Connect GitHub to watch repositories and review their pull requests."}
           </CardDescription>
         </CardHeader>

@@ -89,7 +89,13 @@ async function pollProfiles(
     });
     return;
   }
-  const profiles = await input.profiles();
+  let profiles: readonly WorkspaceProfileConfig[];
+  try {
+    profiles = await input.profiles();
+  } catch {
+    log(input, "skipped", { reason: "profiles_unreadable" });
+    return;
+  }
   await Promise.all(
     // A disconnected workspace asks GitHub nothing and looks up no credential.
     profiles.flatMap((profile) =>
