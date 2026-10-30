@@ -119,6 +119,12 @@ export function registerDashboardRoutes(
         )
       : response(context, profiles);
   });
+  app.post("/v1/workspace/connection/disconnect", async (context) =>
+    response(
+      context,
+      await dashboard.disconnectGitHub(await jsonBody(context)),
+    ),
+  );
   app.get("/v1/profiles", async (context) => {
     const result = await dashboard.listProfiles();
     if (result._tag === "err")
@@ -242,7 +248,11 @@ export function registerDashboardRoutes(
           ? { filter, pageSize }
           : { filter, pageSize, pageToken: page },
       );
-      if (result._tag === "err")
+      // A disconnected workspace is a state, not a reload failure.
+      if (
+        result._tag === "err" &&
+        result.error.reason !== "github_disconnected"
+      )
         await recordProfileReloadFailure("profile-reload-inbox");
       return response(context, result);
     }),

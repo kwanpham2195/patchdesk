@@ -8,6 +8,7 @@ import {
   type Dispatch,
   type RefObject,
 } from "react";
+import * as v from "valibot";
 import { api, isApiErrorCode } from "#src/renderer/src/api-client";
 import { parseWorkspaceProfiles } from "#src/renderer/src/workspace-profile-response";
 import {
@@ -129,6 +130,21 @@ function commitFilterText(
   return parsed.error === "empty" ? ok(undefined) : parsed;
 }
 
+/** The workspace the app has selected, named by `GET /v1/workspace/connection`, once the inbox refused it as disconnected. */
+async function disconnectedActiveProfile(
+  profiles: ReadonlyArray<Profile>,
+): Promise<Profile | undefined> {
+  try {
+    const connection: unknown = await api("/v1/workspace/connection");
+    const parsed = v.safeParse(v.object({ profileId: v.string() }), connection);
+    return parsed.success
+      ? profiles.find((profile) => profile.id === parsed.output.profileId)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function useWorkspaceInbox({
   fixtureMode,
   initialState,
@@ -233,6 +249,21 @@ export function useWorkspaceInbox({
         });
         activeInboxProfileId.current = first.id;
         return;
+      }
+      // The active workspace has no GitHub connection: nothing to list, but
+      // its local repositories and Reviews are all there (ADR 0058).
+      if (isApiErrorCode(cause, "github_disconnected")) {
+        const active = await disconnectedActiveProfile(nextProfiles);
+        if (generation !== workspaceGeneration.current) return;
+        if (active !== undefined) {
+          dispatchWorkspace({
+            _tag: "localLoaded",
+            profiles: nextProfiles,
+            dashboard: { profile: active, dashboard: { repos: [] } },
+          });
+          activeInboxProfileId.current = active.id;
+          return;
+        }
       }
       if (generation === workspaceGeneration.current)
         dispatchWorkspace({ _tag: "failed", screen: "error" });

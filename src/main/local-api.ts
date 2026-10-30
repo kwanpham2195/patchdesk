@@ -77,7 +77,10 @@ export async function startLocalApiServer(
   const startupSettings = await notificationSettings();
   // Started before the routes so `PATCH /v1/settings` can reschedule it.
   const watchedPullRequestScheduler = startWatchedPullRequestScheduler({
-    profiles: container.configuredProfiles,
+    profiles: async () => {
+      const listed = await container.dashboard.listProfiles();
+      return listed._tag === "ok" ? listed.value : [];
+    },
     watched: container.watchedPullRequests,
     coordinator: container.reviewOperations,
     intervalMinutes:

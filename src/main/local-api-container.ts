@@ -280,6 +280,7 @@ export async function buildLocalApiContainer(
     paths,
     configuration.insightResources.uiReader,
     avatarRailDependencies,
+    logs,
   );
   const localRepositories = new LocalRepositoryService({
     profiles,

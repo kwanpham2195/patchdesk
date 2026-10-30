@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added Disconnect GitHub in Settings → Workspace. It keeps local repositories, Local Reviews, watched repositories and saved pull request state, and stops pull request polling; connecting again restores them. #817
+- Fixed a disconnected workspace with watched repositories showing "Dashboard could not be loaded" instead of a Connect GitHub screen, and background pull request polling ignoring a connect or disconnect until restart. #817
+- Changed the GitHub setup messages to say whether the CLI is missing, signed out, or not answering, and that local reviews still work. #817
 - Added a read-only Review, a "Checkout folder not found" banner, Missing badges and a Relocate flow in the app for a local checkout that moved; its sidebar row now says "checkout missing" instead of dropping you on setup. Two local repositories with the same name are told apart in the sidebar by their parent folder, with the full path in a tooltip. Open local checkout shows each repository's folder, a moved linked worktree's row says "folder missing" and opens its own stored Review, and New workspace can create a workspace without GitHub. #817
 - Changed the startup error for a refused profile upgrade to name the profile, the reason and the file to restore, instead of a generic message. #817
 - Fixed first local setup staying blocked after an interruption between saving the repository catalog and activating the workspace. Retrying preserves the saved repository IDs. #817

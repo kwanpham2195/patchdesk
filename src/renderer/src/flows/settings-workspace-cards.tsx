@@ -29,10 +29,13 @@ export function ReviewingAsCard({
   editor,
   probe,
   title = "Reviewing as",
+  footer,
 }: {
   readonly editor: WorkspaceProfileEditorHook;
   readonly probe: ReviewingAsProbeHook;
   readonly title?: string;
+  /** Settings only: the Disconnect row, which the setup flow never offers. */
+  readonly footer?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <section aria-labelledby="workspace-reviewing-as-title">
@@ -41,7 +44,7 @@ export function ReviewingAsCard({
           <CardTitle id="workspace-reviewing-as-title">{title}</CardTitle>
           <CardDescription>Resolved from the GitHub CLI.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-5">
           <ReviewingAsPanel
             state={probe.reviewingAs}
             account={{
@@ -55,6 +58,7 @@ export function ReviewingAsCard({
             }}
             onRecheck={probe.recheck}
           />
+          {footer}
         </CardContent>
       </Card>
     </section>
@@ -94,7 +98,9 @@ export function RepositoriesCard({
           <CardDescription>
             {githubConnected
               ? "Pull requests are listed from watched repositories. A local review needs the repository's checkout."
-              : "Connect GitHub to watch repositories and review their pull requests."}
+              : repositories.length > 0
+                ? "Kept while GitHub is disconnected. Connect GitHub to see their pull requests."
+                : "Connect GitHub to watch repositories and review their pull requests."}
           </CardDescription>
         </CardHeader>
         {githubConnected || repositories.length > 0 ? (

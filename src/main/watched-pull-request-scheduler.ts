@@ -12,7 +12,8 @@ export type WatchedPullRequestScheduler = {
 };
 
 type WatchedPullRequestSchedulerInput = {
-  readonly profiles: ReadonlyArray<WorkspaceProfileConfig>;
+  /** Read on every tick, so a connect or disconnect takes effect without a restart. */
+  readonly profiles: () => Promise<ReadonlyArray<WorkspaceProfileConfig>>;
   readonly watched: Pick<WatchedPullRequestService, "poll">;
   readonly coordinator: Pick<ReviewOperationCoordinator, "hasActiveOperation">;
   /** The interval at start; `reschedule` replaces it. */
@@ -88,8 +89,12 @@ async function pollProfiles(
     });
     return;
   }
+  const profiles = await input.profiles();
   await Promise.all(
-    input.profiles.map((profile) => pollProfile(input, profile)),
+    // A disconnected workspace asks GitHub nothing and looks up no credential.
+    profiles.flatMap((profile) =>
+      profile.github.kind === "connected" ? [pollProfile(input, profile)] : [],
+    ),
   );
 }
 

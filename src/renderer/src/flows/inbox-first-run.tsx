@@ -31,19 +31,32 @@ export function WorkspaceFirstRun({
   const profile = props.dashboard?.profile ?? props.unsavedProfile;
   const profileId = profile?.id ?? "default";
   const [connectingProfileId, setConnectingProfileId] = useState<string>();
-  if (
-    (profile !== undefined && profile.ghAccount !== "") ||
-    connectingProfileId === profileId
-  )
-    return <GitHubWorkspaceSetup {...props} />;
+  if (profile !== undefined && profile.ghAccount !== "")
+    return <GitHubWorkspaceSetup {...props} onBack={undefined} />;
+  if (connectingProfileId === profileId)
+    return (
+      <GitHubWorkspaceSetup
+        {...props}
+        onBack={() => setConnectingProfileId(undefined)}
+      />
+    );
+  // A workspace that was connected keeps its watched repositories: say so, so
+  // the screen reads as paused rather than lost.
+  const keptRepositories = profile?.repos?.length ?? 0;
   return (
     <section
       className="m-6 flex flex-col gap-4"
       aria-label="Set up your workspace"
     >
-      <h1 className="text-lg font-semibold">Set up your workspace</h1>
-      <p className="text-sm text-muted-foreground">
-        Review a local Git checkout, or connect GitHub to review pull requests.
+      <h1 className="text-lg font-semibold">
+        {keptRepositories > 0
+          ? "GitHub is disconnected"
+          : "Set up your workspace"}
+      </h1>
+      <p className="max-w-prose text-sm text-muted-foreground">
+        {keptRepositories > 0
+          ? "Pull requests are paused. Your watched repositories and saved pull requests are kept: connect GitHub to see them again. Local reviews work without it."
+          : "Review a local Git checkout, or connect GitHub to review pull requests."}
       </p>
       <div className="flex gap-2">
         <Button onClick={onOpenLocalCheckout}>Open local checkout</Button>
@@ -63,6 +76,7 @@ function GitHubWorkspaceSetup({
   unsavedProfile,
   onWorkspaceReload,
   onContinue,
+  onBack,
 }: {
   readonly dashboard: Dashboard | undefined;
   /** Main's unsaved `default` profile on a fresh install, which the first account saves onto. */
@@ -70,6 +84,8 @@ function GitHubWorkspaceSetup({
   readonly onWorkspaceReload: () => Promise<void>;
   /** Absent before a workspace has loaded, when nothing can be watched yet. */
   readonly onContinue: (() => void) | undefined;
+  /** Present while connecting from the disconnected screen, which can still be left. */
+  readonly onBack: (() => void) | undefined;
 }): React.JSX.Element {
   const editor = useWorkspaceProfileEditor({
     dashboard,
@@ -95,13 +111,18 @@ function GitHubWorkspaceSetup({
 
   return (
     <section
-      className="mt-6 flex flex-col gap-6"
+      className="m-6 flex flex-col gap-6"
       aria-label="Set up your workspace"
     >
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-tight">
           Set up your workspace
         </h1>
+        {onBack === undefined || accountChosen ? null : (
+          <Button variant="outline" size="sm" onClick={onBack}>
+            Back
+          </Button>
+        )}
       </div>
       <ReviewingAsCard editor={editor} probe={probe} title="1. Reviewing as" />
       {gitMissing ? (

@@ -27,7 +27,7 @@ stateDiagram-v2
 
 ### Arrive
 
-The page heading is `Set up your workspace`. The filter toolbar, table, pager, and details panel are absent. The titlebar's Open local checkout action and the [Visited pull requests column](../foundations/visited-pull-requests.md) remain available. A disconnected workspace does not poll GitHub or probe credentials. Local errors stay with the checkout action.
+The page heading is `Set up your workspace`. The filter toolbar, table, pager, and details panel are absent. The titlebar's Open local checkout action and the [Visited pull requests column](../foundations/visited-pull-requests.md) remain available. A disconnected workspace does not poll GitHub or probe credentials, including the background pull request check, which reads the saved workspaces on every tick and skips any without a connection. Local errors stay with the checkout action. A workspace disconnected after being connected still has its watched repositories; its heading is `GitHub is disconnected` and it says pull requests are paused and the repositories and saved pull requests are kept. Connect GitHub shows a Back button until an account is chosen.
 
 After Connect GitHub, one environment read serves the account cards. `1. Reviewing as` renders what the GitHub CLI reports. Below it, and only when that read says Git is missing, one line says `Git is not installed. Install Git for this platform, then re-check.` Patchdesk installs and logs in to nothing.
 

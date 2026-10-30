@@ -125,6 +125,16 @@ type ReviewingAsView =
       readonly accounts: ReadonlyArray<GithubAuthAccount>;
     };
 
+const LOCAL_STILL_WORKS = "Local reviews still work.";
+
+/** Which of three different problems the failed probe reports, so the title names it. */
+function failedTitle(env: EnvironmentCheckResponse): string {
+  if (env.gh !== "ready") return "GitHub CLI not found";
+  return env.githubAuth === "unavailable"
+    ? "Could not reach GitHub"
+    : "GitHub sign-in required";
+}
+
 function reviewingAsView(
   state: ApiProbeState<EnvironmentCheckResponse>,
 ): ReviewingAsView {
@@ -221,23 +231,26 @@ export function ReviewingAsPanel({
           <CheckingAccount account={account} />
         ) : view.kind === "error" ? (
           <Alert variant="destructive">
-            <AlertTitle>GitHub authentication unavailable</AlertTitle>
+            <AlertTitle>Could not check GitHub</AlertTitle>
             <AlertDescription>
-              Could not check GitHub authentication.
+              Patchdesk could not run the GitHub CLI check. Re-check, or enter
+              the account below. {LOCAL_STILL_WORKS}
             </AlertDescription>
           </Alert>
         ) : view.kind === "failed" ? (
           <Alert variant="destructive">
-            <AlertTitle>GitHub authentication required</AlertTitle>
+            <AlertTitle>{failedTitle(view.env)}</AlertTitle>
             <AlertDescription>
               {view.env.gh !== "ready" ? (
                 "Install the GitHub CLI (gh), then re-check."
+              ) : view.env.githubAuth === "unavailable" ? (
+                "The GitHub CLI did not answer. Check your network connection, then re-check."
               ) : (
                 <>
-                  Not authenticated. Run <code>gh auth login</code>, then
-                  re-check.
+                  Run <code>gh auth login</code>, then re-check.
                 </>
-              )}
+              )}{" "}
+              {LOCAL_STILL_WORKS}
             </AlertDescription>
           </Alert>
         ) : view.kind === "single" ? (

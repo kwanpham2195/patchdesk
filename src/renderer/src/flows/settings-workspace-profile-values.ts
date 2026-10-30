@@ -58,7 +58,8 @@ export function profileValuesFor(profile: Profile | undefined): ProfileValues {
   return {
     id: profile?.id ?? "",
     label: profile?.label ?? "",
-    githubHost: profile?.githubHost ?? "github.com",
+    // A disconnected workspace has no host yet: offer the usual one.
+    githubHost: profile?.githubHost || "github.com",
     ghAccount: profile?.ghAccount ?? "",
     rulePaths: profile?.rulePaths ?? EMPTY_VALUES,
   };

@@ -69,6 +69,7 @@ const allowedRoutes = new Set([
   "POST /v1/local-repositories",
   "POST /v1/local-repositories/relocate",
   "GET /v1/workspace/connection",
+  "POST /v1/workspace/connection/disconnect",
   "GET /v1/profiles",
   "POST /v1/profiles",
   "PUT /v1/profiles",

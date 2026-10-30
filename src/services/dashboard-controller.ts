@@ -28,6 +28,7 @@ import {
 import type { InboxPageRequest } from "#src/domain/maintainer-inbox";
 import { err, ok, type Result } from "#src/domain/result";
 import type {
+  GitHubConnection,
   WatchedRepoConfig,
   WorkspaceProfileConfig,
 } from "#src/domain/workspace-profile";
@@ -50,6 +51,7 @@ import { sameRepositoryIdentity } from "#src/domain/repository-identity";
 import type { WatchedRepoRef } from "./profile-service";
 import { chosenRepositoryCheckout } from "./local-checkout";
 import type { GitReadExecutor } from "./review-worktree-service";
+import type { AppLogService } from "./app-log-service";
 
 export type DashboardControllerFailure = {
   readonly _tag: "DashboardControllerFailure";
@@ -59,7 +61,9 @@ export type DashboardControllerFailure = {
     | "storage"
     | "checkout_not_a_repository"
     | "checkout_origin_mismatch"
-    | "registration_conflict";
+    | "registration_conflict"
+    /** The workspace has no GitHub connection, so nothing GitHub-backed can be read (ADR 0058). */
+    | "github_disconnected";
 };
 
 // This class is the main-process composition root: every schema below parses
@@ -123,6 +127,8 @@ export class DashboardController {
     insightArtifactReader: typeof readBoundedInsightArtifactFile,
     /** Optional: without it inbox rows carry no author avatar and fall back to initials. */
     avatars?: AvatarRailDependencies,
+    /** Records connect and disconnect transitions; absent, they go unlogged. */
+    private readonly logs?: Pick<AppLogService, "write">,
   ) {
     this.settings = new ProfileSettingsService(profiles);
     this.inbox = new MaintainerInboxService(
@@ -229,7 +235,80 @@ export class DashboardController {
     });
     if (profile._tag === "err") return failure("invalid_input");
     const saved = await this.settings.saveProfile(profile.value);
-    return saved._tag === "ok" ? ok(profile.value) : failure("storage");
+    if (saved._tag !== "ok") return failure("storage");
+    this.logConnectionChange(current?.github, profile.value);
+    return ok(profile.value);
+  }
+
+  /**
+   * Drops the GitHub connection of the workspace `input.profileId` names.
+   * Only the connection field changes: watched repositories, saved pull
+   * request state, unresolved write journals, local repositories and Local
+   * Reviews stay as they are, so reconnecting restores the same workspace
+   * (ADR 0058). Disconnecting a workspace that is already disconnected is a
+   * no-op.
+   */
+  async disconnectGitHub(
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this function is itself the JSON I/O boundary parser for `POST /v1/workspace/connection/disconnect`; there is no earlier boundary to run it at.
+    input: unknown,
+  ): Promise<Result<WorkspaceProfileConfig, DashboardControllerFailure>> {
+    const profileId = watchlistProfileId(input);
+    if (profileId._tag === "err") return profileId;
+    const profile = await this.profileById(profileId.value);
+    if (profile._tag === "err") return profile;
+    if (profile.value.github.kind === "disconnected") return profile;
+    const next: WorkspaceProfileConfig = {
+      ...profile.value,
+      github: { kind: "disconnected" },
+    };
+    const saved = await this.settings.saveProfile(next);
+    if (saved._tag !== "ok") {
+      this.logConnection("disconnect_failed", next, profile.value.github);
+      return failure("storage");
+    }
+    this.logConnectionChange(profile.value.github, next);
+    return ok(next);
+  }
+
+  private logConnectionChange(
+    before: GitHubConnection | undefined,
+    after: WorkspaceProfileConfig,
+  ): void {
+    const was = before?.kind ?? "disconnected";
+    if (was === "disconnected" && after.github.kind === "connected")
+      this.logConnection("github_connected", after, after.github);
+    else if (was === "connected" && after.github.kind === "disconnected")
+      this.logConnection("github_disconnected", after, before);
+    else if (
+      before?.kind === "connected" &&
+      after.github.kind === "connected" &&
+      (before.account !== after.github.account ||
+        before.host !== after.github.host)
+    )
+      this.logConnection("github_account_changed", after, after.github);
+  }
+
+  /** A fixed reason code and counts only: never the account name, a token or a path. */
+  private logConnection(
+    reason:
+      | "github_connected"
+      | "github_disconnected"
+      | "github_account_changed"
+      | "disconnect_failed",
+    profile: WorkspaceProfileConfig,
+    connection: GitHubConnection | undefined,
+  ): void {
+    this.logs?.write({
+      process: "main",
+      level: reason === "disconnect_failed" ? "warn" : "info",
+      topic: "github-connection",
+      message: reason,
+      meta: {
+        profileId: profile.id,
+        host: connection?.kind === "connected" ? connection.host : "none",
+        watchedRepositories: profile.repos.length,
+      },
+    });
   }
 
   /**
@@ -287,6 +366,9 @@ export class DashboardController {
   > {
     const profile = await this.activeProfile();
     if (profile._tag === "err") return profile;
+    // Before any repository or GitHub work: a disconnected workspace polls nothing.
+    if (profile.value.github.kind !== "connected")
+      return failure("github_disconnected");
     if (
       repository !== undefined &&
       !isWatchedRepository(profile.value, repository)

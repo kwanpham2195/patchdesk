@@ -115,7 +115,7 @@ async function harness() {
   });
   const start = () =>
     startWatchedPullRequestScheduler({
-      profiles: [profile],
+      profiles: async () => [profile],
       watched: service,
       coordinator,
       intervalMinutes: 3,

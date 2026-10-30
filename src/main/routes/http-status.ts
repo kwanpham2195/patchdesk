@@ -133,6 +133,8 @@ const responseFailureStatus = new Map<string, ResponseFailureStatus>([
   ["repository_not_found", 404],
   ["repository_not_missing", 409],
   ["checkout_registered_elsewhere", 409],
+  // A GitHub-backed read on a workspace with no GitHub connection (ADR 0058).
+  ["github_disconnected", 409],
   ["overlapping", 409],
   ["path_refused", 409],
   ["file_changed", 409],

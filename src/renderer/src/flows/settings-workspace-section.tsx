@@ -43,6 +43,7 @@ import { FieldSaveStatus } from "./settings-workspace-field-status";
 import { useReviewingAsProbe } from "./settings-workspace-reviewing-as";
 import { ReviewingAsCard, RepositoriesCard } from "./settings-workspace-cards";
 import { ProfileListEditor } from "./settings-workspace-list-editor";
+import { DisconnectGitHubRow } from "./settings-workspace-disconnect";
 import { CreateWorkspaceDialog } from "./settings-workspace-create-dialog";
 
 type WorkspaceProfileSectionProps = {
@@ -97,7 +98,11 @@ export function WorkspaceProfileSection({
 
   return (
     <div className="flex flex-col gap-6">
-      <WorkspaceReviewingAsCard key={editor.persisted.id} editor={editor} />
+      <WorkspaceReviewingAsCard
+        key={editor.persisted.id}
+        editor={editor}
+        onWorkspaceReload={onWorkspaceReload}
+      />
       <RepositoriesCard
         dashboard={dashboard}
         onWorkspaceReload={onWorkspaceReload}
@@ -203,20 +208,27 @@ export function WorkspaceProfileSection({
 /** Mounts the account probe only after a disconnected workspace asks to connect. */
 function WorkspaceReviewingAsCard({
   editor,
+  onWorkspaceReload,
 }: {
   readonly editor: WorkspaceProfileEditorHook;
+  readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element {
   const [connecting, setConnecting] = useState(false);
   if (editor.persisted.ghAccount !== "" || connecting)
-    return <ProbedReviewingAsCard editor={editor} />;
+    return (
+      <ProbedReviewingAsCard
+        editor={editor}
+        onWorkspaceReload={onWorkspaceReload}
+      />
+    );
   return (
     <section aria-labelledby="workspace-github-title">
       <Card>
         <CardHeader>
           <CardTitle id="workspace-github-title">GitHub</CardTitle>
           <CardDescription>
-            Not connected. Local reviews work without it; connect an account to
-            review pull requests.
+            Not connected. Local reviews work without it. Connect an account to
+            review pull requests; your local reviews stay as they are.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -229,15 +241,30 @@ function WorkspaceReviewingAsCard({
 
 function ProbedReviewingAsCard({
   editor,
+  onWorkspaceReload,
 }: {
   readonly editor: WorkspaceProfileEditorHook;
+  readonly onWorkspaceReload: () => Promise<void>;
 }): React.JSX.Element {
   const probe = useReviewingAsProbe(
     editor.scalars.ghAccount,
     editor.profileLoaded,
     editor.selectAccount,
   );
-  return <ReviewingAsCard editor={editor} probe={probe} />;
+  return (
+    <ReviewingAsCard
+      editor={editor}
+      probe={probe}
+      footer={
+        editor.persisted.ghAccount === "" ? undefined : (
+          <DisconnectGitHubRow
+            profileId={editor.persisted.id}
+            onDisconnected={onWorkspaceReload}
+          />
+        )
+      }
+    />
+  );
 }
 
 /**

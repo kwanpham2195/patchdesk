@@ -356,5 +356,7 @@ function fromDashboard(
       return { reason: failure.reason };
     case "not_found":
       return { reason: "not_watched" };
+    case "github_disconnected":
+      return { reason: "no_github_account" };
   }
 }
