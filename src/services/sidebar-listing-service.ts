@@ -66,6 +66,10 @@ type SidebarLocalRepositoryRow = {
   /** The linked worktree the row opens, and its folder name; absent for the configured checkout. */
   readonly checkout?: AbsolutePath;
   readonly checkoutName?: string;
+  /** The folder the row reads: the linked worktree, else the registration's checkout. Absent when none is recorded. */
+  readonly location?: AbsolutePath;
+  /** The parent folder name(s) that tell this row from another with the same name; absent when the name is unique in the list. */
+  readonly qualifier?: string;
   readonly reviewIds: ReadonlyArray<ReviewId>;
   /** The newest of the repository's local Reviews' ordering instants. */
   readonly sortedAt: IsoTimestamp;
@@ -187,9 +191,11 @@ export class SidebarListingService {
         ...definedProps({ agent: agent.value ? (true as const) : undefined }),
       });
     }
-    const rows = [...pullRequestRows, ...localRows]
-      .sort((left, right) => right.sortedAt.localeCompare(left.sortedAt))
-      .slice(0, SIDEBAR_ROW_LIMIT);
+    const rows = qualifySameNamedRows(
+      [...pullRequestRows, ...localRows]
+        .sort((left, right) => right.sortedAt.localeCompare(left.sortedAt))
+        .slice(0, SIDEBAR_ROW_LIMIT),
+    );
     return ok({ rows, unreadable });
   }
 
@@ -306,6 +312,7 @@ function localRepositoryRow(
     worktreeGone && source.checkout !== undefined
       ? { reviewId: newest.id, path: source.checkout, scope: "worktree" }
       : undefined;
+  let location: AbsolutePath | undefined = source.checkout;
   let repository:
     | {
         readonly host: GitHubHost;
@@ -330,6 +337,7 @@ function localRepositoryRow(
         scope: "repository",
         ...definedProps({ path: registration.configuredRoot }),
       };
+    location ??= registration.configuredRoot;
     repository = {
       localRepositoryId: registration.id,
       displayName: registration.displayName,
@@ -342,12 +350,69 @@ function localRepositoryRow(
     ...definedProps({
       checkoutMissing,
       lastOpenedAt,
+      location,
       checkout: source.checkout,
       checkoutName:
         source.checkout === undefined
           ? undefined
           : checkoutFolderName(source.checkout),
     }),
+  });
+}
+
+function isLocalRow(
+  row: SidebarPullRequestRow | SidebarLocalRepositoryRow,
+): row is SidebarLocalRepositoryRow {
+  return "reviewIds" in row;
+}
+
+/** The name a local row shows before any qualifier; two rows sharing it cannot be told apart by eye. */
+function localRowName(row: SidebarLocalRepositoryRow): string {
+  const repository =
+    "displayName" in row ? row.displayName : `${row.owner}/${row.repo}`;
+  return row.checkoutName === undefined
+    ? repository
+    : `${repository} · ${row.checkoutName}`;
+}
+
+/**
+ * Adds a parent-folder qualifier to local rows that share a name, so two
+ * clones both called `proj` read `a` and `b` rather than twice `proj`. Each
+ * group takes the fewest parent folders that make its qualifiers differ; a
+ * unique name and a row with no recorded folder stay unqualified.
+ */
+function qualifySameNamedRows(
+  rows: ReadonlyArray<SidebarPullRequestRow | SidebarLocalRepositoryRow>,
+): ReadonlyArray<SidebarPullRequestRow | SidebarLocalRepositoryRow> {
+  const groups = new Map<string, SidebarLocalRepositoryRow[]>();
+  for (const row of rows) {
+    if (!isLocalRow(row)) continue;
+    const name = localRowName(row);
+    groups.set(name, [...(groups.get(name) ?? []), row]);
+  }
+  const qualifiers = new Map<SidebarLocalRepositoryRow, string>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const parents = group.map((row) =>
+      (row.location ?? "")
+        .split("/")
+        .filter((segment) => segment !== "")
+        .slice(0, -1),
+    );
+    const deepest = Math.max(...parents.map((names) => names.length));
+    const qualifierAt = (depth: number): string[] =>
+      parents.map((names) => names.slice(-depth).join("/"));
+    let depth = 1;
+    while (depth < deepest && new Set(qualifierAt(depth)).size < group.length)
+      depth += 1;
+    for (const [index, qualifier] of qualifierAt(depth).entries()) {
+      const row = group[index];
+      if (row !== undefined && qualifier !== "") qualifiers.set(row, qualifier);
+    }
+  }
+  return rows.map((row) => {
+    const qualifier = isLocalRow(row) ? qualifiers.get(row) : undefined;
+    return qualifier === undefined ? row : { ...row, qualifier };
   });
 }
 

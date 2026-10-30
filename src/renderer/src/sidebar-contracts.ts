@@ -29,6 +29,9 @@ const sidebarPullRequestRowSchema = v.strictObject({
 const sidebarLocalRepositoryFields = {
   checkout: v.optional(v.pipe(v.string(), v.minLength(1))),
   checkoutName: v.optional(v.pipe(v.string(), v.minLength(1))),
+  // The folder the row reads, for its tooltip, and the parent folder name that tells it from a same-named row.
+  location: v.optional(v.pipe(v.string(), v.minLength(1))),
+  qualifier: v.optional(v.pipe(v.string(), v.minLength(1))),
   reviewIds: v.pipe(
     v.array(v.pipe(v.string(), v.minLength(1))),
     v.minLength(1),

@@ -1,7 +1,13 @@
 import { Plus, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "#src/renderer/src/components/ui/button";
-import { Card, CardContent } from "#src/renderer/src/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#src/renderer/src/components/ui/card";
 import {
   Field,
   FieldError,
@@ -95,6 +101,7 @@ export function WorkspaceProfileSection({
       <RepositoriesCard
         dashboard={dashboard}
         onWorkspaceReload={onWorkspaceReload}
+        githubConnected={editor.persisted.ghAccount !== ""}
       />
       <DisclosureCard
         title="Advanced"
@@ -203,11 +210,20 @@ function WorkspaceReviewingAsCard({
   if (editor.persisted.ghAccount !== "" || connecting)
     return <ProbedReviewingAsCard editor={editor} />;
   return (
-    <Card>
-      <CardContent>
-        <Button onClick={() => setConnecting(true)}>Connect GitHub</Button>
-      </CardContent>
-    </Card>
+    <section aria-labelledby="workspace-github-title">
+      <Card>
+        <CardHeader>
+          <CardTitle id="workspace-github-title">GitHub</CardTitle>
+          <CardDescription>
+            Not connected. Local reviews work without it; connect an account to
+            review pull requests.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={() => setConnecting(true)}>Connect GitHub</Button>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 

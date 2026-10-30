@@ -249,6 +249,7 @@ function VisitedRow({
   readonly onFocus: () => void;
 }): React.JSX.Element {
   const { title, reference } = visitedRowLabels(row, scope);
+  const location = isSidebarLocalRepositoryRow(row) ? row.location : undefined;
   const marquee = useTitleMarquee();
   // A selected pull request row is where navigation would land, so it does
   // nothing. A local row stays live: its open follows the checkout's branch,
@@ -270,7 +271,7 @@ function VisitedRow({
       onPointerLeave={() => marquee.release("hover")}
       aria-current={selected ? "page" : undefined}
       aria-disabled={inert ? true : undefined}
-      title={title}
+      title={location === undefined ? title : `${title}\n${location}`}
       onClick={inert ? undefined : onOpen}
       className={cn(
         "ui-state-transition relative flex w-full min-w-0 items-start py-1.5 pr-3 pl-2.5 text-left outline-none",
@@ -504,6 +505,7 @@ export function visitedRowLabels(
         | "reviewIds"
         | "lastOpenedAt"
         | "checkoutName"
+        | "qualifier"
         | "checkoutMissing"
       >
     | Pick<
@@ -516,6 +518,7 @@ export function visitedRowLabels(
         | "reviewIds"
         | "lastOpenedAt"
         | "checkoutName"
+        | "qualifier"
         | "checkoutMissing"
       >,
   scope: VisitedLabelScope,
@@ -523,12 +526,15 @@ export function visitedRowLabels(
   const separator = row.lastOpenedAt === undefined ? "" : " · ";
   if ("reviewIds" in row)
     return {
-      title:
-        row.checkoutName === undefined
-          ? "localRepositoryId" in row
-            ? row.displayName
-            : `${row.owner}/${row.repo}`
-          : `${"localRepositoryId" in row ? row.displayName : `${row.owner}/${row.repo}`} · ${row.checkoutName}`,
+      title: [
+        "localRepositoryId" in row
+          ? row.displayName
+          : `${row.owner}/${row.repo}`,
+        row.checkoutName,
+        row.qualifier,
+      ]
+        .filter((part) => part !== undefined)
+        .join(" · "),
       reference: `${localRowHint(row.checkoutMissing)}${separator}`,
     };
   const repository = visitedRepositoryLabel(row, scope);

@@ -70,15 +70,19 @@ export function RepositoriesCard({
   dashboard,
   onWorkspaceReload,
   title = "Repositories",
+  githubConnected = true,
 }: {
   readonly dashboard: Dashboard | undefined;
   readonly onWorkspaceReload: () => Promise<void>;
   readonly title?: string;
+  /** False for a workspace with no GitHub account: watching a repository needs one, so the form is replaced by a sentence. */
+  readonly githubConnected?: boolean;
 }): React.JSX.Element {
   const watchlist = useWatchedRepositories(
     dashboard?.profile,
     onWorkspaceReload,
   );
+  const repositories = dashboard?.profile.repos ?? EMPTY_REPOS;
   return (
     <section
       aria-labelledby="workspace-repositories-title"
@@ -88,17 +92,22 @@ export function RepositoriesCard({
         <CardHeader>
           <CardTitle id="workspace-repositories-title">{title}</CardTitle>
           <CardDescription>
-            Pull requests are listed from watched repositories. A local review
-            needs the repository&apos;s checkout.
+            {githubConnected
+              ? "Pull requests are listed from watched repositories. A local review needs the repository's checkout."
+              : "Connect GitHub to watch repositories and review their pull requests."}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-5">
-          <AddWatchedRepositoryForm watchlist={watchlist} />
-          <WatchedRepositoryList
-            repositories={dashboard?.profile.repos ?? EMPTY_REPOS}
-            watchlist={watchlist}
-          />
-        </CardContent>
+        {githubConnected || repositories.length > 0 ? (
+          <CardContent className="flex flex-col gap-5">
+            {githubConnected ? (
+              <AddWatchedRepositoryForm watchlist={watchlist} />
+            ) : null}
+            <WatchedRepositoryList
+              repositories={repositories}
+              watchlist={watchlist}
+            />
+          </CardContent>
+        ) : null}
       </Card>
     </section>
   );

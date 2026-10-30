@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- Added a read-only Review, a "Checkout folder not found" banner, Missing badges and a Relocate flow in the app for a local checkout that moved; its sidebar row now says "checkout missing" instead of dropping you on setup. Open local checkout shows each repository's folder, a moved linked worktree's row says "folder missing" and opens its own stored Review, and New workspace can create a workspace without GitHub. #817
+- Added a read-only Review, a "Checkout folder not found" banner, Missing badges and a Relocate flow in the app for a local checkout that moved; its sidebar row now says "checkout missing" instead of dropping you on setup. Two local repositories with the same name are told apart in the sidebar by their parent folder, with the full path in a tooltip. Open local checkout shows each repository's folder, a moved linked worktree's row says "folder missing" and opens its own stored Review, and New workspace can create a workspace without GitHub. #817
 - Changed the startup error for a refused profile upgrade to name the profile, the reason and the file to restore, instead of a generic message. #817
 - Fixed first local setup staying blocked after an interruption between saving the repository catalog and activating the workspace. Retrying preserves the saved repository IDs. #817
 - Fixed Choose checkout and `patchdesk setup set-checkout` leaving Local Reviews on the previous checkout after a repository change. #817
 
-- Fixed Settings → Workspace silently connecting a disconnected workspace; Connect GitHub now starts account discovery explicitly. #817
+- Fixed Settings → Workspace silently connecting a disconnected workspace; Connect GitHub now starts account discovery explicitly, in a GitHub card that says the workspace is not connected, and Repositories shows a sentence instead of the Add a repository form. #817
 - Added `patchdesk setup relocate-checkout` to point a local repository at its moved checkout, keeping its Reviews, and `patchdesk setup status` now lists a missing local checkout as a step to do. #817
 - Added Local Reviews without GitHub: open a local checkout from first run or the titlebar, or register it with `patchdesk setup add-checkout`. #817
 - Fixed Analysis omitting "Ran without a change intent" after a Change intent is added to a local Review. #499
