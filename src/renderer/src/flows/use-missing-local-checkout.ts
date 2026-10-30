@@ -5,27 +5,44 @@ import * as v from "valibot";
 import { requestJson } from "#src/renderer/src/api-client";
 import type { RelocatableRepository } from "#src/renderer/src/components/relocate-checkout-dialog";
 import { localRepositoryListingSchema } from "#src/renderer/src/local-repositories";
+import { storedBranchMismatchMessage } from "#src/renderer/src/local-review-reopen";
 import {
   parseWorkbenchResponse,
   type WorkbenchResponse,
 } from "#src/renderer/src/renderer-contracts";
 
-/** A shared local Review whose registered checkout folder is gone: read-only until it is relocated (ADR 0058). */
-export type MissingLocalCheckoutControls = {
-  readonly repository: RelocatableRepository;
-  readonly relocating: boolean;
-  readonly startRelocate: () => void;
-  readonly closeRelocate: () => void;
-  /** Reads the Review again from its relocated checkout and drops the banner. */
-  readonly finishRelocate: () => Promise<void>;
+/**
+ * A shared local Review whose checkout folder is gone: read-only until it is
+ * relocated (ADR 0058). A named worktree has no relocation: its moved folder
+ * is a new source, opened with Open local checkout (ADR 0051).
+ */
+export type MissingLocalCheckoutControls =
+  | {
+      readonly kind: "repository";
+      readonly repository: RelocatableRepository;
+      readonly relocating: boolean;
+      readonly startRelocate: () => void;
+      readonly closeRelocate: () => void;
+      /** Reads the Review again from its relocated checkout and drops the banner. */
+      readonly finishRelocate: () => Promise<void>;
+    }
+  | { readonly kind: "worktree"; readonly path: string };
+
+/** What the open local Review shows about a lost checkout folder. */
+export type MissingLocalCheckout = {
+  readonly controls: MissingLocalCheckoutControls | undefined;
+  /** Why the Review could not be read from a checkout that was just relocated. */
+  readonly reloadNotice: string | undefined;
 };
 
 const parseListing = v.parser(localRepositoryListingSchema);
+const parseFolderState = v.parser(v.object({ exists: v.boolean() }));
 
 /**
- * Asks the main process whether the open local Review's repository has lost
- * its checkout folder. Undefined for a pull request Review, while the answer
- * is loading, and once the checkout is found.
+ * Asks the main process whether the open local Review's checkout folder is
+ * gone: its linked worktree's folder, else its repository's registered
+ * checkout. Controls are undefined for a pull request Review, while the
+ * answer is loading, and once the checkout is found.
  */
 export function useMissingLocalCheckout({
   workbench,
@@ -35,21 +52,49 @@ export function useMissingLocalCheckout({
   readonly workbench: WorkbenchResponse;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
   readonly onCheckoutRelocated?: () => void;
-}): MissingLocalCheckoutControls | undefined {
+}): MissingLocalCheckout {
   const { key } = workbench.session;
   const repositoryId =
     "identityKey" in key ? key.identityKey.localRepositoryId : undefined;
+  const worktree = "checkout" in key.source ? key.source.checkout : undefined;
+  const isLocal = key.source.kind !== "pull_request";
   const profileId = key.profileId;
   const reviewId = workbench.review.id;
-  const [missing, setMissing] = useState<RelocatableRepository>();
+  const [missing, setMissing] = useState<
+    | { readonly worktree: string }
+    | { readonly repository: RelocatableRepository }
+  >();
   const [relocating, setRelocating] = useState(false);
+  // Tied to its Review, so a notice does not follow the reader to another one.
+  const [reloadFailure, setReloadFailure] = useState<{
+    readonly reviewId: string;
+    readonly message: string;
+  }>();
+  const reloadNotice =
+    reloadFailure?.reviewId === reviewId ? reloadFailure.message : undefined;
   const [checkedAgain, setCheckedAgain] = useState(0);
 
   useEffect(() => {
-    if (repositoryId === undefined) return;
+    if (!isLocal) return;
     let active = true;
     void (async () => {
       try {
+        if (worktree !== undefined) {
+          const folder = parseFolderState(
+            await requestJson(
+              `/v1/reviews/local-checkout-folder?${new URLSearchParams({ path: worktree })}`,
+            ),
+          );
+          if (!active) return;
+          if (!folder.exists) {
+            setMissing({ worktree });
+            return;
+          }
+        }
+        if (repositoryId === undefined) {
+          if (active) setMissing(undefined);
+          return;
+        }
         const listing = parseListing(
           await requestJson(
             `/v1/local-repositories?${new URLSearchParams({ profileId })}`,
@@ -60,9 +105,11 @@ export function useMissingLocalCheckout({
         setMissing(
           repository?.state === "missing"
             ? {
-                id: repository.id,
-                displayName: repository.displayName,
-                ...definedProps({ path: repository.configuredRoot }),
+                repository: {
+                  id: repository.id,
+                  displayName: repository.displayName,
+                  ...definedProps({ path: repository.configuredRoot }),
+                },
               }
             : undefined,
         );
@@ -74,9 +121,10 @@ export function useMissingLocalCheckout({
     return () => {
       active = false;
     };
-  }, [checkedAgain, profileId, repositoryId, reviewId]);
+  }, [checkedAgain, isLocal, profileId, repositoryId, reviewId, worktree]);
 
   const finishRelocate = useCallback(async (): Promise<void> => {
+    setReloadFailure(undefined);
     try {
       const next = parseWorkbenchResponse(
         await requestJson("/v1/reviews/load", {
@@ -85,20 +133,35 @@ export function useMissingLocalCheckout({
         }),
       );
       if (next !== undefined) onWorkbenchReplace(next);
-    } catch {
-      // The relocation is saved; the next Refresh names whatever stops the reload.
+    } catch (cause: unknown) {
+      // The relocation is saved; the Review stays as captured until its branch is back.
+      setReloadFailure({
+        reviewId,
+        message:
+          storedBranchMismatchMessage(cause) ??
+          "The checkout was relocated, but Patchdesk could not read this review from it. Press Refresh to try again.",
+      });
     }
     onCheckoutRelocated?.();
     setRelocating(false);
     setCheckedAgain((count) => count + 1);
   }, [onCheckoutRelocated, onWorkbenchReplace, profileId, reviewId]);
 
-  if (missing === undefined) return undefined;
+  if (missing === undefined) return { controls: undefined, reloadNotice };
+  if ("worktree" in missing)
+    return {
+      controls: { kind: "worktree", path: missing.worktree },
+      reloadNotice,
+    };
   return {
-    repository: missing,
-    relocating,
-    startRelocate: () => setRelocating(true),
-    closeRelocate: () => setRelocating(false),
-    finishRelocate,
+    controls: {
+      kind: "repository",
+      repository: missing.repository,
+      relocating,
+      startRelocate: () => setRelocating(true),
+      closeRelocate: () => setRelocating(false),
+      finishRelocate,
+    },
+    reloadNotice,
   };
 }

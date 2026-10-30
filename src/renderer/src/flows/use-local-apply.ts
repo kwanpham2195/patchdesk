@@ -43,6 +43,8 @@ export type LocalApplyControls = {
   readonly pending: boolean;
   /** The session no longer matches the checkout, or another patch view shows, so Apply stays disabled. */
   readonly blocked: boolean;
+  /** The checkout folder is gone, so Apply has nothing to write to until it is relocated. */
+  readonly checkoutMissing?: true;
   /** Why the last Apply was refused, shown beside the control. */
   readonly refusal?: string;
   readonly notice?: string;
@@ -136,8 +138,10 @@ export function useLocalApply({
   view,
   onWorkbenchReplace,
   onWorkbenchPatch,
+  checkoutMissing,
 }: {
   readonly workbench: WorkbenchResponse;
+  readonly checkoutMissing?: boolean;
   /** The patch view the diff shows; undefined on a Review without views. */
   readonly view: LocalPatchView | undefined;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
@@ -326,7 +330,7 @@ export function useLocalApply({
       : view !== undefined && view !== "combined"
         ? VIEW_MISMATCH_MESSAGE
         : undefined;
-  const blocked = blockedReason !== undefined;
+  const blocked = blockedReason !== undefined || checkoutMissing === true;
   return {
     selectedIds: current.selected,
     setSelected,
@@ -335,6 +339,7 @@ export function useLocalApply({
     pending,
     blocked,
     ...definedProps({
+      checkoutMissing: checkoutMissing === true ? (true as const) : undefined,
       refusal: current.refusal ?? blockedReason,
       notice: current.notice,
       lock,

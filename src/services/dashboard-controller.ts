@@ -102,9 +102,11 @@ const saveProfileInputSchema = v.object({
   // The one field this schema refines itself: the id is derived from the
   // label, which cannot be left to a later domain parser.
   label: v.string(),
-  githubHost: v.unknown(),
-  ghAccount: v.unknown(),
+  githubHost: v.optional(v.unknown()),
+  ghAccount: v.optional(v.unknown()),
   rulePaths: v.unknown(),
+  // A workspace that reviews local checkouts only; `githubHost` and `ghAccount` are then absent (ADR 0058).
+  disconnected: v.optional(v.literal(true)),
 });
 /** Main-process composition root for the renderer's profile and dashboard actions. */
 export class DashboardController {
@@ -214,11 +216,14 @@ export class DashboardController {
       schemaVersion: 1,
       localRepositoryCatalogGeneration:
         current?.localRepositoryCatalogGeneration ?? crypto.randomUUID(),
-      github: {
-        kind: "connected",
-        host: fields.githubHost,
-        account: fields.ghAccount,
-      },
+      github:
+        fields.disconnected === true
+          ? { kind: "disconnected" }
+          : {
+              kind: "connected",
+              host: fields.githubHost,
+              account: fields.ghAccount,
+            },
       rulePaths: fields.rulePaths,
       repos: current?.repos ?? [],
     });

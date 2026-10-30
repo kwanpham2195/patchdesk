@@ -8,6 +8,7 @@ import {
   AlertTitle,
 } from "#src/renderer/src/components/ui/alert";
 import { Button } from "#src/renderer/src/components/ui/button";
+import { Checkbox } from "#src/renderer/src/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,8 @@ import {
 } from "#src/renderer/src/components/ui/dialog";
 import {
   Field,
+  FieldContent,
+  FieldDescription,
   FieldError,
   FieldLabel,
 } from "#src/renderer/src/components/ui/field";
@@ -52,6 +55,7 @@ export function CreateWorkspaceDialog({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [manualAccount, setManualAccount] = useState("");
   const [manualHost, setManualHost] = useState("github.com");
+  const [connectLater, setConnectLater] = useState(false);
   const [errors, setErrors] = useState<CreateWorkspaceFieldErrors>({});
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -68,19 +72,25 @@ export function CreateWorkspaceDialog({
       chosen === undefined
         ? { login: manualAccount.trim(), host: manualHost.trim() }
         : { login: chosen.login, host: chosen.host };
-    const found = validateCreateWorkspace(label, account);
+    const found = validateCreateWorkspace(
+      label,
+      connectLater ? undefined : account,
+    );
     setErrors(found);
     if (Object.keys(found).length > 0) return;
     setError(undefined);
     setPending(true);
     try {
-      await createWorkspaceProfile({
-        id: "",
-        label,
-        githubHost: account.host,
-        ghAccount: account.login,
-        rulePaths: EMPTY_PATHS,
-      });
+      await createWorkspaceProfile(
+        {
+          id: "",
+          label,
+          githubHost: account.host,
+          ghAccount: account.login,
+          rulePaths: EMPTY_PATHS,
+        },
+        connectLater ? "later" : "github",
+      );
       await onCreated();
       onOpenChange(false);
     } catch (cause: unknown) {
@@ -108,7 +118,8 @@ export function CreateWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            One GitHub account and the repositories it watches.
+            A workspace holds one GitHub account and the repositories it
+            watches, or local checkouts only.
           </DialogDescription>
         </DialogHeader>
         {error === undefined ? null : (
@@ -125,7 +136,7 @@ export function CreateWorkspaceDialog({
             error={errors.name}
             onChange={setName}
           />
-          {checking ? (
+          {connectLater ? null : checking ? (
             // The probe decides which account control this dialog shows, so
             // it says it is still asking rather than rendering the manual
             // fields and swapping them for the Select a moment later.
@@ -158,6 +169,23 @@ export function CreateWorkspaceDialog({
               onSelect={(account) => setSelectedKey(accountKey(account))}
             />
           )}
+          <Field orientation="horizontal">
+            <Checkbox
+              id="create-workspace-connect-later"
+              checked={connectLater}
+              onCheckedChange={setConnectLater}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor="create-workspace-connect-later">
+                Connect GitHub later
+              </FieldLabel>
+              <FieldDescription>
+                {connectLater
+                  ? "This workspace reviews local checkouts only. Connect an account in Settings → Workspace to add pull requests."
+                  : "Skip the account to review local checkouts without GitHub."}
+              </FieldDescription>
+            </FieldContent>
+          </Field>
         </div>
         <DialogFooter>
           <Button
@@ -168,7 +196,7 @@ export function CreateWorkspaceDialog({
             Cancel
           </Button>
           <Button
-            disabled={pending || checking}
+            disabled={pending || (checking && !connectLater)}
             onClick={() => {
               void create();
             }}
@@ -189,13 +217,14 @@ type CreateWorkspaceFieldErrors = Readonly<
 // account, host, and name fields.
 function validateCreateWorkspace(
   label: string,
-  account: { readonly login: string; readonly host: string },
+  account: { readonly login: string; readonly host: string } | undefined,
 ) {
   const found: {
     -readonly [Name in keyof CreateWorkspaceFieldErrors]?: string;
   } = {};
   const name = scalarError("label", label);
   if (name !== undefined) found.name = name;
+  if (account === undefined) return found;
   const ghAccount = scalarError("ghAccount", account.login);
   if (ghAccount !== undefined) found.ghAccount = ghAccount;
   const githubHost = scalarError("githubHost", account.host);

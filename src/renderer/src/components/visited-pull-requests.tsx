@@ -499,7 +499,12 @@ export function visitedRowLabels(
       >
     | Pick<
         Extract<SidebarLocalRepositoryRow, { readonly owner: string }>,
-        "owner" | "repo" | "reviewIds" | "lastOpenedAt" | "checkoutName"
+        | "owner"
+        | "repo"
+        | "reviewIds"
+        | "lastOpenedAt"
+        | "checkoutName"
+        | "checkoutMissing"
       >
     | Pick<
         Extract<
@@ -524,7 +529,7 @@ export function visitedRowLabels(
             ? row.displayName
             : `${row.owner}/${row.repo}`
           : `${"localRepositoryId" in row ? row.displayName : `${row.owner}/${row.repo}`} · ${row.checkoutName}`,
-      reference: `${"checkoutMissing" in row && row.checkoutMissing !== undefined ? "checkout missing" : "local"}${separator}`,
+      reference: `${localRowHint(row.checkoutMissing)}${separator}`,
     };
   const repository = visitedRepositoryLabel(row, scope);
   if (row.title === undefined)
@@ -533,6 +538,14 @@ export function visitedRowLabels(
     title: row.title,
     reference: `${repository}#${row.number}${separator}`,
   };
+}
+
+/** The hint a local row prints where a pull request prints its number. */
+function localRowHint(
+  missing: SidebarLocalRepositoryRow["checkoutMissing"],
+): string {
+  if (missing === undefined) return "local";
+  return missing.scope === "worktree" ? "folder missing" : "checkout missing";
 }
 
 /** The repository part of a row's label, empty when the scope names none. */

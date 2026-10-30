@@ -49,7 +49,7 @@ Committing a text field whose trimmed value equals the saved value writes nothin
 
 A text field — the manual GitHub account, the manual GitHub host, a rule-path row, or the workspace Name — commits on blur and on Enter. The Account selector and a row's remove button commit at once. Adding a row commits nothing until that row has a value: a blank row is local only, and a saved list never carries one.
 
-New workspace opens the New workspace dialog. It asks for a Name and an Account, chosen from the accounts the GitHub CLI reports; when it reports none, it asks for a GitHub account and a GitHub host instead. Create workspace sends the creation request without an ID.
+New workspace opens the New workspace dialog. It asks for a Name and an Account, chosen from the accounts the GitHub CLI reports; when it reports none, it asks for a GitHub account and a GitHub host instead. A **Connect GitHub later** checkbox below them hides the account choice and explains `This workspace reviews local checkouts only. Connect an account in Settings → Workspace to add pull requests.` Create workspace then saves a disconnected workspace, which shows Connect GitHub in this section and the first-run screen with Open local checkout until an account is connected. Create workspace sends the creation request without an ID.
 
 ### While the action runs
 

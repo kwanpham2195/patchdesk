@@ -18,6 +18,7 @@ import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
 import { err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
+import { missingCheckout } from "./local-checkout";
 import type { InsightSlotStatus } from "./insight-slot-status";
 import type { ReviewDiagnosticService } from "./review-diagnostic-service";
 import type { LocalRepositoryService } from "./local-repository-service";
@@ -73,13 +74,16 @@ type SidebarLocalRepositoryRow = {
   /** Present while one of them has an agent run request awaiting approval or its approved run active (ADR 0052 "Sidebar marker"). */
   readonly agent?: true;
   /**
-   * Present when the registration's checkout folder no longer exists. The row
-   * then opens `reviewId`, the newest of its Reviews, from storage without
-   * reading the checkout (ADR 0058, "Relocation and conflicting locators").
+   * Present when the folder the row reads no longer exists: the registration's
+   * checkout (`repository`, which can be relocated) or a linked worktree's own
+   * folder (`worktree`, which cannot: a moved worktree is a new source, ADR
+   * 0051 and 0058). The row then opens `reviewId`, the newest of its Reviews,
+   * from storage without reading the checkout.
    */
   readonly checkoutMissing?: {
     readonly reviewId: ReviewId;
     readonly path?: AbsolutePath;
+    readonly scope: "repository" | "worktree";
   };
 } & (
   | {
@@ -153,15 +157,30 @@ export class SidebarListingService {
       ? await this.dependencies.repositories.list(profileId)
       : ok([]);
     if (registrations._tag === "err") return err({ reason: "storage" });
-    const activity = await Promise.all(
-      groups.map((group) => this.hasAgentActivity(profileId, group)),
-    );
+    const [activity, worktreeGone] = await Promise.all([
+      Promise.all(
+        groups.map((group) => this.hasAgentActivity(profileId, group)),
+      ),
+      Promise.all(
+        groups.map(async (group) => {
+          const { checkout } = group[0].identity.source;
+          return (
+            checkout !== undefined &&
+            (await missingCheckout(checkout)) !== undefined
+          );
+        }),
+      ),
+    ]);
     const localRows: SidebarLocalRepositoryRow[] = [];
     for (const [index, group] of groups.entries()) {
       const agent = activity[index];
       if (agent === undefined || agent._tag === "err")
         return err({ reason: "storage" });
-      const row = localRepositoryRow(group, registrations.value);
+      const row = localRepositoryRow(
+        group,
+        registrations.value,
+        worktreeGone[index] === true,
+      );
       if (row._tag === "err") return row;
       localRows.push({
         ...row.value,
@@ -268,6 +287,7 @@ type LocalReviewGroup = readonly [
 function localRepositoryRow(
   reviews: LocalReviewGroup,
   registrations: ReadonlyArray<LocalRepositoryRegistration>,
+  worktreeGone: boolean,
 ): Result<SidebarLocalRepositoryRow, SidebarListingFailure> {
   const [first, ...rest] = reviews;
   const newest = rest.reduce(
@@ -282,7 +302,10 @@ function localRepositoryRow(
       undefined,
     );
   const { identityKey, source } = newest.identity;
-  let checkoutMissing: SidebarLocalRepositoryRow["checkoutMissing"];
+  let checkoutMissing: SidebarLocalRepositoryRow["checkoutMissing"] =
+    worktreeGone && source.checkout !== undefined
+      ? { reviewId: newest.id, path: source.checkout, scope: "worktree" }
+      : undefined;
   let repository:
     | {
         readonly host: GitHubHost;
@@ -301,9 +324,10 @@ function localRepositoryRow(
       (entry) => entry.id === identityKey.localRepositoryId,
     );
     if (registration === undefined) return err({ reason: "storage" });
-    if (registration.state === "missing")
+    if (registration.state === "missing" && checkoutMissing === undefined)
       checkoutMissing = {
         reviewId: newest.id,
+        scope: "repository",
         ...definedProps({ path: registration.configuredRoot }),
       };
     repository = {

@@ -63,26 +63,31 @@ export function sourceListsCommits(source: WorkbenchReviewSource): boolean {
 /**
  * What a local Review's header says about its revision: the commit it
  * represents, the patch view shown on a shared Review, and that it was read
- * from the checkout. It names no GitHub state because a local Review has none;
+ * from the checkout, or that the checkout is gone and the Review is its captured
+ * snapshot. It names no GitHub state because a local Review has none;
  * absent for a pull request.
  */
 export function localRevisionLabel(
   source: WorkbenchReviewSource,
   headSha: string,
   view: LocalPatchView = "combined",
+  checkoutMissing = false,
 ): string | undefined {
   const short = headSha.slice(0, 8);
+  const origin = checkoutMissing
+    ? "checkout folder missing"
+    : "read from the local checkout";
   switch (source.kind) {
     case "pull_request":
       return undefined;
     case "working_tree":
-      return `Local snapshot ${short} · read from the local checkout`;
+      return `Local snapshot ${short} · ${origin}`;
     case "branch":
-      return `Branch tip ${short} · read from the local checkout`;
+      return `Branch tip ${short} · ${origin}`;
     case "local_branch":
-      return `${localPatchViewLabels[view]} view · Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${baseRefName(source.baseRef)} · read from the local checkout`;
+      return `${localPatchViewLabels[view]} view · Local snapshot ${short} · ${source.branch === "detached" ? "detached HEAD" : source.branch} against ${baseRefName(source.baseRef)} · ${origin}`;
     case "commit":
-      return `Commit ${short} · read from the local checkout`;
+      return `Commit ${short} · ${origin}`;
     default:
       return casesHandled(source);
   }

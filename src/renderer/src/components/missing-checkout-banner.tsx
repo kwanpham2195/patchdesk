@@ -8,9 +8,36 @@ import { Button } from "./ui/button";
 /** Tells the reader a local Review is a stored snapshot because its checkout folder moved, and offers the fix. */
 export function MissingCheckoutBanner({
   controls,
+  reloadNotice,
 }: {
-  readonly controls: MissingLocalCheckoutControls;
-}): React.JSX.Element {
+  readonly controls: MissingLocalCheckoutControls | undefined;
+  /** Why the Review could not be read from a checkout that was just relocated. */
+  readonly reloadNotice: string | undefined;
+}): React.JSX.Element | null {
+  if (controls === undefined)
+    return reloadNotice === undefined ? null : (
+      <Alert variant="warning" role="status" className="mx-4 mt-2 w-auto">
+        <AlertDescription>{reloadNotice}</AlertDescription>
+      </Alert>
+    );
+  if (controls.kind === "worktree")
+    return (
+      <Alert
+        variant="warning"
+        className="mx-4 mt-2 w-auto"
+        data-review-worktree-missing
+      >
+        <FolderSearch aria-hidden="true" />
+        <AlertTitle>Worktree folder not found</AlertTitle>
+        <AlertDescription>
+          <span className="block font-mono text-xs break-all">
+            {controls.path}
+          </span>
+          This review shows its last captured snapshot. Open the moved worktree
+          with Open local checkout to start a new review.
+        </AlertDescription>
+      </Alert>
+    );
   const { repository } = controls;
   return (
     <>

@@ -59,7 +59,10 @@ import {
   changeIntentRequestSchema,
 } from "#src/services/local-change-intent-service";
 import { agentExplanationFailureKinds } from "#src/services/agent-explanation-service";
-import { describeRepositoryCheckout } from "#src/services/local-checkout";
+import {
+  describeRepositoryCheckout,
+  missingCheckout,
+} from "#src/services/local-checkout";
 import { localDraftFailureKinds } from "#src/services/local-draft-service";
 import { localPatchViewFailureKinds } from "#src/services/local-patch-view-service";
 import { localReviewFailureKinds } from "#src/services/local-review-opening";
@@ -163,6 +166,16 @@ export function registerLocalReviewRoutes(
       ),
       localReviewFailureKinds,
     );
+  });
+
+  // Whether a linked worktree's folder still exists, for the Review that names it (ADR 0058: a moved named worktree is a new source).
+  app.get("/v1/reviews/local-checkout-folder", async (context) => {
+    const path = parseAbsolutePath(context.req.query("path"));
+    if (path._tag === "err")
+      return context.json({ error: "invalid_input" }, 400);
+    return context.json({
+      exists: (await missingCheckout(path.value)) === undefined,
+    });
   });
 
   // Reads the stored source from the checkout again; a changed one moves the Review and its drafts to a new session (#452).

@@ -173,8 +173,14 @@ export function ReviewWorkbenchFlow({
     ]),
   });
   const localPatchView = useLocalPatchView({ workbench });
+  const missingCheckout = useMissingLocalCheckout({
+    workbench,
+    onWorkbenchReplace: replaceWorkbench,
+    ...definedProps({ onCheckoutRelocated }),
+  });
   const localApply = useLocalApply({
     workbench,
+    checkoutMissing: missingCheckout.controls !== undefined,
     view: localPatchView?.selected,
     onWorkbenchReplace: replaceWorkbench,
     onWorkbenchPatch,
@@ -195,11 +201,6 @@ export function ReviewWorkbenchFlow({
   const localRefresh = useLocalRefresh({
     workbench,
     onWorkbenchReplace: replaceWorkbench,
-  });
-  const missingCheckout = useMissingLocalCheckout({
-    workbench,
-    onWorkbenchReplace: replaceWorkbench,
-    ...definedProps({ onCheckoutRelocated }),
   });
   // A batch Add writes to the pending review, so it holds the same busy state: navigation waits and Finish and inline comments stay disabled.
   const findingBatchRunning = addAllFindings.progress !== undefined;
@@ -242,7 +243,7 @@ export function ReviewWorkbenchFlow({
             refreshing: localRefresh.refreshing,
             refreshError: undefined,
           },
-    checkoutMissing: missingCheckout !== undefined,
+    checkoutMissing: missingCheckout.controls !== undefined,
     merge: mergeAction,
     pendingReviewComposer:
       pendingReviewComposer === undefined || !findingBatchRunning
@@ -258,9 +259,7 @@ export function ReviewWorkbenchFlow({
 
   return (
     <>
-      {missingCheckout === undefined ? null : (
-        <MissingCheckoutBanner controls={missingCheckout} />
-      )}
+      <MissingCheckoutBanner {...missingCheckout} />
       <ReviewWorkbench
         model={workbench}
         {...(initialUiState === undefined

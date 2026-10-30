@@ -31,6 +31,13 @@ const registeredCheckoutSchema = v.object({
 });
 const parseLocalRepositoryListing = v.parser(localRepositoryListingSchema);
 
+/** Keeps both ends of a long folder path: the volume or home and the last folders, which tell same-named checkouts apart. */
+function shortenPathMiddle(path: string, limit = 56): string {
+  if (path.length <= limit) return path;
+  const tail = Math.ceil((limit - 1) * 0.65);
+  return `${path.slice(0, limit - 1 - tail)}…${path.slice(-tail)}`;
+}
+
 export function LocalCheckoutDialog({
   profileId,
   pickOnOpen,
@@ -152,7 +159,7 @@ export function LocalCheckoutDialog({
               <div key={repository.id} className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  className="min-w-0 flex-1 justify-start"
+                  className="h-auto min-w-0 flex-1 justify-start py-2"
                   disabled={pending || repository.state === "unresolved"}
                   onClick={() => {
                     if (repository.state === "missing") {
@@ -166,13 +173,25 @@ export function LocalCheckoutDialog({
                     setSelected({ ...repository, profileId });
                   }}
                 >
-                  <span className="truncate">{repository.displayName}</span>
-                  {repository.state === "missing" ? (
-                    <Badge variant="warning">Missing</Badge>
-                  ) : null}
-                  {repository.state === "unresolved" ? (
-                    <Badge variant="outline">Unresolved</Badge>
-                  ) : null}
+                  <span className="flex min-w-0 flex-col items-start gap-0.5">
+                    <span className="flex max-w-full items-center gap-2">
+                      <span className="truncate">{repository.displayName}</span>
+                      {repository.state === "missing" ? (
+                        <Badge variant="warning">Missing</Badge>
+                      ) : null}
+                      {repository.state === "unresolved" ? (
+                        <Badge variant="outline">Unresolved</Badge>
+                      ) : null}
+                    </span>
+                    {repository.configuredRoot === undefined ? null : (
+                      <span
+                        className="max-w-full truncate font-mono text-xs font-normal text-muted-foreground"
+                        title={repository.configuredRoot}
+                      >
+                        {shortenPathMiddle(repository.configuredRoot)}
+                      </span>
+                    )}
+                  </span>
                 </Button>
                 {repository.state === "missing" ? (
                   <Button

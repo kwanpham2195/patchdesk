@@ -225,6 +225,7 @@ export function ReviewWorkbenchHeader({
               model.session.key.source,
               model.revision.reviewedHeadSha,
               patchView,
+              actions.checkoutMissing === true,
             )
           ) : (
             <>

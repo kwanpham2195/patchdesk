@@ -64,6 +64,11 @@ export function LocalApplyBar({
             disabled={
               selected.length === 0 || controls.pending || controls.blocked
             }
+            title={
+              controls.checkoutMissing === true
+                ? "Relocate the checkout to apply"
+                : undefined
+            }
             onClick={() => setOpen(true)}
           >
             {controls.pending ? (
