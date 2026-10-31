@@ -45,6 +45,9 @@ jobs:
       - name: Check the scripts/ typecheck ratchet
         run: pnpm typecheck:scripts
 
+      - name: Check error surfaces, imports and the Knip ratchet
+        run: pnpm check:error-ui && pnpm check:imports && pnpm knip:ratchet
+
       - name: Lint the whole repository
         run: pnpm lint
 

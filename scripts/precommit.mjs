@@ -53,7 +53,7 @@ export function decideReactDoctor({ packageJsonDiffers, stagedPaths }) {
 }
 
 const CODE_FILE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
-const TYPESCRIPT_FILE = /\.tsx?$/;
+const TSC_CONFIG_INPUT = /^(?:tsconfig[^/]*|[^/]*\.config\.ts)$/;
 const LINT_CONFIG_INPUT =
   /^(?:lint-baseline\.json|tools\/oxlint\/|(?:.*\/)?\.oxlintrc\.json$)/;
 
@@ -94,9 +94,11 @@ export function planStagedChecks(stagedPaths, exists = existsSync) {
   /** @type {Array<ReadonlyArray<string>>} */
   const plan = [["lint:staged"]];
   if (markdown.length > 0) plan.push(["exec", "oxfmt", "--check", ...markdown]);
+  // tsc checks JavaScript too (allowJs), so any code under src/ or tests/ counts.
   if (
-    stagedPaths.some((path) => TYPESCRIPT_FILE.test(path)) ||
-    staged(["tsconfig.json"])
+    codeIn(["src", "tests"]) ||
+    stagedPaths.some((path) => TSC_CONFIG_INPUT.test(path)) ||
+    staged(["package.json", "pnpm-lock.yaml"])
   )
     plan.push(["typecheck"]);
   if (
@@ -203,6 +205,30 @@ async function stagedPaths(cwd) {
 async function main() {
   const staged = await stagedPaths(projectRoot);
   if (staged === undefined) {
+    process.exitCode = 1;
+    return;
+  }
+  const unstaged = await execute(
+    spawnCommand,
+    "git",
+    ["diff", "--name-only", "-z", "--", "*.md"],
+    projectRoot,
+    processOutput,
+  );
+  if (unstaged === undefined) {
+    process.exitCode = 1;
+    return;
+  }
+  const partialMarkdown = unstaged.stdout
+    .split("\u0000")
+    .filter((path) => path.length > 0 && staged.includes(path));
+  if (partialMarkdown.length > 0) {
+    // oxfmt --check reads the working tree, not the index.
+    processOutput.stderr(
+      "Cannot safely check partially staged Markdown files.\nStage or restore all changes in each listed file, then retry.\n" +
+        partialMarkdown.map((path) => `- ${path}`).join("\n") +
+        "\n",
+    );
     process.exitCode = 1;
     return;
   }

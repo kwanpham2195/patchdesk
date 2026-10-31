@@ -135,7 +135,9 @@ first failure (`planStagedChecks` in `scripts/precommit.mjs` is the list):
 6. `pnpm knip:ratchet` when code under `src/`, `tests/` or `scripts/`,
    `knip.json`, `knip-baseline.json` or `package.json` is staged.
 7. `vitest related --run` over the staged code files, not the whole suite.
-   A failing test outside their import graph does not block the commit.
+   A failing test outside their import graph does not block the commit, and
+   `related` misses tests that only spawn a script, so script changes rely on
+   the landing check.
 8. React Doctor scans staged files when anything under `src/` is staged, and
    remains blocking unless it cannot read the tree it would scan (below).
 
