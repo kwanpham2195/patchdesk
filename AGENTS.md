@@ -138,6 +138,7 @@ Process:
 
 - Every change goes through a PR, including static copy, alerts, messages, and instructions. Behaviour changes include before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
 - Throwaway PRs are always fine for live checks, including writes. For real PRs, follow the scoped write approval under Standing authorization.
+- A PR body follows `.github/pull_request_template.md` and ends with the model and harness that did the work. Commit messages stay free of AI trailers.
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue, and close finished issues before starting the next.
 - A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing: nine fixed bugs stayed open for weeks that way (closed 2026-09-26). Before fixing an old issue, check CHANGELOG and `git log` for its number.
 - Once an action is approved, do not re-ask for its sub-steps. Follow Standing authorization for approved programs and new actions.
