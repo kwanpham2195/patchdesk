@@ -180,7 +180,7 @@ export function ReviewWorkbenchFlow({
   });
   const localApply = useLocalApply({
     workbench,
-    checkoutMissing: missingCheckout.controls !== undefined,
+    ...missingCheckout.loss,
     view: localPatchView?.selected,
     onWorkbenchReplace: replaceWorkbench,
     onWorkbenchPatch,
@@ -243,7 +243,7 @@ export function ReviewWorkbenchFlow({
             refreshing: localRefresh.refreshing,
             refreshError: undefined,
           },
-    checkoutMissing: missingCheckout.controls !== undefined,
+    ...missingCheckout.loss,
     merge: mergeAction,
     pendingReviewComposer:
       pendingReviewComposer === undefined || !findingBatchRunning

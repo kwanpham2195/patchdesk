@@ -45,6 +45,8 @@ export type LocalApplyControls = {
   readonly blocked: boolean;
   /** The checkout folder is gone, so Apply has nothing to write to until it is relocated. */
   readonly checkoutMissing?: true;
+  /** With `checkoutMissing`: the repository has no checkout here, so there is nothing to relocate. */
+  readonly checkoutUnresolved?: true;
   /** Why the last Apply was refused, shown beside the control. */
   readonly refusal?: string;
   readonly notice?: string;
@@ -139,9 +141,11 @@ export function useLocalApply({
   onWorkbenchReplace,
   onWorkbenchPatch,
   checkoutMissing,
+  checkoutUnresolved,
 }: {
   readonly workbench: WorkbenchResponse;
   readonly checkoutMissing?: boolean;
+  readonly checkoutUnresolved?: boolean;
   /** The patch view the diff shows; undefined on a Review without views. */
   readonly view: LocalPatchView | undefined;
   readonly onWorkbenchReplace: (workbench: WorkbenchResponse) => void;
@@ -340,6 +344,8 @@ export function useLocalApply({
     blocked,
     ...definedProps({
       checkoutMissing: checkoutMissing === true ? (true as const) : undefined,
+      checkoutUnresolved:
+        checkoutUnresolved === true ? (true as const) : undefined,
       refusal: current.refusal ?? blockedReason,
       notice: current.notice,
       lock,

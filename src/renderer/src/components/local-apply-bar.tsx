@@ -65,9 +65,11 @@ export function LocalApplyBar({
               selected.length === 0 || controls.pending || controls.blocked
             }
             title={
-              controls.checkoutMissing === true
-                ? "Relocate the checkout to apply"
-                : undefined
+              controls.checkoutMissing !== true
+                ? undefined
+                : controls.checkoutUnresolved === true
+                  ? "This repository has no checkout in this workspace"
+                  : "Relocate the checkout to apply"
             }
             onClick={() => setOpen(true)}
           >

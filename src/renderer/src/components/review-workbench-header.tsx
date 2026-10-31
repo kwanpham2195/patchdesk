@@ -225,7 +225,11 @@ export function ReviewWorkbenchHeader({
               model.session.key.source,
               model.revision.reviewedHeadSha,
               patchView,
-              actions.checkoutMissing === true,
+              actions.checkoutMissing === true
+                ? actions.checkoutUnresolved === true
+                  ? "unresolved"
+                  : "missing"
+                : undefined,
             )
           ) : (
             <>
@@ -262,9 +266,11 @@ export function ReviewWorkbenchHeader({
               actions.refreshing === true || actions.checkoutMissing === true
             }
             title={
-              actions.checkoutMissing === true
-                ? "Relocate the checkout to refresh"
-                : undefined
+              actions.checkoutMissing !== true
+                ? undefined
+                : actions.checkoutUnresolved === true
+                  ? "This repository has no checkout in this workspace"
+                  : "Relocate the checkout to refresh"
             }
             onClick={() => void actions.refresh()}
           >

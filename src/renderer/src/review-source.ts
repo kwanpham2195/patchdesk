@@ -71,12 +71,15 @@ export function localRevisionLabel(
   source: WorkbenchReviewSource,
   headSha: string,
   view: LocalPatchView = "combined",
-  checkoutMissing = false,
+  checkoutLoss?: "missing" | "unresolved",
 ): string | undefined {
   const short = headSha.slice(0, 8);
-  const origin = checkoutMissing
-    ? "checkout folder missing"
-    : "read from the local checkout";
+  const origin =
+    checkoutLoss === undefined
+      ? "read from the local checkout"
+      : checkoutLoss === "missing"
+        ? "checkout folder missing"
+        : "no checkout in this workspace";
   switch (source.kind) {
     case "pull_request":
       return undefined;

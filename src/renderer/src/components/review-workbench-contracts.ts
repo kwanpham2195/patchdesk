@@ -35,6 +35,8 @@ export type ReviewWorkbenchActions = {
   readonly refreshError?: boolean;
   /** True on a local Review whose checkout folder is gone: Refresh is disabled until it is relocated. */
   readonly checkoutMissing?: true;
+  /** With `checkoutMissing`: the repository has no checkout in this workspace, so there is nothing to relocate. */
+  readonly checkoutUnresolved?: true;
   readonly loadCommitDiff: (sha: string) => Promise<CommitDiffResponse>;
   readonly loadSinceReviewDiff: () => Promise<SinceReviewDiffResponse>;
   /** A shared local Review's Since last Refresh patch for the named session. */

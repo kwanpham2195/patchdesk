@@ -50,6 +50,8 @@ export type WorkbenchActionsInput = {
   >;
   /** The local Review's checkout folder is gone, so Refresh has nothing to read. */
   readonly checkoutMissing: boolean;
+  /** The checkout is missing because the repository has none in this workspace, so there is nothing to relocate. */
+  readonly checkoutUnresolved: boolean;
   readonly merge: ReviewWorkbenchActions["merge"];
   readonly pendingReviewComposer: PendingReviewActionsResult["pendingReviewComposer"];
   readonly pendingReview: PendingReviewActionsResult["pendingReview"];
@@ -76,6 +78,7 @@ export function useWorkbenchActions({
   changeIntent,
   observation,
   checkoutMissing,
+  checkoutUnresolved,
   merge,
   pendingReviewComposer,
   pendingReview,
@@ -216,6 +219,7 @@ export function useWorkbenchActions({
         refreshing: refreshing ? (true as const) : undefined,
         refreshError: refreshError ? (true as const) : undefined,
         checkoutMissing: checkoutMissing ? (true as const) : undefined,
+        checkoutUnresolved: checkoutUnresolved ? (true as const) : undefined,
         merge: githubWritesLocked ? undefined : merge,
         localCommentAuthoring,
         localNotes,
@@ -239,6 +243,7 @@ export function useWorkbenchActions({
       baseBranchActions,
       changeIntent,
       checkoutMissing,
+      checkoutUnresolved,
       conversationActions,
       directSummary,
       dismissAgentExplanation,

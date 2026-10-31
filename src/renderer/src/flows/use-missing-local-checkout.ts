@@ -26,11 +26,18 @@ export type MissingLocalCheckoutControls =
       /** Reads the Review again from its relocated checkout and drops the banner. */
       readonly finishRelocate: () => Promise<void>;
     }
-  | { readonly kind: "worktree"; readonly path: string };
+  | { readonly kind: "worktree"; readonly path: string }
+  /** A registration with no checkout in this workspace: only reconciliation fixes it, so no Relocate (ADR 0058). */
+  | { readonly kind: "unresolved"; readonly displayName: string };
 
 /** What the open local Review shows about a lost checkout folder. */
 export type MissingLocalCheckout = {
   readonly controls: MissingLocalCheckoutControls | undefined;
+  /** What Refresh and Apply need to know: the checkout cannot be read, and whether there is nothing to relocate. */
+  readonly loss: {
+    readonly checkoutMissing: boolean;
+    readonly checkoutUnresolved: boolean;
+  };
   /** Why the Review could not be read from a checkout that was just relocated. */
   readonly reloadNotice: string | undefined;
 };
@@ -65,6 +72,7 @@ export function useMissingLocalCheckout({
   const reviewId = workbench.review.id;
   const [missing, setMissing] = useState<
     | { readonly worktree: string }
+    | { readonly unresolved: string }
     | { readonly repository: RelocatableRepository }
   >();
   const [relocating, setRelocating] = useState(false);
@@ -107,6 +115,10 @@ export function useMissingLocalCheckout({
                 repositoryKey),
         );
         if (!active) return;
+        if (repository?.state === "unresolved") {
+          setMissing({ unresolved: repository.displayName });
+          return;
+        }
         setMissing(
           repository?.state === "missing"
             ? {
@@ -152,20 +164,26 @@ export function useMissingLocalCheckout({
     setCheckedAgain((count) => count + 1);
   }, [onCheckoutRelocated, onWorkbenchReplace, profileId, reviewId]);
 
-  if (missing === undefined) return { controls: undefined, reloadNotice };
-  if ("worktree" in missing)
+  const controls = ((): MissingLocalCheckoutControls | undefined => {
+    if (missing === undefined) return undefined;
+    if ("worktree" in missing)
+      return { kind: "worktree", path: missing.worktree };
+    if ("unresolved" in missing)
+      return { kind: "unresolved", displayName: missing.unresolved };
     return {
-      controls: { kind: "worktree", path: missing.worktree },
-      reloadNotice,
-    };
-  return {
-    controls: {
       kind: "repository",
       repository: missing.repository,
       relocating,
       startRelocate: () => setRelocating(true),
       closeRelocate: () => setRelocating(false),
       finishRelocate,
+    };
+  })();
+  return {
+    controls,
+    loss: {
+      checkoutMissing: controls !== undefined,
+      checkoutUnresolved: controls?.kind === "unresolved",
     },
     reloadNotice,
   };

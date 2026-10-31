@@ -551,6 +551,7 @@ function localRowHint(
   missing: SidebarLocalRepositoryRow["checkoutMissing"],
 ): string {
   if (missing === undefined) return "local";
+  if (missing.scope === "unresolved") return "no checkout";
   return missing.scope === "worktree" ? "folder missing" : "checkout missing";
 }
 

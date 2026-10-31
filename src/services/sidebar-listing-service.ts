@@ -84,13 +84,15 @@ type SidebarLocalRepositoryRow = {
    * Present when the folder the row reads no longer exists: the registration's
    * checkout (`repository`, which can be relocated) or a linked worktree's own
    * folder (`worktree`, which cannot: a moved worktree is a new source, ADR
-   * 0051 and 0058). The row then opens `reviewId`, the newest of its Reviews,
-   * from storage without reading the checkout.
+   * 0051 and 0058), or a registration with no checkout in this workspace
+   * (`unresolved`, which only reconciliation can fix). The row then opens
+   * `reviewId`, the newest of its Reviews, from storage without reading a
+   * checkout.
    */
   readonly checkoutMissing?: {
     readonly reviewId: ReviewId;
     readonly path?: AbsolutePath;
-    readonly scope: "repository" | "worktree";
+    readonly scope: "repository" | "worktree" | "unresolved";
   };
 } & (
   | {
@@ -332,6 +334,8 @@ function localRepositoryRow(
       scope: "repository",
       ...definedProps({ path: registration.configuredRoot }),
     };
+  if (registration?.state === "unresolved" && checkoutMissing === undefined)
+    checkoutMissing = { reviewId: newest.id, scope: "unresolved" };
   if (identityKey.kind === "github") {
     repository = {
       host: identityKey.host,

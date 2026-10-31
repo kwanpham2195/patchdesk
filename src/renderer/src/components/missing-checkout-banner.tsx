@@ -38,6 +38,22 @@ export function MissingCheckoutBanner({
         </AlertDescription>
       </Alert>
     );
+  if (controls.kind === "unresolved")
+    return (
+      <Alert
+        variant="warning"
+        className="mx-4 mt-2 w-auto"
+        data-review-checkout-unresolved
+      >
+        <FolderSearch aria-hidden="true" />
+        <AlertTitle>No checkout for this repository</AlertTitle>
+        <AlertDescription>
+          Patchdesk shows the last captured snapshot of {controls.displayName}.
+          This repository has no checkout in this workspace, so Refresh and
+          Apply are off.
+        </AlertDescription>
+      </Alert>
+    );
   const { repository } = controls;
   return (
     <>
