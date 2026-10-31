@@ -184,6 +184,11 @@ export default defineConfig(({ command }) => ({
     },
   },
   renderer: {
+    // A worktree's `pnpm dev` hands its own port; strict so a clash fails instead of moving the origin.
+    server:
+      process.env.PATCHDESK_VITE_PORT === undefined
+        ? {}
+        : { port: Number(process.env.PATCHDESK_VITE_PORT), strictPort: true },
     plugins: [react(), tailwindcss(), rendererGraphArtifact()],
     build: {
       manifest: true,

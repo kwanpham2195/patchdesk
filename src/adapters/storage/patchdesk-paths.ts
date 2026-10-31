@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -29,6 +30,9 @@ const PATCHDESK_ROOTS_ENVIRONMENT = {
   cache: "PATCHDESK_CACHE_DIRECTORY",
 } as const;
 
+/** A worktree's `pnpm dev` points this at its own profile folder (scripts/dev-worktree-lib.mjs). */
+const DEV_PROFILE_ROOT_ENVIRONMENT = "PATCHDESK_DEV_PROFILE_ROOT";
+
 /** Set to `1` to run an unpackaged build against the installed app's roots. */
 const DEV_SHARED_ENVIRONMENT = "PATCHDESK_DEV_SHARED";
 
@@ -48,6 +52,7 @@ export class PatchdeskPaths {
     private readonly roots: PatchdeskPathRoots,
     private readonly mcpSocketName: string,
     private readonly refNamespace: string,
+    private readonly electronUserData: string | undefined = undefined,
   ) {}
 
   /**
@@ -63,10 +68,33 @@ export class PatchdeskPaths {
     if (input.packaged) return PatchdeskPaths.installedRoots();
     if (input.environment[DEV_SHARED_ENVIRONMENT] === "1")
       return PatchdeskPaths.installedRoots(SHARED_DEV_MCP_SOCKET);
+    const profileRoot = input.environment[DEV_PROFILE_ROOT_ENVIRONMENT];
+    if (profileRoot !== undefined && profileRoot !== "")
+      return PatchdeskPaths.worktreeProfile(profileRoot);
     return PatchdeskPaths.rootsNamed(
       "patchdesk-dev",
       INSTALLED_MCP_SOCKET,
       DEV_REF_NAMESPACE,
+    );
+  }
+
+  /**
+   * A worktree's dev profile: every root, Electron's user data and the ref
+   * namespace belong to that worktree, so it runs beside the main dev app and
+   * never sweeps its refs. The namespace is a sibling of `refs/patchdesk-dev`,
+   * not nested in it, so the main dev app's sweep cannot match it.
+   */
+  private static worktreeProfile(profileRoot: string): PatchdeskPaths {
+    const digest = createHash("sha256").update(profileRoot).digest("hex");
+    return new PatchdeskPaths(
+      {
+        configDirectory: join(profileRoot, "config"),
+        dataDirectory: join(profileRoot, "data"),
+        cacheDirectory: join(profileRoot, "cache"),
+      },
+      INSTALLED_MCP_SOCKET,
+      `${DEV_REF_NAMESPACE}-${digest.slice(0, 8)}`,
+      join(profileRoot, "electron"),
     );
   }
 
@@ -169,6 +197,11 @@ export class PatchdeskPaths {
       [PATCHDESK_ROOTS_ENVIRONMENT.data]: this.dataDirectory(),
       [PATCHDESK_ROOTS_ENVIRONMENT.cache]: this.cacheDirectory(),
     };
+  }
+
+  /** Electron's user-data folder when this profile owns one; its single-instance lock is keyed on it. */
+  userDataDirectory(): string | undefined {
+    return this.electronUserData;
   }
 
   configDirectory(): string {
