@@ -105,6 +105,7 @@ describe("Local drafts on a local Review", () => {
       "/v1/reviews/insights/walkthrough/summary": () =>
         success({ _tag: "none", run: null, failure: null }),
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/local-repositories": () => success([]),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       // Context hydration is not under test; an unreadable file keeps the patch as it is.
       "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
@@ -183,6 +184,7 @@ describe("Local drafts on a local Review", () => {
       "/v1/reviews/insights/walkthrough/summary": () =>
         success({ _tag: "none", run: null, failure: null }),
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/local-repositories": () => success([]),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
       [ADD]: () => failure({ error: "in_progress" }, 409),
@@ -209,6 +211,7 @@ describe("Local drafts on a local Review", () => {
     const at = "2026-09-30T10:00:00.000Z";
     const double = installDesktopDouble({
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/local-repositories": () => success([]),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
       [HANDOFF]: () =>

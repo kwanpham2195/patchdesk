@@ -8,6 +8,15 @@ export type LocalRepositoryTarget =
 export const localRepositoryListingSchema = v.array(
   v.object({
     id: v.string(),
+    identityKey: v.variant("kind", [
+      v.object({
+        kind: v.literal("github"),
+        host: v.string(),
+        owner: v.string(),
+        repo: v.string(),
+      }),
+      v.object({ kind: v.literal("local") }),
+    ]),
     displayName: v.string(),
     state: v.picklist(["resolved", "missing", "unresolved"]),
     configuredRoot: v.optional(v.string()),

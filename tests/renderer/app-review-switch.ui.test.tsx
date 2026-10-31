@@ -163,6 +163,7 @@ describe("App Review switch", () => {
         "/v1/reviews/open": () => success(asJsonBody(localReview("review-b"))),
         "/v1/reviews/detect-updates": () =>
           success({ updatesAvailable: false }),
+        "/v1/local-repositories": () => success([]),
         "/v1/insight-providers": () => failure({ error: "storage" }, 503),
         "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),
       },

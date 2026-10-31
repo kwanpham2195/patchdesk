@@ -14,7 +14,10 @@ import {
   type WorkspaceProfileId,
 } from "#src/domain/ids";
 import { KeyedMutex } from "#src/domain/keyed-mutex";
-import type { LocalRepositoryRegistration } from "#src/domain/local-repository";
+import {
+  sameRepositoryIdentityKey,
+  type LocalRepositoryRegistration,
+} from "#src/domain/local-repository";
 import { err, ok, type Result } from "#src/domain/result";
 import { isLocalReview, type Review } from "#src/domain/review";
 import type { LocalReviewSource } from "#src/domain/review-source";
@@ -155,11 +158,10 @@ export class SidebarListingService {
       localReviews.set(key, [review, ...(localReviews.get(key) ?? [])]);
     }
     const groups = [...localReviews.values()];
-    const registrations = groups.some(
-      (group) => group[0].identity.identityKey.kind === "local",
-    )
-      ? await this.dependencies.repositories.list(profileId)
-      : ok([]);
+    const registrations =
+      groups.length > 0
+        ? await this.dependencies.repositories.list(profileId)
+        : ok([]);
     if (registrations._tag === "err") return err({ reason: "storage" });
     const [activity, worktreeGone] = await Promise.all([
       Promise.all(
@@ -320,6 +322,16 @@ function localRepositoryRow(
         readonly repo: GitHubRepoName;
       }
     | { readonly localRepositoryId: string; readonly displayName: string };
+  const registration = registrations.find((entry) =>
+    sameRepositoryIdentityKey(entry.identityKey, identityKey),
+  );
+  // An upgraded registration keeps its GitHub key, so a moved checkout shows for either kind of key.
+  if (registration?.state === "missing" && checkoutMissing === undefined)
+    checkoutMissing = {
+      reviewId: newest.id,
+      scope: "repository",
+      ...definedProps({ path: registration.configuredRoot }),
+    };
   if (identityKey.kind === "github") {
     repository = {
       host: identityKey.host,
@@ -327,16 +339,7 @@ function localRepositoryRow(
       repo: identityKey.repo,
     };
   } else {
-    const registration = registrations.find(
-      (entry) => entry.id === identityKey.localRepositoryId,
-    );
     if (registration === undefined) return err({ reason: "storage" });
-    if (registration.state === "missing" && checkoutMissing === undefined)
-      checkoutMissing = {
-        reviewId: newest.id,
-        scope: "repository",
-        ...definedProps({ path: registration.configuredRoot }),
-      };
     location ??= registration.configuredRoot;
     repository = {
       localRepositoryId: registration.id,

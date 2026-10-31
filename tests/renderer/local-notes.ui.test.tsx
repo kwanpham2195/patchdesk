@@ -147,6 +147,7 @@ describe("Maintainer notes on a local Review", () => {
   it("adds a note from the Diff composer and lists it in the Notes list, which removes it", async () => {
     const double = installDesktopDouble({
       "/v1/reviews/detect-updates": () => success({ updatesAvailable: false }),
+      "/v1/local-repositories": () => success([]),
       "/v1/insight-providers": () => failure({ error: "storage" }, 503),
       // Context hydration is not under test; an unreadable file keeps the patch as it is.
       "/v1/reviews/diff-file": () => failure({ error: "not_found" }, 404),

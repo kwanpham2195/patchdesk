@@ -1,6 +1,6 @@
 import { KeyedMutex } from "#src/domain/keyed-mutex";
 import { randomUUID, createHash } from "node:crypto";
-import { readFile, readdir, unlink } from "node:fs/promises";
+import { readFile, readdir, stat, unlink } from "node:fs/promises";
 import { join, relative } from "node:path";
 import * as v from "valibot";
 import {
@@ -115,7 +115,10 @@ export class LocalRepositoryUpgrade {
       }
       const result = await this.upgradeLocked(profileId);
       return result._tag === "err"
-        ? this.refused(profileId, result.error)
+        ? this.refused(
+            profileId,
+            await this.withExistingBackup(profileId, result.error),
+          )
         : result;
     } finally {
       try {
@@ -412,6 +415,22 @@ export class LocalRepositoryUpgrade {
         : failure("invalid_stored_value");
     } catch (cause: unknown) {
       return isNotFound(cause) ? writeAtomicFile(path, bytes) : failure("io");
+    }
+  }
+
+  /** An earlier interrupted run may have left the backup; the dialog must not claim none was made. */
+  private async withExistingBackup(
+    profileId: WorkspaceProfileId,
+    refused: Refusal,
+  ): Promise<Refusal> {
+    const backupFile = this.paths.preUpgradeProfileFile(profileId);
+    if (refused.backup !== undefined || refused.file === backupFile)
+      return refused;
+    try {
+      await stat(backupFile);
+      return { ...refused, backup: backupFile };
+    } catch {
+      return refused;
     }
   }
 

@@ -96,6 +96,7 @@ export function bridge(
   };
   installed = installDesktopDouble({
     ...Object.fromEntries(WORKBENCH_PATHS.map((path) => [path, route])),
+    "/v1/local-repositories": () => success([]),
     "/v1/reviews/insights/walkthrough/summary": () =>
       success({ _tag: "none", run: null, failure: null }),
     "/v1/reviews/insights/guide/summary": () =>

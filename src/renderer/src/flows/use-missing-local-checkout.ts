@@ -54,8 +54,11 @@ export function useMissingLocalCheckout({
   readonly onCheckoutRelocated?: () => void;
 }): MissingLocalCheckout {
   const { key } = workbench.session;
-  const repositoryId =
-    "identityKey" in key ? key.identityKey.localRepositoryId : undefined;
+  // An upgraded registration keeps its GitHub key, so a Review stored under it matches by triple.
+  const repositoryKey =
+    "identityKey" in key
+      ? key.identityKey.localRepositoryId
+      : `${key.host}/${key.owner}/${key.repo}`;
   const worktree = "checkout" in key.source ? key.source.checkout : undefined;
   const isLocal = key.source.kind !== "pull_request";
   const profileId = key.profileId;
@@ -91,16 +94,18 @@ export function useMissingLocalCheckout({
             return;
           }
         }
-        if (repositoryId === undefined) {
-          if (active) setMissing(undefined);
-          return;
-        }
         const listing = parseListing(
           await requestJson(
             `/v1/local-repositories?${new URLSearchParams({ profileId })}`,
           ),
         );
-        const repository = listing.find((entry) => entry.id === repositoryId);
+        const repository = listing.find(
+          (entry) =>
+            entry.id === repositoryKey ||
+            (entry.identityKey.kind === "github" &&
+              `${entry.identityKey.host}/${entry.identityKey.owner}/${entry.identityKey.repo}` ===
+                repositoryKey),
+        );
         if (!active) return;
         setMissing(
           repository?.state === "missing"
@@ -121,7 +126,7 @@ export function useMissingLocalCheckout({
     return () => {
       active = false;
     };
-  }, [checkedAgain, isLocal, profileId, repositoryId, reviewId, worktree]);
+  }, [checkedAgain, isLocal, profileId, repositoryKey, reviewId, worktree]);
 
   const finishRelocate = useCallback(async (): Promise<void> => {
     setReloadFailure(undefined);
