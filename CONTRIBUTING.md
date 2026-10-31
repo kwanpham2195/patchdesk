@@ -134,11 +134,20 @@ first failure (`planStagedChecks` in `scripts/precommit.mjs` is the list):
    the count ratchet still apply.
 6. `pnpm knip:ratchet` when code under `src/`, `tests/` or `scripts/`,
    `knip.json`, `knip-baseline.json` or `package.json` is staged.
-7. `vitest related --run` over the staged code files, not the whole suite.
+7. `tests/scripts/context-budget.test.ts` when code under `src/`, `AGENTS.md`
+   or `context-budget.json` is staged: the budget file must equal the measured
+   byte sizes of the model-facing text (Insight output guidance, session
+   prompts, the MCP tool list, `AGENTS.md`). Update it with
+   `node scripts/check-context-budget.mjs --write`. The `commit-msg` hook
+   (`scripts/check-context-budget.mjs`) then fails a commit that grows any
+   value over `HEAD`'s budget unless the message has a line
+   `context-increase: <reason>`; the `CI` workflow applies the same rule to the
+   pushed commit on `main`.
+8. `vitest related --run` over the staged code files, not the whole suite.
    A failing test outside their import graph does not block the commit, and
    `related` misses tests that only spawn a script, so script changes rely on
    the landing check.
-8. React Doctor scans staged files when anything under `src/` is staged, and
+9. React Doctor scans staged files when anything under `src/` is staged, and
    remains blocking unless it cannot read the tree it would scan (below).
 
 The full `pnpm check` is the landing gate. Run it on the rebased head before

@@ -121,6 +121,13 @@ export function planStagedChecks(stagedPaths, exists = existsSync) {
     staged(["knip.json", "knip-baseline.json", "package.json"])
   )
     plan.push(["knip:ratchet"]);
+  if (codeIn(["src"]) || staged(["AGENTS.md", "context-budget.json"]))
+    plan.push([
+      "exec",
+      "vitest",
+      "--run",
+      "tests/scripts/context-budget.test.ts",
+    ]);
   if (related.length > 0)
     plan.push([
       "exec",
