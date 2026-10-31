@@ -68,6 +68,8 @@ release wrote. Data only flows into the worktree. Delete `.patchdesk-dev/` to
 reseed. `PATCHDESK_DEV_SHARED=1` opts out. `pnpm cdp:ready` and
 `pnpm -s mcp:shim` resolve the current checkout's port and socket.
 
+**Worktree setup.** `t3.json` runs `node scripts/setup-worktree.mjs` when T3 Code creates a worktree: `pnpm install --frozen-lockfile`, the Electron binary if missing, then the profile seed above. It writes `setup-running` (its PID), then `setup-done` or `setup-failed` (error tail, or the signal that cancelled it), in `.patchdesk-dev/`. It refuses to run in the main checkout.
+
 **The MCP shim.** The dev app listens on
 `~/.local/share/patchdesk-dev/mcp/patchdesk.sock`, so it and an installed
 Patchdesk can listen side by side (ADR 0052). `pnpm -s mcp:shim`
