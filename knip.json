@@ -4,6 +4,7 @@
     ".": {
       "entry": [
         "scripts/*.mjs",
+        "scripts/replay/*.mjs",
         "tests/**/*.{ts,tsx}",
         "src/mcp/main.ts",
         "src/adapters/pi-cli/pi-explanation-helper.ts"
