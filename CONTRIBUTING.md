@@ -1,5 +1,7 @@
 # Contributing to Patchdesk
 
+Owns setup, the codebase map, scripts, the commit gate, verification, release, pull requests and issue labels; read it before you build, test, commit or release.
+
 Patchdesk is a local-first Electron workbench for preparing, inspecting, and
 explicitly running pull-request reviews. See `README.md` for what Patchdesk
 is and how to install the packaged app; this file covers building it from
@@ -685,3 +687,13 @@ Every change goes through a PR, including copy and instructions.
 Base branch: `main`. Keep PRs focused on one logical change. User-visible
 behavior changes must update the relevant docs; architectural decisions go
 through an ADR in `docs/adr/`.
+
+## Issue labels
+
+Issues live in GitHub Issues on this repository. The triage labels:
+
+- `needs-triage`: the maintainer needs to evaluate the issue.
+- `needs-info`: waiting on the reporter for more information.
+- `ready-for-agent`: fully specified, ready for an agent to implement without a person.
+- `ready-for-human`: needs human implementation or a human decision.
+- `wontfix`: will not be actioned.

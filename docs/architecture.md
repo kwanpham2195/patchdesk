@@ -1,11 +1,10 @@
 # Architecture
 
-This document describes Patchdesk's process boundaries, code layers, and write rules.
+Owns Patchdesk's process boundaries, code layers, write rules and invariants; read it before you change code across layers, a write path or storage.
 
 For the vocabulary of the domain, read [the product glossary](product-description/glossary.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
 For the history of architectural decisions, read the records in [docs/adr](adr/).
-For how agents should explore this repository, read [docs/agents/domain.md](agents/domain.md).
 
 The architecture has three layers of authority:
 
@@ -400,7 +399,7 @@ The root Vitest suite and Playwright browser suites cover the application.
 `tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 `tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
 
-`pnpm test:root` and `pnpm test:all` run the root suite. `pnpm check:package root` selects the only application package for final verification; `pnpm check` is the full repository gate, run at landing; pre-commit runs only the changed-file checks. The retired API runtime has no separate suite.
+The retired API runtime has no separate suite.
 
 The outermost boundary is the built app.
 Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.

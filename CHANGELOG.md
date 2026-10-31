@@ -1,5 +1,7 @@
 # Changelog
 
+User-visible changes per release; read it when you ship or look up a change.
+
 ## Unreleased
 
 - Added `patchdesk triage`, which writes a context file of version, channel, commit, paths and log locations for a coding agent to diagnose a problem, with a playbook and an issue form. #870
