@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # The context budget step reads the budget and messages from before the push.
+          fetch-depth: 0
 
       # No `version:` here on purpose: `package.json`'s `packageManager` pins
       # pnpm, and action-setup refuses two sources.
@@ -46,7 +49,9 @@ jobs:
         run: pnpm typecheck:scripts
 
       - name: Check the model-facing text budget
-        run: node scripts/check-context-budget.mjs --ci
+        run: node scripts/check-context-budget.mjs --ci "$BEFORE"
+        env:
+          BEFORE: ${{ github.event.before }}
 
       - name: Check error surfaces, imports and the Knip ratchet
         run: pnpm check:error-ui && pnpm check:imports && pnpm knip:ratchet

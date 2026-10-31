@@ -18,7 +18,7 @@ import {
 const projectRoot = resolve(import.meta.dirname, "..");
 
 const USAGE =
-  "Usage: node scripts/check-context-budget.mjs --write | --ci | --commit-msg <message-file>\n";
+  "Usage: node scripts/check-context-budget.mjs --write | --ci <before-sha> | --commit-msg <message-file>\n";
 
 /**
  * @param {string} spec A `git show` object, such as `HEAD:context-budget.json`.
@@ -35,6 +35,19 @@ function budgetAt(spec) {
     );
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * @param {ReadonlyArray<string>} args
+ * @returns {boolean}
+ */
+function gitSucceeds(args) {
+  try {
+    execFileSync("git", [...args], { cwd: projectRoot, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -83,25 +96,44 @@ async function run(args) {
     return 0;
   }
 
-  if (mode === "--ci" && args.length === 1) {
-    const growth = findGrowth(
-      JSON.parse(await readFile(resolve(projectRoot, BUDGET_FILE), "utf8")),
-      await measure(),
-    );
+  if (mode === "--ci" && args.length <= 2) {
+    // The push's previous tip: absent or all zeros on a new branch, where there is no range to judge.
+    const before = args[1];
+    if (before === undefined || /^0*$/.test(before)) return 0;
+    const committed = budgetAt(`${before}:${BUDGET_FILE}`);
+    if (committed === undefined) return 0;
+    const growth = findGrowth(committed, await measure());
     if (growth.length === 0) return 0;
-    const message = execFileSync("git", ["log", "-1", "--format=%B"], {
-      cwd: projectRoot,
-      encoding: "utf8",
-    });
-    if (hasIncreaseTrailer(message)) return 0;
-    reportGrowth(growth, " past the committed budget");
+    const messages = execFileSync(
+      "git",
+      ["log", "--format=%B", `${before}..HEAD`],
+      { cwd: projectRoot, encoding: "utf8" },
+    );
+    if (hasIncreaseTrailer(messages)) return 0;
+    reportGrowth(growth, ` since ${before}`);
     return 1;
   }
 
   if (mode === "--commit-msg" && messageFile !== undefined) {
+    // A merge brings in budgets that earlier commits already judged.
+    if (gitSucceeds(["rev-parse", "-q", "--verify", "MERGE_HEAD"])) return 0;
+    const unstaged = execFileSync(
+      "git",
+      ["diff", "--name-only", "--", "AGENTS.md", "src"],
+      { cwd: projectRoot, encoding: "utf8" },
+    ).trim();
+    if (unstaged.length > 0) {
+      process.stderr.write(
+        `Stage or set aside unstaged changes to measured files; the budget is measured on the working tree:\n${unstaged}\n`,
+      );
+      return 1;
+    }
     const measured = await measure();
+    // An amend replaces HEAD, so its budget is not the baseline; HEAD^'s is.
+    const amending =
+      process.env.GIT_REFLOG_ACTION?.startsWith("commit (amend)");
     // The commit that introduces the budget has nothing to grow from.
-    const committed = budgetAt(`HEAD:${BUDGET_FILE}`);
+    const committed = budgetAt(`${amending ? "HEAD^" : "HEAD"}:${BUDGET_FILE}`);
     if (committed === undefined) return 0;
     const growth = findGrowth(committed, measured);
     if (growth.length === 0) return 0;
