@@ -4,22 +4,20 @@ This file routes you to the document that owns each fact, then lists the rules t
 
 ## Where to read
 
-| Document                     | Owns                                                                                                                         | Read it when                                                                         |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `CONTRIBUTING.md`            | Setup, codebase map, scripts, the commit gate, verification, release, PR and issue labels                                    | You build, test, commit, release or open a PR                                        |
-| `docs/architecture.md`       | Process boundaries, layers, write rules, invariants                                                                          | You change code across layers, a write path or storage                               |
-| `docs/adr/`                  | Durable decisions and their consequences                                                                                     | You touch an area an ADR governs; a proposal that conflicts with one needs a new ADR |
-| `docs/ui-guide.md`           | Shared renderer primitives, surfaces, tokens                                                                                 | You build or change a screen                                                         |
-| `docs/mcp.md`                | The MCP server contract: tools, instructions, errors                                                                         | You change an MCP tool or what a coding agent sees                                   |
-| `docs/product-description/`  | Shipped user-visible behavior per feature; `glossary.md` owns vocabulary and words to avoid; `bug-triage.md` owns known gaps | You name a concept, change behavior, or plan features                                |
-| `ROADMAP.md`                 | Direction, order and Not planned                                                                                             | You propose or reorder work                                                          |
-| `README.md`                  | What Patchdesk is and how to install it                                                                                      | You describe the product to outsiders                                                |
-| `docs/user-guide.md`         | How a user runs the app                                                                                                      | A user-facing flow, setting or file location changes                                 |
-| `docs/upgrading-pi.md`       | Native Pi CLI support and model refresh                                                                                      | You touch Pi provider support                                                        |
-| `CHANGELOG.md`               | User-visible change history                                                                                                  | You ship a user-visible change (use the `update-changelog` skill)                    |
-| `.github/triage/PLAYBOOK.md` | How an agent diagnoses a user's problem with `patchdesk triage`                                                              | You diagnose a user-reported problem                                                 |
-| `.agents/skills/`            | Repo workflows: `release`, `run-program`, UI and library skills                                                              | The task matches a skill trigger below                                               |
-| `.agents/review-checks/`     | Narrow final-verification checks selected by changed paths; nothing runs them for you                                        | Final verification (see Skills, `code-review`)                                       |
+- `CONTRIBUTING.md`: Setup, codebase map, scripts, the commit gate, verification, release, PR and issue labels. Read it when: you build, test, commit, release or open a PR.
+- `docs/architecture.md`: Process boundaries, layers, write rules, invariants. Read it when: you change code across layers, a write path or storage.
+- `docs/adr/`: Durable decisions and their consequences. Read it when: you touch an area an ADR governs; a proposal that conflicts with one needs a new ADR.
+- `docs/ui-guide.md`: Shared renderer primitives, surfaces, tokens. Read it when: you build or change a screen.
+- `docs/mcp.md`: The MCP server contract: tools, instructions, errors. Read it when: you change an MCP tool or what a coding agent sees.
+- `docs/product-description/`: Shipped user-visible behavior per feature; `glossary.md` owns vocabulary and words to avoid; `bug-triage.md` owns known gaps. Read it when: you name a concept, change behavior, or plan features.
+- `ROADMAP.md`: Direction, order and Not planned. Read it when: you propose or reorder work.
+- `README.md`: What Patchdesk is and how to install it. Read it when: you describe the product to outsiders.
+- `docs/user-guide.md`: How a user runs the app. Read it when: a user-facing flow, setting or file location changes.
+- `docs/upgrading-pi.md`: Native Pi CLI support and model refresh. Read it when: you touch Pi provider support.
+- `CHANGELOG.md`: User-visible change history. Read it when: you ship a user-visible change (use the `update-changelog` skill).
+- `.github/triage/PLAYBOOK.md`: How an agent diagnoses a user's problem with `patchdesk triage`. Read it when: you diagnose a user-reported problem.
+- `.agents/skills/`: Repo workflows: `release`, `run-program`, UI and library skills. Read it when: the task matches a skill trigger below.
+- `.agents/review-checks/`: Narrow final-verification checks selected by changed paths; nothing runs them for you. Read it at final verification (see Skills, `code-review`).
 
 Lint rules explain themselves in their error messages; read the message instead of looking for the rule here.
 
