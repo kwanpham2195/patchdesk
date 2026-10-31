@@ -1,0 +1,16 @@
+{
+  "analysis_output_guidance": 2773,
+  "walkthrough_output_guidance": 1819,
+  "brief_output_guidance": 8698,
+  "guide_output_guidance": 987,
+  "review_prompt": 6286,
+  "walkthrough_session_prompt": 4488,
+  "guide_session_prompt": 4135,
+  "codex_analysis_prompt": 2768,
+  "codex_brief_prompt": 769,
+  "pi_explanation_prompt": 1224,
+  "local_draft_agent_prompt": 185,
+  "mcp_tools": 21462,
+  "mcp_instructions": 1361,
+  "agents_md": 26861
+}
