@@ -21,7 +21,7 @@ import {
   type InsightFailureDiagnostic,
 } from "#src/domain/insight-failure-diagnostic";
 export { buildCodexAnalysisPrompt } from "./codex-analysis-prompt";
-import { spawn } from "node:child_process";
+import { spawnCodexProcess } from "./codex-replay-recorder";
 import * as v from "valibot";
 import {
   createCodexInsightHome,
@@ -160,9 +160,7 @@ export class CodexAppServerClient {
       readonly homeFactory?: CodexInsightHomeFactory;
     } = {},
   ) {
-    this.processFactory =
-      options.processFactory ??
-      ((file, args, spawnOptions) => spawn(file, args, spawnOptions));
+    this.processFactory = options.processFactory ?? spawnCodexProcess;
     this.runTimeoutMs = options.runTimeoutMs ?? RUN_TIMEOUT_MS;
     this.homeFactory = options.homeFactory ?? createCodexInsightHome;
   }
