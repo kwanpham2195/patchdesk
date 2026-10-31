@@ -126,7 +126,7 @@ Main process and GitHub:
 
 - Insight evidence validity comes from the host-held recursive tree index; concatenating `diff/` files in `files.json` order must reproduce the captured patch hash.
 
-- `patchdesk/no-unowned-process-env`: `process.env` is read only in the owner modules listed in `.oxlintrc.json`. Main-process owners await the login-shell import first (ADR 0038); executable discovery reads PATH through `importedProcessPath`.
+- `patchdesk/no-unowned-process-env`: `process.env` is read only in the owner modules listed in `.oxlintrc.json`. An owner either awaits `whenLoginShellEnvironmentImported()` before reading imported values (PATH, provider keys) or passes the live `process.env` object on, never a copy taken earlier (ADR 0038); executable discovery reads PATH through `importedProcessPath`.
 - `patchdesk/no-ipc-channel-literal`: IPC channel names are imported from the shared `src/main/*-channel.ts` module, never written as literals; main and preload are separate entry points, so a mismatched literal breaks the feature with every test green.
 - `http.Server#close()` waits for keep-alive sockets forever; `local-api.ts` calls `closeAllConnections()`. A Playwright teardown that "times out at 30 s with no failing assertion" is this, not a slow test.
 - GraphQL rate-limit exhaustion arrives as HTTP 200 with `errors[].type === "RATE_LIMITED"`; classify it there, not from the status code. Free-text GraphQL variables go as `kind: "string"`, or an all-digit search is sent as an Int.
