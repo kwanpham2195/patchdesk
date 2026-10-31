@@ -45,7 +45,6 @@
     "test:bundle": "pnpm build && pnpm check:bundle",
     "doctor": "react-doctor --scope full",
     "precommit": "node scripts/precommit.mjs",
-    "prepush": "pnpm typecheck && pnpm typecheck:scripts && pnpm check:error-ui && pnpm knip:ratchet",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "prepare": "husky"

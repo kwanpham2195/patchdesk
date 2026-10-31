@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +12,7 @@ import {
   replay,
   spawnCommand,
 } from "./gate-command-lib.mjs";
+import { testEnvironment } from "./run-full-check.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 
@@ -50,6 +52,85 @@ export function decideReactDoctor({ packageJsonDiffers, stagedPaths }) {
   return { action: "skip", message: SKIPPED_MESSAGE };
 }
 
+const CODE_FILE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const TYPESCRIPT_FILE = /\.tsx?$/;
+const LINT_CONFIG_INPUT =
+  /^(?:lint-baseline\.json|tools\/oxlint\/|(?:.*\/)?\.oxlintrc\.json$)/;
+
+/**
+ * @param {string} path
+ * @param {ReadonlyArray<string>} roots
+ */
+function isUnder(path, roots) {
+  return roots.some((root) => path.startsWith(`${root}/`));
+}
+
+/**
+ * The `pnpm` commands a commit needs, chosen from what it stages. The full
+ * `pnpm check` runs at landing instead (CONTRIBUTING.md, "The commit gate").
+ * React Doctor is decided separately because it needs the index/worktree check.
+ *
+ * Staged paths include deletions, so removing a lint config is still seen;
+ * only paths that still exist can be handed to `vitest related`.
+ *
+ * @param {ReadonlyArray<string>} stagedPaths
+ * @param {(path: string) => boolean} [exists]
+ * @returns {ReadonlyArray<ReadonlyArray<string>>}
+ */
+export function planStagedChecks(stagedPaths, exists = existsSync) {
+  const code = stagedPaths.filter((path) => CODE_FILE.test(path));
+  const codeIn = (/** @type {ReadonlyArray<string>} */ roots) =>
+    code.some((path) => isUnder(path, roots));
+  const staged = (/** @type {ReadonlyArray<string>} */ names) =>
+    stagedPaths.some((path) => names.includes(path));
+
+  const markdown = stagedPaths.filter(
+    (path) => path.endsWith(".md") && exists(path),
+  );
+  const related = code.filter(
+    (path) => isUnder(path, ["src", "tests", "scripts"]) && exists(path),
+  );
+
+  /** @type {Array<ReadonlyArray<string>>} */
+  const plan = [["lint:staged"]];
+  if (markdown.length > 0) plan.push(["exec", "oxfmt", "--check", ...markdown]);
+  if (
+    stagedPaths.some((path) => TYPESCRIPT_FILE.test(path)) ||
+    staged(["tsconfig.json"])
+  )
+    plan.push(["typecheck"]);
+  if (
+    codeIn(["scripts"]) ||
+    staged([
+      "tsconfig.json",
+      "tsconfig.scripts.json",
+      "scripts-typecheck-baseline.json",
+    ])
+  )
+    plan.push(["typecheck:scripts"]);
+  if (codeIn(["src", "tests", "scripts", "tools"]))
+    plan.push(["check:imports"]);
+  if (stagedPaths.some((path) => path.startsWith("src/renderer/")))
+    plan.push(["check:error-ui"]);
+  if (stagedPaths.some((path) => LINT_CONFIG_INPUT.test(path)))
+    plan.push(["lint:changed", "--", "origin/main"]);
+  if (
+    codeIn(["src", "tests", "scripts"]) ||
+    staged(["knip.json", "knip-baseline.json", "package.json"])
+  )
+    plan.push(["knip:ratchet"]);
+  if (related.length > 0)
+    plan.push([
+      "exec",
+      "vitest",
+      "related",
+      "--run",
+      "--passWithNoTests",
+      ...related,
+    ]);
+  return plan;
+}
+
 /**
  * Runs one command with the hook's own streams, so its output reaches the
  * terminal as it is produced rather than in one block at the end.
@@ -57,11 +138,12 @@ export function decideReactDoctor({ packageJsonDiffers, stagedPaths }) {
  * @param {string} command
  * @param {ReadonlyArray<string>} args
  * @param {string} cwd
+ * @param {NodeJS.ProcessEnv} [env]
  * @returns {Promise<number>}
  */
-function runInherited(command, args, cwd) {
+function runInherited(command, args, cwd, env = process.env) {
   return new Promise((resolveRun) => {
-    const child = spawn(command, [...args], { cwd, stdio: "inherit" });
+    const child = spawn(command, [...args], { cwd, env, stdio: "inherit" });
     child.once("error", (cause) => {
       process.stderr.write(`${command} could not start: ${cause.message}\n`);
       resolveRun(1);
@@ -103,7 +185,7 @@ async function stagedPaths(cwd) {
   const result = await execute(
     spawnCommand,
     "git",
-    ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+    ["diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z"],
     cwd,
     processOutput,
   );
@@ -119,24 +201,26 @@ async function stagedPaths(cwd) {
 }
 
 async function main() {
-  const checkExit = await runInherited("pnpm", ["check"], projectRoot);
-  if (checkExit !== 0) {
-    process.exitCode = checkExit;
-    return;
-  }
-  const lintExit = await runInherited("pnpm", ["lint:staged"], projectRoot);
-  if (lintExit !== 0) {
-    process.exitCode = lintExit;
-    return;
-  }
-
-  const differs = await packageJsonDiffers(projectRoot);
-  if (differs === undefined) {
+  const staged = await stagedPaths(projectRoot);
+  if (staged === undefined) {
     process.exitCode = 1;
     return;
   }
-  const staged = await stagedPaths(projectRoot);
-  if (staged === undefined) {
+  for (const args of planStagedChecks(staged)) {
+    // Test files create their own Git repositories.
+    const env = args.includes("vitest")
+      ? testEnvironment(projectRoot)
+      : process.env;
+    const status = await runInherited("pnpm", args, projectRoot, env);
+    if (status !== 0) {
+      process.exitCode = status;
+      return;
+    }
+  }
+  if (!staged.some((path) => path.startsWith("src/"))) return;
+
+  const differs = await packageJsonDiffers(projectRoot);
+  if (differs === undefined) {
     process.exitCode = 1;
     return;
   }

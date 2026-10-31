@@ -34,7 +34,12 @@ async function hookFixture(staged: string, differs: boolean) {
   execFileSync("git", ["add", "package.json"], { cwd });
   execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd });
   await mkdir(join(cwd, "scripts"));
-  for (const name of ["precommit.mjs", "gate-command-lib.mjs"])
+  for (const name of [
+    "precommit.mjs",
+    "gate-command-lib.mjs",
+    "run-full-check.mjs",
+    "full-check-lock.mjs",
+  ])
     await copyFile(
       join(process.cwd(), "scripts", name),
       join(cwd, "scripts", name),
@@ -66,48 +71,75 @@ describe("precommit process", () => {
       differs: false,
       failure: "",
       status: 0,
-      commands: [
-        "check",
-        "lint:staged",
-        "exec react-doctor --staged --blocking warning --yes",
-      ],
-    },
-    {
-      path: "README.md",
-      differs: true,
-      failure: "",
-      status: 0,
-      commands: ["check", "lint:staged"],
-    },
-    {
-      path: "src/renderer/app.tsx",
-      differs: true,
-      failure: "",
-      status: 1,
-      commands: ["check", "lint:staged"],
-    },
-    {
-      path: "README.md",
-      differs: false,
-      failure: "check",
-      status: 1,
-      commands: ["check"],
+      commands: ["lint:staged", "exec oxfmt --check README.md"],
     },
     {
       path: "README.md",
       differs: false,
       failure: "lint:staged",
       status: 1,
-      commands: ["check", "lint:staged"],
+      commands: ["lint:staged"],
     },
     {
-      path: "README.md",
+      path: "src/renderer/app.tsx",
+      differs: false,
+      failure: "",
+      status: 0,
+      commands: [
+        "lint:staged",
+        "typecheck",
+        "check:imports",
+        "check:error-ui",
+        "knip:ratchet",
+        "exec vitest related --run --passWithNoTests src/renderer/app.tsx",
+        "exec react-doctor --staged --blocking warning --yes",
+      ],
+    },
+    {
+      path: "src/renderer/app.tsx",
+      differs: true,
+      failure: "",
+      status: 1,
+      commands: [
+        "lint:staged",
+        "typecheck",
+        "check:imports",
+        "check:error-ui",
+        "knip:ratchet",
+        "exec vitest related --run --passWithNoTests src/renderer/app.tsx",
+      ],
+    },
+    {
+      path: "src/app.mjs",
+      differs: true,
+      failure: "",
+      status: 0,
+      commands: [
+        "lint:staged",
+        "check:imports",
+        "knip:ratchet",
+        "exec vitest related --run --passWithNoTests src/app.mjs",
+      ],
+    },
+    {
+      path: "src/renderer/app.tsx",
+      differs: false,
+      failure: "typecheck",
+      status: 1,
+      commands: ["lint:staged", "typecheck"],
+    },
+    {
+      path: "src/renderer/app.tsx",
       differs: false,
       failure: "exec react-doctor --staged --blocking warning --yes",
       status: 1,
       commands: [
-        "check",
         "lint:staged",
+        "typecheck",
+        "check:imports",
+        "check:error-ui",
+        "knip:ratchet",
+        "exec vitest related --run --passWithNoTests src/renderer/app.tsx",
         "exec react-doctor --staged --blocking warning --yes",
       ],
     },
@@ -130,7 +162,7 @@ describe("precommit process", () => {
       expect((await readFile(receipt, "utf8")).trim().split("\n")).toEqual(
         scenario.commands,
       );
-      expect(result.stdout + result.stderr).toContain("fixture check");
+      expect(result.stdout + result.stderr).toContain("fixture lint:staged");
       expect(
         execFileSync("git", ["rev-list", "--count", "HEAD"], {
           cwd,
