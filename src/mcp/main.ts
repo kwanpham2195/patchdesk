@@ -6,6 +6,11 @@ import { createPatchdeskMcpServer } from "./patchdesk-mcp-server";
 import { runSetupCommand } from "./setup-cli";
 import { callPatchdeskApp } from "./socket-client";
 import { MCP_SOCKET_ENV, resolveMcpSocketPath } from "./socket-protocol";
+import {
+  collectTriageFacts,
+  writeTriageContext,
+  type TriageChannel,
+} from "./triage";
 
 /**
  * `patchdesk`, the command the launcher at `Contents/Resources/bin/patchdesk`
@@ -13,10 +18,12 @@ import { MCP_SOCKET_ENV, resolveMcpSocketPath } from "./socket-protocol";
  * diagnostic goes to stderr.
  */
 const usage = `Usage: patchdesk mcp [--check]
+       patchdesk triage
        patchdesk setup <status | add-checkout | relocate-checkout | add-repo | set-checkout> [--cwd <path>] [--json]
 
   patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
   patchdesk mcp --check         Call list_repositories on the running app and print the result.
+  patchdesk triage              Write a context file of machine facts for a support agent and print its path.
   patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
   patchdesk setup add-checkout Register the checkout at --cwd (default: here), without GitHub.
   patchdesk setup add-repo      Watch the repository of the checkout at --cwd (default: here), with that
@@ -32,6 +39,8 @@ const socketPath = resolveMcpSocketPath(
   process.env[MCP_SOCKET_ENV],
   PatchdeskPaths.forBuild({ packaged: true, environment: {} }),
 );
+// `pnpm mcp:shim` runs this file from a checkout and sets this so triage reads the dev app's roots, not the installed app's.
+const devShim = process.env.PATCHDESK_DEV_SHIM === "1";
 const report = (line: string): void => {
   process.stderr.write(`${line}\n`);
 };
@@ -60,11 +69,32 @@ if (command === "mcp") {
   });
   if (exitCode === undefined) process.stderr.write(usage);
   process.exitCode = exitCode ?? 2;
+} else if (command === "triage") {
+  const paths = PatchdeskPaths.forBuild({
+    packaged: !devShim,
+    environment: process.env,
+  });
+  const facts = await collectTriageFacts({
+    version,
+    commit: __PATCHDESK_COMMIT__,
+    channel: triageChannel(),
+    paths,
+    socketPath,
+    now: new Date(),
+  });
+  process.stdout.write(`${await writeTriageContext(facts)}\n`);
 } else if (command === "") {
   process.stdout.write(usage);
 } else {
   process.stderr.write(usage);
   process.exitCode = 2;
+}
+
+function triageChannel(): TriageChannel {
+  if (!devShim) return "installed";
+  if (process.env.PATCHDESK_DEV_SHARED === "1") return "dev-shared";
+  const profileRoot = process.env.PATCHDESK_DEV_PROFILE_ROOT;
+  return profileRoot !== undefined && profileRoot !== "" ? "worktree" : "dev";
 }
 
 /** The first thing to run when a client reports the server as failed; non-zero when the app is not reachable. */

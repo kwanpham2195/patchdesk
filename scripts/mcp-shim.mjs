@@ -13,12 +13,27 @@ const socket =
   profile?.mcpSocket ??
   join(homedir(), ".local", "share", "patchdesk-dev", "mcp", "patchdesk.sock");
 
-// stdout is the MCP channel, so this wrapper writes nothing to it.
-const child = spawn(
-  process.execPath,
-  ["out/main/mcp-shim.js", "mcp", ...process.argv.slice(2)],
-  { env: { ...process.env, PATCHDESK_MCP_SOCKET: socket }, stdio: "inherit" },
-);
+// `setup` and `triage` are shim commands; anything else is an argument to `mcp`.
+const [first, ...rest] = process.argv.slice(2);
+const args =
+  first === "setup" || first === "triage"
+    ? [first, ...rest]
+    : ["mcp", ...process.argv.slice(2)];
+
+// stdout is the MCP channel, so this wrapper writes nothing to it. PATCHDESK_DEV_SHIM
+// and the profile root tell `triage` which app's roots to describe.
+/** @type {NodeJS.ProcessEnv} */
+const env = {
+  ...process.env,
+  PATCHDESK_MCP_SOCKET: socket,
+  PATCHDESK_DEV_SHIM: "1",
+};
+if (profile !== undefined)
+  env["PATCHDESK_DEV_PROFILE_ROOT"] = profile.profileRoot;
+const child = spawn(process.execPath, ["out/main/mcp-shim.js", ...args], {
+  env,
+  stdio: "inherit",
+});
 child.on("exit", (code) => {
   if (code !== null && code !== 0) process.exitCode = code;
 });
