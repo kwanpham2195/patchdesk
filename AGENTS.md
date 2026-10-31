@@ -126,13 +126,13 @@ Main process and GitHub:
 
 - Insight evidence validity comes from the host-held recursive tree index; concatenating `diff/` files in `files.json` order must reproduce the captured patch hash.
 
-- Anything in the main process that reads `process.env` (PATH, provider keys) must await the login-shell import (ADR 0038); a default-parameter read of `process.env.PATH` raced ahead of it once already.
-- IPC channel names live in one shared module both `preload.ts` and the main side import (`src/main/*-channel.ts`); main and preload are separate entry points, so a mismatched literal breaks the feature with every test green.
+- `patchdesk/no-unowned-process-env`: `process.env` is read only in the owner modules listed in `.oxlintrc.json`. Main-process owners await the login-shell import first (ADR 0038); executable discovery reads PATH through `importedProcessPath`.
+- `patchdesk/no-ipc-channel-literal`: IPC channel names are imported from the shared `src/main/*-channel.ts` module, never written as literals; main and preload are separate entry points, so a mismatched literal breaks the feature with every test green.
 - `http.Server#close()` waits for keep-alive sockets forever; `local-api.ts` calls `closeAllConnections()`. A Playwright teardown that "times out at 30 s with no failing assertion" is this, not a slow test.
 - GraphQL rate-limit exhaustion arrives as HTTP 200 with `errors[].type === "RATE_LIMITED"`; classify it there, not from the status code. Free-text GraphQL variables go as `kind: "string"`, or an all-digit search is sent as an Int.
 - A write is `rejected` only on a refusal GitHub actually returned. Network errors, timeouts, 5xx, and unparseable success bodies are outcome-unknown: keep the operation locked for reconciliation (ADR 0035), and match recovery evidence by body and anchor, never "any comment created after".
 - A confirmed write stays confirmed when a later bookkeeping step (journal append, cache write) fails; log and continue, never re-lock or re-offer it.
-- Path containment uses `isPathContained` in `src/adapters/storage/path-containment.ts`, never `startsWith` on the string; five modules once each wrote their own and two disagreed on whether the root counts.
+- `patchdesk/no-string-path-containment`: path containment uses `isPathContained` in `src/adapters/storage/path-containment.ts`, never `startsWith` on a path string; five modules once each wrote their own and two disagreed on whether the root counts.
 
 Process:
 

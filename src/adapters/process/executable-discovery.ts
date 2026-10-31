@@ -2,7 +2,7 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 
-import { whenLoginShellEnvironmentImported } from "./login-shell-import";
+import { importedProcessPath } from "./login-shell-import";
 
 const macDesktopPaths = [
   "/opt/homebrew/bin",
@@ -25,8 +25,7 @@ export async function discoverExecutable(
   if (isAbsolute(executable) || executable.includes("/")) {
     return (await executableFile(executable)) ? executable : undefined;
   }
-  if (suppliedPath === undefined) await whenLoginShellEnvironmentImported();
-  const pathValue = suppliedPath ?? process.env.PATH;
+  const pathValue = suppliedPath ?? (await importedProcessPath());
   const search = [
     ...(pathValue?.split(delimiter).filter((value) => value.length > 0) ?? []),
     ...(process.platform === "darwin" ? macDesktopPaths : []),
@@ -58,8 +57,7 @@ export async function discoverPathOnlyExecutable(
   suppliedPath?: string,
 ): Promise<string | undefined> {
   if (isAbsolute(executable) || executable.includes("/")) return undefined;
-  if (suppliedPath === undefined) await whenLoginShellEnvironmentImported();
-  const pathValue = suppliedPath ?? process.env.PATH;
+  const pathValue = suppliedPath ?? (await importedProcessPath());
   for (const directory of new Set(
     pathValue?.split(delimiter).filter((value) => value.length > 0) ?? [],
   )) {
