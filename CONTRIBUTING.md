@@ -138,11 +138,14 @@ first failure (`planStagedChecks` in `scripts/precommit.mjs` is the list):
    or `context-budget.json` is staged: the budget file must equal the measured
    byte sizes of the model-facing text (Insight output guidance, session
    prompts, the MCP tool list, `AGENTS.md`). Update it with
-   `node scripts/check-context-budget.mjs --write`. The `commit-msg` hook
-   (`scripts/check-context-budget.mjs`) then fails a commit that grows any
-   value over `HEAD`'s budget unless the message has a line
-   `context-increase: <reason>`; the `CI` workflow applies the same rule to the
-   pushed commit on `main`.
+   `node scripts/check-context-budget.mjs --write`; run it after shrinking
+   measured text too, or the budget test blocks the next `src/` commit. The
+   `commit-msg` hook (`scripts/check-context-budget.mjs`) fails a commit that
+   grows any value over `HEAD`'s budget (`HEAD^`'s when amending) unless the
+   message has a line `context-increase: <reason>`. It measures the working
+   tree, so it also fails while `AGENTS.md` or `src/` has unstaged changes, and
+   it skips merges. The `CI` workflow compares the sizes on `main` with the
+   budget before the push and passes when any pushed commit has the line.
 8. `vitest related --run` over the staged code files, not the whole suite.
    A failing test outside their import graph does not block the commit, and
    `related` misses tests that only spawn a script, so script changes rely on
