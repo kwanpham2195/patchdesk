@@ -116,7 +116,27 @@
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
-    "patchdesk/no-method-spying": "error"
+    "patchdesk/no-ipc-channel-literal": "error",
+    "patchdesk/no-method-spying": "error",
+    "patchdesk/no-string-path-containment": "error",
+    "patchdesk/no-unowned-process-env": [
+      "error",
+      {
+        "owners": [
+          "src/adapters/process/login-shell-environment.ts",
+          "src/adapters/process/login-shell-import.ts",
+          "src/main/electron-main.ts",
+          "src/main/mcp/mcp-socket-listener.ts",
+          "src/main/desktop-app-update.ts",
+          "src/adapters/github/command-runner.ts",
+          "src/adapters/pi-cli/pi-rpc-client.ts",
+          "src/adapters/pi-cli/pi-explanation-helper.ts",
+          "src/adapters/codex/codex-insight-policy.ts",
+          "src/adapters/codex/codex-insight-home.ts",
+          "src/mcp/main.ts"
+        ]
+      }
+    ]
   },
   "overrides": [
     {
@@ -143,6 +163,12 @@
         "prefer-rest-params": "error",
         "prefer-spread": "error",
         "no-undef": "off"
+      }
+    },
+    {
+      "files": ["scripts/**", "tests/**"],
+      "rules": {
+        "patchdesk/no-unowned-process-env": "off"
       }
     },
     {

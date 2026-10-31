@@ -28,3 +28,9 @@ export function startLoginShellEnvironmentImport(
 export function whenLoginShellEnvironmentImported(): Promise<void> {
   return running ?? Promise.resolve();
 }
+
+/** This process's PATH once the login-shell import has finished; the one place PATH is read for executable discovery (ADR 0038). */
+export async function importedProcessPath(): Promise<string | undefined> {
+  await whenLoginShellEnvironmentImported();
+  return process.env.PATH;
+}
