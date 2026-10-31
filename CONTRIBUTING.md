@@ -54,6 +54,20 @@ config exists unless you pass `--force`. `PATCHDESK_DEV_SHARED=1 pnpm dev` runs
 the dev app against the installed roots for a check that needs the real store;
 the app logs which roots it uses at startup (topic `paths`).
 
+**Worktree dev profile.** In a linked git worktree, `pnpm dev` keeps its
+config, data, cache and Electron user data in the gitignored
+`.patchdesk-dev/` folder, derives the CDP and Vite ports from the worktree
+path (stable across restarts, printed on the `dev:` startup line) and uses its
+own MCP socket and `refs/patchdesk-dev-<hash>` ref namespace, so it runs
+beside the main dev app and the installed app. The first run seeds it:
+`config.json` (notifications off, so no background watching or desktop
+notifications) and profiles from `~/.config/patchdesk`, and a copy of the
+main dev app's data store from `~/.local/share/patchdesk-dev`. The dev store
+is the source because a dev build refuses Review files an older installed
+release wrote. Data only flows into the worktree. Delete `.patchdesk-dev/` to
+reseed. `PATCHDESK_DEV_SHARED=1` opts out. `pnpm cdp:ready` and
+`pnpm -s mcp:shim` resolve the current checkout's port and socket.
+
 **The MCP shim.** The dev app listens on
 `~/.local/share/patchdesk-dev/mcp/patchdesk.sock`, so it and an installed
 Patchdesk can listen side by side (ADR 0052). `pnpm -s mcp:shim`

@@ -1,4 +1,15 @@
-import { access, cp, mkdir, rm } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { constants } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -84,4 +95,83 @@ export async function copyInstalledProfileToDev({
     `dev:copy-profile: copied config and profiles to ${development}\n`,
   );
   return 0;
+}
+
+/**
+ * The store keeps some files read-only (Insight evidence), and the copy keeps
+ * that mode, which would leave the worktree app unable to prune them.
+ *
+ * @param {string} root
+ */
+async function makeWritable(root) {
+  for (const relative of await readdir(root, { recursive: true })) {
+    const path = join(root, relative);
+    const info = await stat(path);
+    await chmod(path, info.mode | (info.isDirectory() ? 0o700 : 0o600));
+  }
+}
+
+/**
+ * Seed a worktree's dev profile once: config and profiles from the installed
+ * app (the `ghAccount` names stay, so GitHub access works), plus a snapshot of
+ * the main dev app's data store so existing Reviews show. The data comes from
+ * the dev store, not the installed one, because a dev build refuses to start on
+ * Review files an older installed release wrote. It only reads the sources. Notifications start off, so the worktree app does no background
+ * watching and shows no desktop notification. Logs and the MCP socket stay
+ * behind. Does nothing when the profile already has a config.
+ *
+ * @param {{
+ *   readonly homeDirectory: string;
+ *   readonly configDirectory: string;
+ *   readonly dataDirectory: string;
+ *   readonly output: CommandOutput;
+ * }} options
+ * @returns {Promise<"seeded" | "existing" | "no-installed-profile">}
+ */
+export async function seedWorktreeProfile({
+  homeDirectory,
+  configDirectory,
+  dataDirectory,
+  output,
+}) {
+  if (await exists(join(configDirectory, "config.json"))) return "existing";
+  const installedConfig = configDirectories(homeDirectory).installed;
+  const developmentData = join(
+    homeDirectory,
+    ".local",
+    "share",
+    "patchdesk-dev",
+  );
+  if (!(await exists(join(installedConfig, "config.json"))))
+    return "no-installed-profile";
+
+  await mkdir(configDirectory, { recursive: true });
+  if (await exists(join(installedConfig, "profiles")))
+    await cp(
+      join(installedConfig, "profiles"),
+      join(configDirectory, "profiles"),
+      { recursive: true },
+    );
+  await mkdir(dataDirectory, { recursive: true });
+  if (await exists(developmentData))
+    for (const entry of await readdir(developmentData))
+      if (entry !== "logs" && entry !== "mcp")
+        await cp(join(developmentData, entry), join(dataDirectory, entry), {
+          recursive: true,
+          // Clones on APFS, so a store of a gigabyte copies in seconds; elsewhere it copies.
+          mode: constants.COPYFILE_FICLONE,
+        });
+  await makeWritable(dataDirectory);
+  // Written last: its presence marks a complete seed, so an interrupted copy retries.
+  const config = JSON.parse(
+    await readFile(join(installedConfig, "config.json"), "utf8"),
+  );
+  await writeFile(
+    join(configDirectory, "config.json"),
+    `${JSON.stringify({ ...config, notifications: { ...config.notifications, enabled: false } })}\n`,
+  );
+  output.stdout(
+    `dev: seeded ${configDirectory} from the installed profile, notifications off\n`,
+  );
+  return "seeded";
 }

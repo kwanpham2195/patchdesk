@@ -133,7 +133,8 @@
           "src/adapters/pi-cli/pi-explanation-helper.ts",
           "src/adapters/codex/codex-insight-policy.ts",
           "src/adapters/codex/codex-insight-home.ts",
-          "src/mcp/main.ts"
+          "src/mcp/main.ts",
+          "electron.vite.config.ts"
         ]
       }
     ]
