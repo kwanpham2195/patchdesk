@@ -179,7 +179,7 @@ If rebase conflicts occur:
 
 Use the named skill when its trigger matches the task. Read the skill file before acting; it is the canonical workflow.
 
-- `code-review`: at final verification after live checks pass, before handoff or landing of changes to `src/`. Do not run interim formal reviews or launch interim review subagents.
+- `code-review`: at final verification after live checks pass, before handoff or landing of changes to `src/`. Do not run interim formal reviews or launch interim review subagents. Final verification also runs each `.agents/review-checks/` check whose globs match the diff, as a low-effort subagent beside the blocker review (see its README).
 - `delegated-execution`: substantial exploration, work that spans several files, or several subagents.
 - `react-doctor`: finishing React work or checking React diagnostics before handoff.
 - `diffs`: working with `@pierre/diffs`, code views, patches, or review surfaces.
