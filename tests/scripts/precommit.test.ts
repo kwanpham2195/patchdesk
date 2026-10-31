@@ -116,6 +116,7 @@ describe("precommit process", () => {
       status: 0,
       commands: [
         "lint:staged",
+        "typecheck",
         "check:imports",
         "knip:ratchet",
         "exec vitest related --run --passWithNoTests src/app.mjs",

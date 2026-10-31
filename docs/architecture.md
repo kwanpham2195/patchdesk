@@ -400,7 +400,7 @@ The root Vitest suite and Playwright browser suites cover the application.
 `tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 `tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
 
-`pnpm test:root` and `pnpm test:all` run the root suite. `pnpm check:package root` selects the only application package for final verification; `pnpm check` runs the full repository gate once through pre-commit. The retired API runtime has no separate suite.
+`pnpm test:root` and `pnpm test:all` run the root suite. `pnpm check:package root` selects the only application package for final verification; `pnpm check` is the full repository gate, run at landing; pre-commit runs only the changed-file checks. The retired API runtime has no separate suite.
 
 The outermost boundary is the built app.
 Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.

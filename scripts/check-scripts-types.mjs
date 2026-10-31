@@ -18,9 +18,8 @@ const projectRoot = resolve(import.meta.dirname, "..");
  * head it is that commit pair, which is the shape CI uses. This is the same
  * pair of shapes `pnpm knip:ratchet` takes, and for the same reason.
  *
- * This is NOT part of `pnpm precommit`: the whole `scripts/` tree is
- * type-checked on every run, so it costs a full `tsc` program and answers a
- * repository-wide question rather than one about the staged files.
+ * It runs at pre-commit when its inputs are staged, and in the landing
+ * `pnpm check`.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;
