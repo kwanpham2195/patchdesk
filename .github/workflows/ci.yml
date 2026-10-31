@@ -51,8 +51,10 @@ jobs:
       - name: Lint the whole repository
         run: pnpm lint
 
+      # The release installer is macOS-only (ditto, lsappinfo, xattr); its
+      # test runs in the `desktop` job.
       - name: Run complete tests
-        run: pnpm test:all
+        run: pnpm exec vitest --run --exclude tests/scripts/install-release.test.ts
 
   desktop:
     name: Build and browser tests
@@ -84,6 +86,9 @@ jobs:
 
       - name: Check renderer bundle separation
         run: pnpm check:bundle
+
+      - name: Run the release installer tests
+        run: pnpm exec vitest --run tests/scripts/install-release.test.ts
 
       - name: Run browser tests
         run: pnpm exec playwright test
