@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `patchdesk triage`, which writes a context file of version, channel, commit, paths and log locations for a coding agent to diagnose a problem, with a playbook and an issue form. #870
 - Added Disconnect GitHub in Settings → Workspace. It keeps local repositories, Local Reviews, watched repositories and saved pull request state, and stops pull request polling; connecting again restores them. #817
 - Fixed a disconnected workspace with watched repositories showing "Dashboard could not be loaded" instead of a Connect GitHub screen, and background pull request polling ignoring a connect or disconnect until restart. #817
 - Changed the GitHub setup messages to say whether the CLI is missing, signed out, or not answering, and that local reviews still work. #817

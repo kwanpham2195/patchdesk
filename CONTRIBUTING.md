@@ -80,6 +80,8 @@ prints the result. Keep `-s`: without it pnpm prints its banner to stdout,
 which is the MCP channel. To register it with a client, give the client the
 command `pnpm -s mcp:shim` with this checkout as its working directory.
 
+**Triage.** `pnpm -s mcp:shim triage` (the installed `patchdesk triage`) writes a context file of machine facts for a support agent and prints its path; `.github/triage/PLAYBOOK.md` is what that agent follows, and `.github/ISSUE_TEMPLATE/via-triage.yml` is the issue form it fills. A dev build records its commit SHA at `pnpm build`, since it has no release tag.
+
 **Fast checks.**
 
 ```bash
