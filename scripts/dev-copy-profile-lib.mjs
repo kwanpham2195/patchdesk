@@ -145,6 +145,12 @@ export async function seedWorktreeProfile({
   if (!(await exists(join(installedConfig, "config.json"))))
     return "no-installed-profile";
 
+  // An interrupted earlier seed leaves read-only evidence files that block copying over them.
+  if (await exists(dataDirectory)) {
+    await makeWritable(dataDirectory);
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+  await rm(join(configDirectory, "profiles"), { recursive: true, force: true });
   await mkdir(configDirectory, { recursive: true });
   if (await exists(join(installedConfig, "profiles")))
     await cp(
