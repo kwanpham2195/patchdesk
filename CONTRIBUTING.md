@@ -78,9 +78,8 @@ verification unless the maintainer explicitly approves an exception.
 At final verification, `pnpm test -- --run <file>` targets an affected test file,
 and `pnpm check:package root` runs the root package's typechecks, import and
 error-UI checks, lint, and whole test suite. Root is the only package selection;
-missing or unknown names fail. Every commit runs the full `pnpm check` once
-through pre-commit, including Markdown-only commits. Do not run a redundant
-manual full suite immediately before committing.
+missing or unknown names fail. Commits run changed-file checks only (see "The
+commit gate"); the full `pnpm check` runs once at landing.
 
 ## Where a test belongs
 
@@ -117,15 +116,32 @@ One logical unit per commit. Do not add AI or co-authored trailers.
 
 ## The commit gate
 
-Commits run `pnpm precommit`:
+Commits run `pnpm precommit`, which checks the staged paths and stops at the
+first failure (`planStagedChecks` in `scripts/precommit.mjs` is the list):
 
-1. `pnpm check` runs the full repository gate exactly once, with no Markdown-only
-   or React Doctor skip exception. A failure blocks the commit.
-2. `pnpm lint:staged` checks every staged JavaScript and TypeScript file with
-   Oxfmt, then Oxlint with denied warnings, and applies the file-size ratchet
-   to them.
-3. React Doctor scans staged files and remains blocking, unless it cannot read
-   the tree it would scan (below).
+1. Always: `pnpm lint:staged` checks every staged JavaScript and TypeScript
+   file with Oxfmt, then Oxlint with denied warnings, and applies the
+   file-size ratchet to them. Staged Markdown files get `oxfmt --check`. A
+   Markdown-only commit runs nothing else.
+2. `pnpm typecheck` when a `.ts`/`.tsx` file or `tsconfig.json` is staged.
+3. `pnpm typecheck:scripts` when `scripts/`, `tsconfig.json`,
+   `tsconfig.scripts.json` or its baseline is staged.
+4. `pnpm check:imports` when JavaScript or TypeScript under `src/`, `tests/`,
+   `scripts/` or `tools/` is staged; `pnpm check:error-ui` when `src/renderer/`
+   is staged.
+5. `pnpm lint:changed -- origin/main` when `.oxlintrc.json`, a rule under
+   `tools/oxlint/`, or `lint-baseline.json` is staged, so the config rule and
+   the count ratchet still apply.
+6. `pnpm knip:ratchet` when code under `src/`, `tests/` or `scripts/`,
+   `knip.json`, `knip-baseline.json` or `package.json` is staged.
+7. `vitest related --run` over the staged code files, not the whole suite.
+   A failing test outside their import graph does not block the commit.
+8. React Doctor scans staged files when anything under `src/` is staged, and
+   remains blocking unless it cannot read the tree it would scan (below).
+
+The full `pnpm check` is the landing gate. Run it on the rebased head before
+merging; it is the only place the whole suite, `pnpm lint:changed` over the
+branch and the cross-file ratchets are guaranteed to run.
 
 Meet that gate when a slice is done, not when you go to commit.
 `pnpm gate:preflight <paths>` runs the same three checks, Oxfmt, Oxlint with
@@ -152,13 +168,10 @@ may be a different version, and a different version disagrees with the gate:
 it rejects files this repository formats correctly, and reformatting to satisfy
 it breaks the repository check instead.
 
-The repo-wide Oxlint count ratchet runs once inside the hook's full check,
-through `pnpm lint:changed` (see "The count ratchet" and "Verifying before pushing").
+The repo-wide Oxlint count ratchet runs through `pnpm lint:changed` (see "The count ratchet" and "Verifying before pushing").
 
-Pushes run `pnpm prepush`: `pnpm typecheck`, `pnpm typecheck:scripts`,
-`pnpm check:error-ui`, then `pnpm knip:ratchet`. These checks validate the
-whole branch, not only the latest commit. Pull request CI is paused, so the
-local merge gate covers the branch.
+Pushes run no hook: the landing `pnpm check` validates the whole branch, and
+a push-time copy of its checks only repeated them.
 
 The staged gate is check-only. It rejects partially staged source files and
 never changes the index or working tree. If it blocks, run
@@ -226,8 +239,8 @@ work moved the number, commit or set that work aside rather than moving the
 baseline to match it.
 
 The Knip ratchet (`pnpm knip:ratchet`, baseline `knip-baseline.json`) works
-the same way. It runs in `pnpm prepush`, in `pnpm check`, and therefore in
-`pnpm precommit`. Pull request CI is paused; the local merge gate also runs it.
+the same way. It runs in `pnpm check` and in `pnpm precommit` when its inputs are staged.
+Pull request CI is paused; the local merge gate also runs it.
 
 The Knip baseline is zero. Every unused file, export, and type has been
 removed or made module-private, so the ratchet and a bare blocking `pnpm knip`
@@ -241,8 +254,7 @@ modules are plain JavaScript, and `tsconfig.json`'s `include` does not list
 them. `tsconfig.scripts.json` does, with `allowJs` and `checkJs`, and
 `pnpm typecheck:scripts` (baseline `scripts-typecheck-baseline.json`) holds
 the count the same way the Oxlint and Knip ratchets hold theirs: a rise fails,
-and so does a drop nobody records. It runs in `pnpm prepush`, in `pnpm check`,
-and in the local merge gate. Pre-commit runs it through the full `pnpm check`.
+and so does a drop nobody records. It runs in `pnpm check`, in the local merge gate, and in `pnpm precommit` when `scripts/` or the TypeScript configs are staged.
 
 Seven hand-written `scripts/*.d.mts` files stood beside these modules until
 2026-08-29. They were not a convenience: TypeScript prefers a declaration file
@@ -305,7 +317,7 @@ invariant the surrounding code checked, not restate what the code does.
 
 ## Verifying before pushing
 
-`pnpm check` runs manually or once at the start of every pre-commit path. It runs `pnpm typecheck`,
+`pnpm check` is the landing gate: run it on the rebased head before merging. It runs `pnpm typecheck`,
 `pnpm typecheck:scripts`, `pnpm check:error-ui`, `pnpm check:imports`,
 `pnpm test:all`,
 `pnpm lint:staged` (checks what you will commit),
@@ -317,7 +329,7 @@ first failure. `pnpm check:error-ui` scans the renderer for a literal
 `pnpm check:imports` rejects parent-climbing module specifiers, not filesystem paths or fixture strings. Root-owned code imports across directories through package `#src/*`, `#tests/*`, `#scripts/*`, and `#tools/*`; `#package` and `#resources/*` cover root assets. Portable anti-slop plugins use package-local `#anti-slop/*`. Keep `./` imports for files in the same directory. `pnpm lint:staged` reports "no staged source files" when nothing is staged.
 The repo-wide count ratchet runs once inside `pnpm lint:changed`.
 
-Manual and hook full checks serialize through `patchdesk-full-check.lock` in
+Full checks serialize through `patchdesk-full-check.lock` in
 Git's common directory, shared by all worktrees. Later runs wait and print the
 lock path, then fail after ten minutes. Success, command failure, and handled
 SIGINT/SIGTERM release the owned lock after the owned process group finishes.
@@ -354,6 +366,11 @@ Beyond `pnpm check`:
   `REMOTE_DEBUGGING_PORT` or on 9233 when that is unset. Live verification of
   the running app starts there; it prints how to start the app when the port
   is down.
+
+The `CI` workflow (`.github/workflows/ci.yml`) runs typecheck, lint and the
+root suite on `ubuntu-latest`, and the build, bundle check and browser suite
+on `macos-14`, on every push to `main` only. It backs up the landing gate
+after the fact; it does not gate pull requests.
 
 The `Pull request gates` workflow, which used to run these checks on
 `macos-14` for every pull request targeting `main`, has been paused since

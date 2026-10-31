@@ -6,7 +6,7 @@ Child briefs must include applicable rules below or readable absolute paths to t
 
 - Commit each accepted slice after final verification with explicit paths, and end the report with the SHA.
 - A renderer change is finished only after you looked at a screenshot of the affected screen over CDP.
-- Defer unit tests and test-running checks until final verification; then run affected-package checks and the full `pnpm check` once through pre-commit.
+- Defer unit tests and test-running checks until final verification; then run affected-package checks. The commit hook runs changed-file checks; the full `pnpm check` runs once at landing, on the rebased head, before merge.
 - No compatibility shims or fallbacks unless asked for.
 - Ask before removing code that looks intentional.
 
@@ -55,7 +55,7 @@ For runtime work, keep the dev console and raw log tail live in this workspace's
 - Run `REMOTE_DEBUGGING_PORT=9233 pnpm dev` in the verified dev pane. After restarting, wait for `pnpm cdp:ready`; old tmux scrollback is not readiness evidence. Report restarts.
 - Main-process code changes (e.g. `src/main/`, `src/services/`, adapters) need a full dev-app restart: renderer hot-reloads but the main process keeps the old code.
 
-- At final verification, use `pnpm check:package root`, `pnpm check:package insight`, or both for affected packages. `CONTRIBUTING.md` and package scripts define the commands; shared configuration requires every affected package. Every commit, including Markdown-only commits, runs the full `pnpm check` once through pre-commit. Do not repeat a manual full check immediately before that hook run. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; follow CONTRIBUTING.md for the local gates. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
+- At final verification, use `pnpm check:package root`, `pnpm check:package insight`, or both for affected packages. `CONTRIBUTING.md` and package scripts define the commands; shared configuration requires every affected package. Every commit runs only the checks its staged paths need (CONTRIBUTING.md, The commit gate); a Markdown-only commit takes seconds. The full `pnpm check` is the landing gate: run it on the rebased head before `gh pr merge`. The `Pull request gates` workflow is paused, so no GitHub status checks run on pull requests; the `CI` workflow runs on pushes to `main` only, as a backstop. The `Release` workflow runs again since 2026-09-30: a pushed `v*` tag drafts the release (CONTRIBUTING.md, Release).
 - Run it as `pnpm check > /tmp/check.txt 2>&1; echo "EXIT=$?"` and read the
   file. Piping it into `tail`, `head`, or `grep` reports the pipeline's exit
   status rather than the command's, so a failing gate reads as a passing one.
