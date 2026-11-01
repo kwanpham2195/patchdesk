@@ -14,38 +14,7 @@ The architecture has three layers of authority:
 
 ## Process overview
 
-```mermaid
-flowchart TB
-    subgraph Electron
-        direction TB
-        subgraph Renderer["Renderer process (sandboxed React)"]
-            UI["Pull requests and Review workbench"]
-        end
-        subgraph Main["Main process (Node)"]
-            Bridge["Desktop bridge<br/>route allowlist"]
-            API["Local API<br/>Hono on 127.0.0.1, random port"]
-            Services["Services<br/>orchestration"]
-            Domain["Domain<br/>types and invariants"]
-            Adapters["Adapters<br/>GitHub, storage, catalogs"]
-        end
-    end
-    subgraph External["External"]
-        GitHub["GitHub<br/>REST and GraphQL over HTTPS"]
-        Codex["Local Codex CLI account<br/>app server"]
-        PiCli["Local pi CLI account<br/>RPC mode"]
-        Files["Local files<br/>JSON stores, worktree, logs"]
-    end
-    UI -- "IPC through preload" --> Bridge
-    Bridge -- "HTTP + capability + origin" --> API
-    API --> Services
-    Services --> Domain
-    Services --> Adapters
-    Services -- "artifact and checkout I/O" --> Files
-    Adapters -- "read and write" --> GitHub
-    Adapters --> Files
-    Services --> Codex
-    Services --> PiCli
-```
+![Patchdesk processes, shared services, native Insight providers, and storage boundaries](assets/architecture.svg)
 
 Patchdesk is a local-first workbench for pull-request review.
 A maintainer opens a Review for an open pull request, inspects the represented revision, and decides what to publish or merge.
