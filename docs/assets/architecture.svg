@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="1320" viewBox="0 0 1480 1320" role="img" aria-labelledby="architecture-title architecture-desc">
+<title id="architecture-title">Patchdesk architecture</title>
+<desc id="architecture-desc">The sandboxed React renderer uses preload and IPC to reach the main process through a protected local API; a separate MCP server reaches the same services over a Unix socket, while main owns domain decisions, GitHub transport, native provider children, and local storage.</desc>
+<defs>
+  <marker id="architecture-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#4f5d75" stroke-width="1.5"/></marker>
+  <marker id="architecture-http" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#2e5aa8" stroke-width="1.5"/></marker>
+  <style>
+    text { font-family: Arial, Helvetica, sans-serif; fill: #2d3142; }
+    .title { font-size: 36px; font-weight: 700; }
+    .name { font-size: 22px; font-weight: 700; }
+    .body { font-size: 18px; }
+    .small { font-size: 16px; fill: #4f5d75; }
+    .tag { font-size: 15px; font-weight: 700; letter-spacing: 1.2px; fill: #4f5d75; }
+    .mono { font-family: Menlo, Consolas, monospace; font-size: 16px; fill: #4f5d75; }
+    .edge { fill: none; stroke: #4f5d75; stroke-width: 2; marker-end: url(#architecture-arrow); }
+    .http { stroke: #2e5aa8; marker-end: url(#architecture-http); }
+    .label { font-size: 16px; fill: #4f5d75; }
+  </style>
+</defs>
+<rect width="1480" height="1320" fill="#f5f5f5"/>
+<text x="48" y="64" class="title">Patchdesk architecture</text>
+<text x="48" y="100" class="body">One local authority. Two entry paths. Revision-bound Insight evidence.</text>
+<!-- Boundaries precede connectors and nodes. -->
+<path d="M 32 136 H 1056 Q 1064 136 1064 144 V 992 Q 1064 1000 1056 1000 H 428 Q 420 1000 420 992 V 536 Q 420 528 412 528 H 32 Q 24 528 24 520 V 144 Q 24 136 32 136 Z" fill="#ececec" stroke="#bfc0c0"/>
+<text x="48" y="168" class="tag">ELECTRON DESKTOP APP</text>
+<rect x="420" y="184" width="620" height="792" rx="8" fill="#f5f5f5" stroke="#7a8399" stroke-dasharray="6 5"/>
+<text x="444" y="220" class="tag">MAIN PROCESS · NODE · LOCAL AUTHORITY</text>
+<text x="444" y="280" class="name">Composition root</text>
+<text x="444" y="312" class="mono">src/main/</text>
+<text x="444" y="348" class="body">Wires services, adapters, IPC, and lifecycle.</text>
+
+<path d="M 192 336 V 400" class="edge"/>
+<path d="M 336 452 H 456" class="edge"/>
+<path d="M 680 452 H 744" class="edge http"/>
+<path d="M 872 504 V 568" class="edge"/>
+<path d="M 336 632 H 456" class="edge"/>
+<path d="M 680 632 H 744" class="edge"/>
+<path d="M 784 720 V 728 Q 784 736 776 736 H 576 Q 568 736 568 744 V 768" class="edge"/>
+<path d="M 872 720 V 768" class="edge"/>
+<path d="M 1000 816 H 1072 Q 1080 816 1080 808 V 392 Q 1080 384 1088 384 H 1120" class="edge"/>
+<path d="M 1000 896 H 1120" class="edge http"/>
+<path d="M 872 944 V 1096" class="edge"/>
+<path d="M 1392 416 H 1424 Q 1432 416 1432 424 V 1056 Q 1432 1064 1424 1064 H 1288 Q 1280 1064 1280 1072 V 1096" class="edge"/>
+<path d="M 968 720 V 736 Q 968 744 976 744 H 1096 Q 1104 744 1104 752 V 888 A 8 8 0 0 0 1104 904 V 1040 Q 1104 1048 1096 1048 H 1008 Q 1000 1048 1000 1056 V 1096" class="edge"/>
+<rect x="204" y="357" width="80" height="26" rx="2" fill="#f5f5f5"/>
+<text x="212" y="376" class="label">request</text>
+<rect x="348" y="413" width="44" height="26" rx="2" fill="#f5f5f5"/>
+<text x="356" y="432" class="label">IPC</text>
+<rect x="676" y="413" width="60" height="26" rx="2" fill="#f5f5f5"/>
+<text x="684" y="432" class="label">HTTP</text>
+<rect x="876" y="521" width="134" height="26" rx="2" fill="#f5f5f5"/>
+<text x="884" y="540" class="label">route → service</text>
+<rect x="340" y="589" width="98" height="26" rx="2" fill="#f5f5f5"/>
+<text x="348" y="608" class="label">JSON line</text>
+<rect x="676" y="589" width="52" height="26" rx="2" fill="#f5f5f5"/>
+<text x="684" y="608" class="label">call</text>
+<rect x="572" y="741" width="104" height="26" rx="2" fill="#f5f5f5"/>
+<text x="580" y="760" class="label">pure rules</text>
+<rect x="876" y="733" width="40" height="26" rx="2" fill="#f5f5f5"/>
+<text x="884" y="752" class="label">I/O</text>
+<rect x="1084" y="517" width="104" height="26" rx="2" fill="#f5f5f5"/>
+<text x="1092" y="536" class="label">stdio RPC</text>
+<rect x="1008" y="857" width="72" height="26" rx="2" fill="#f5f5f5"/>
+<text x="1016" y="876" class="label">HTTPS</text>
+<rect x="720" y="1009" width="120" height="26" rx="2" fill="#f5f5f5"/>
+<text x="728" y="1028" class="label">read / write</text>
+<rect x="1108" y="997" width="120" height="26" rx="2" fill="#f5f5f5"/>
+<text x="1116" y="1016" class="label">artifact I/O</text>
+<rect x="1216" y="1021" width="134" height="26" rx="2" fill="#f5f5f5"/>
+<text x="1224" y="1040" class="label">read evidence</text>
+<rect x="48" y="208" width="288" height="128" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="68" y="236" class="tag">VIEW PROCESS</text>
+<text x="68" y="272" class="name">React renderer</text>
+<text x="68" y="302" class="small">Pull requests · Review</text>
+<text x="68" y="328" class="small">Sandboxed; no Node.js</text>
+<rect x="48" y="400" width="288" height="104" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="68" y="428" class="name">Preload bridge</text>
+<text x="68" y="458" class="small">window.patchdesk.request</text>
+<text x="68" y="484" class="small">Isolated renderer context</text>
+<rect x="456" y="400" width="224" height="104" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="476" y="428" class="name">Desktop bridge</text>
+<text x="476" y="458" class="small">Sender + route allowlist</text>
+<text x="476" y="484" class="small">IPC handler</text>
+<rect x="744" y="400" width="256" height="104" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="764" y="428" class="name">Local API</text>
+<text x="764" y="458" class="small">Hono · 127.0.0.1:random</text>
+<text x="764" y="484" class="small">Capability + origin</text>
+<rect x="48" y="552" width="288" height="160" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="68" y="580" class="tag">SEPARATE PROCESS</text>
+<text x="68" y="616" class="name">MCP server</text>
+<text x="68" y="646" class="small">patchdesk mcp</text>
+<text x="68" y="672" class="small">Client ↔ server: stdio</text>
+<text x="68" y="698" class="small">Runs on the app’s Node</text>
+<rect x="456" y="568" width="224" height="152" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="476" y="596" class="name">MCP listener</text>
+<text x="476" y="626" class="small">Unix socket</text>
+<text x="476" y="652" class="small">0700 parent directory</text>
+<text x="476" y="678" class="small">Revalidates tool input</text>
+<rect x="744" y="568" width="256" height="152" rx="8" fill="#fff0e8" stroke="#eb6c36" stroke-width="2"/>
+<text x="764" y="596" class="name">Services</text>
+<text x="764" y="626" class="small">Review orchestration</text>
+<text x="764" y="652" class="small">Insight run + validation</text>
+<text x="764" y="678" class="small">Shared by API and MCP</text>
+<rect x="456" y="768" width="224" height="112" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="476" y="796" class="name">Domain</text>
+<text x="476" y="826" class="small">Types, parsers,</text>
+<text x="476" y="852" class="small">pure state transitions</text>
+<rect x="744" y="768" width="256" height="176" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="764" y="796" class="name">Adapters</text>
+<text x="764" y="826" class="small">GitHub HTTPS transport</text>
+<text x="764" y="852" class="small">Atomic JSON stores</text>
+<text x="764" y="878" class="small">Codex / pi RPC clients</text>
+<text x="764" y="904" class="small">Git command runner</text>
+<rect x="1120" y="264" width="272" height="232" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="1140" y="292" class="tag">CHILD PROCESSES</text>
+<text x="1140" y="328" class="name">Insight providers</text>
+<text x="1140" y="358" class="small">Codex CLI account</text>
+<text x="1140" y="384" class="small">codex app-server</text>
+<text x="1140" y="410" class="small">pi CLI account</text>
+<text x="1140" y="436" class="small">pi --mode rpc</text>
+<text x="1140" y="462" class="small">Fresh native sessions</text>
+<rect x="1120" y="800" width="272" height="160" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="1140" y="828" class="tag">REMOTE</text>
+<text x="1140" y="864" class="name">GitHub</text>
+<text x="1140" y="894" class="small">REST + GraphQL</text>
+<text x="1140" y="920" class="small">Remote truth</text>
+<text x="1140" y="946" class="small">Explicit maintainer writes</text>
+<rect x="456" y="1096" width="936" height="152" rx="8" fill="#ffffff" stroke="#bfc0c0" stroke-width="1.5"/>
+<text x="476" y="1124" class="tag">LOCAL FILES · CONFIG / DATA / CACHE</text>
+<text x="476" y="1160" class="name">Storage on disk</text>
+<text x="476" y="1192" class="body">Config</text>
+<text x="476" y="1220" class="small">Profiles + preferences</text>
+<text x="740" y="1192" class="body">Local data</text>
+<text x="740" y="1220" class="small">Reviews, Insights, evidence, logs</text>
+<text x="1096" y="1192" class="body">Cache</text>
+<text x="1096" y="1220" class="small">Worktrees + images</text>
+<text x="48" y="768" class="small">Coding agent calls the MCP server.</text>
+<text x="48" y="798" class="small">Tools reach the same services.</text>
+<text x="48" y="828" class="small">An agent run request waits for</text>
+<text x="48" y="854" class="small">the maintainer to start the run.</text>
+<text x="48" y="916" class="small">Main captures evidence; native tools read it.</text>
+<text x="48" y="944" class="small">Main validates results before retaining them.</text>
+<path d="M 48 1280 H 88" class="edge"/>
+<text x="100" y="1286" class="small">Request / call / file access</text>
+<path d="M 400 1280 H 440" class="edge http"/>
+<text x="452" y="1286" class="small">HTTP / HTTPS</text>
+<text x="720" y="1286" class="small">Arrows show initiation; replies return on the same channel.</text>
+</svg>
