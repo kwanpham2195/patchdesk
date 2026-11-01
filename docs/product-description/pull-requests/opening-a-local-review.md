@@ -29,7 +29,7 @@ stateDiagram-v2
 
 ### Arrive
 
-**Open local checkout** lists the workspace's registered repositories. Choose checkout opens the native folder picker. A selected folder registers its Git repository and opens the existing Shared and Commit source dialog. Cancelling the picker creates no registration or Review. A non-Git folder shows an error on this path, without starting GitHub setup. Each row shows its checkout folder under the name in smaller monospace text, cut in the middle when long, with the full path in a tooltip, so two repositories with the same name stay apart. Missing or unresolved registrations remain visible but cannot be opened from the chooser.
+**Open local checkout** lists the workspace's registered repositories. The repository list scrolls inside a dialog that fits the window; the title and Choose checkout button stay visible. Long repository names stay within their rows. Choose checkout opens the native folder picker. A selected folder registers its Git repository and opens the existing Shared and Commit source dialog. Cancelling the picker creates no registration or Review. A non-Git folder shows an error on this path, without starting GitHub setup. Each row shows its checkout folder under the name in smaller monospace text, cut in the middle when long, with the full path in a tooltip, so two repositories with the same name stay apart. Missing or unresolved registrations remain visible but cannot be opened from the chooser.
 
 Visited Local Reviews are grouped by their registration and checkout. Reopening, refreshing, adding a remote, or changing a remote keeps the registration and Review IDs. Existing GitHub-backed Local Reviews retain their IDs when the workspace upgrades. Local registration never adds a watched repository.
 

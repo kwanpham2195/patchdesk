@@ -138,7 +138,7 @@ export function LocalCheckoutDialog({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="flex max-h-[min(80dvh,48rem)] min-w-0 flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Open local checkout</DialogTitle>
           <DialogDescription>
@@ -154,66 +154,77 @@ export function LocalCheckoutDialog({
         {listing.kind === "error" ? (
           <p role="status">Registered repositories could not be read.</p>
         ) : null}
-        {listing.kind === "loaded"
-          ? listing.value.map((repository) => (
-              <div key={repository.id} className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="h-auto min-w-0 flex-1 justify-start py-2"
-                  disabled={pending || repository.state === "unresolved"}
-                  onClick={() => {
-                    if (repository.state === "missing") {
-                      setMissingNotice(
-                        `${repository.displayName}'s folder is missing${repository.configuredRoot === undefined ? "" : ` (${repository.configuredRoot})`}. Choose Relocate to point Patchdesk at its new location.`,
-                      );
-                      return;
-                    }
-                    setMissingNotice(undefined);
-                    setError(undefined);
-                    setSelected({ ...repository, profileId });
-                  }}
+        <div className="grid min-h-0 min-w-0 gap-2 overflow-y-auto">
+          {listing.kind === "loaded"
+            ? listing.value.map((repository) => (
+                <div
+                  key={repository.id}
+                  className="flex min-w-0 items-center gap-2"
                 >
-                  <span className="flex min-w-0 flex-col items-start gap-0.5">
-                    <span className="flex max-w-full items-center gap-2">
-                      <span className="truncate">{repository.displayName}</span>
-                      {repository.state === "missing" ? (
-                        <Badge variant="warning">Missing</Badge>
-                      ) : null}
-                      {repository.state === "unresolved" ? (
-                        <Badge variant="outline">Unresolved</Badge>
-                      ) : null}
-                    </span>
-                    {repository.configuredRoot === undefined ? null : (
-                      <span
-                        className="max-w-full truncate font-mono text-xs font-normal text-muted-foreground"
-                        title={repository.configuredRoot}
-                      >
-                        {shortenPathMiddle(repository.configuredRoot)}
-                      </span>
-                    )}
-                  </span>
-                </Button>
-                {repository.state === "missing" ? (
                   <Button
-                    variant="secondary"
-                    disabled={pending}
+                    variant="outline"
+                    className="h-auto min-w-0 flex-1 justify-start py-2"
+                    disabled={pending || repository.state === "unresolved"}
                     onClick={() => {
-                      setError(undefined);
+                      if (repository.state === "missing") {
+                        setMissingNotice(
+                          `${repository.displayName}'s folder is missing${repository.configuredRoot === undefined ? "" : ` (${repository.configuredRoot})`}. Choose Relocate to point Patchdesk at its new location.`,
+                        );
+                        return;
+                      }
                       setMissingNotice(undefined);
-                      setRelocating({
-                        id: repository.id,
-                        displayName: repository.displayName,
-                        ...definedProps({ path: repository.configuredRoot }),
-                      });
+                      setError(undefined);
+                      setSelected({ ...repository, profileId });
                     }}
                   >
-                    Relocate…
+                    <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                      <span className="flex max-w-full items-center gap-2">
+                        <span className="truncate">
+                          {repository.displayName}
+                        </span>
+                        {repository.state === "missing" ? (
+                          <Badge variant="warning">Missing</Badge>
+                        ) : null}
+                        {repository.state === "unresolved" ? (
+                          <Badge variant="outline">Unresolved</Badge>
+                        ) : null}
+                      </span>
+                      {repository.configuredRoot === undefined ? null : (
+                        <span
+                          className="max-w-full truncate font-mono text-xs font-normal text-muted-foreground"
+                          title={repository.configuredRoot}
+                        >
+                          {shortenPathMiddle(repository.configuredRoot)}
+                        </span>
+                      )}
+                    </span>
                   </Button>
-                ) : null}
-              </div>
-            ))
-          : null}
-        <Button disabled={pending} onClick={() => void choose()}>
+                  {repository.state === "missing" ? (
+                    <Button
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={() => {
+                        setError(undefined);
+                        setMissingNotice(undefined);
+                        setRelocating({
+                          id: repository.id,
+                          displayName: repository.displayName,
+                          ...definedProps({ path: repository.configuredRoot }),
+                        });
+                      }}
+                    >
+                      Relocate…
+                    </Button>
+                  ) : null}
+                </div>
+              ))
+            : null}
+        </div>
+        <Button
+          className="shrink-0"
+          disabled={pending}
+          onClick={() => void choose()}
+        >
           {pending ? "Opening…" : "Choose checkout"}
         </Button>
       </DialogContent>
