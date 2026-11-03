@@ -20,7 +20,7 @@
     "check:imports": "node scripts/check-parent-imports.mjs",
     "check": "node scripts/run-full-check.mjs",
     "check:package": "node scripts/check-package.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc-ts --noEmit",
     "typecheck:scripts": "node scripts/check-scripts-types.mjs",
     "test": "vitest",
     "test:root": "vitest --run",
@@ -100,6 +100,7 @@
     "shiki": "4.3.1",
     "tailwind-merge": "3.6.0",
     "tailwindcss": "^4.1.12",
+    "tsc-ts": "0.1.0",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
     "vitest": "^5.0.3"

@@ -19,9 +19,13 @@ for the domain language used across the codebase.
 
 ### TypeScript and editors
 
-The repository pins the official native TypeScript 7 compiler. `pnpm typecheck`
-checks the application and tests; `pnpm typecheck:scripts` checks the script
-diagnostic baseline under the same strict settings.
+The repository pins `tsc-ts@0.1.0`, a native compiler based on TypeScript
+7.1.0-beta. `pnpm typecheck` checks the application and tests;
+`pnpm typecheck:scripts` checks the script diagnostic baseline under the same
+strict settings. Both commands use `tsc-ts`.
+
+The official `typescript` package remains installed for the import checker's
+AST API and the native editor server.
 
 For editor support, use a TypeScript 7 language-server client with
 `node_modules/.bin/tsc --lsp --stdio` as its server command. The native package
@@ -29,7 +33,7 @@ does not contain the older `lib/tsserver.js`; clients that require that file
 cannot use this package as their TypeScript SDK. Configure the native server
 for this repository rather than pointing a legacy client at the package.
 
-`scripts/check-parent-imports.mjs` uses the pinned compiler's unstable AST API.
+`scripts/check-parent-imports.mjs` uses the official compiler's unstable AST API.
 It parses all tracked source files in one native session, including JSDoc,
 without resolving imports or loading libraries. Recheck that guard when
 upgrading TypeScript.

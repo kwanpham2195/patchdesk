@@ -91,7 +91,7 @@ const SCRIPTS_TYPE_RATCHET = {
   baselineField: "errors",
   configLabel: "tsconfig.scripts.json",
   isConfigPath: isScriptsTypeConfigPath,
-  tool: "tsc",
+  tool: "tsc-ts",
   toolArgs: [
     "--noEmit",
     "--pretty",
@@ -393,7 +393,7 @@ function isScriptsTypeConfigPath(path) {
 }
 
 /**
- * tsc has no JSON reporter, so the count is its diagnostic lines. `--pretty
+ * tsc-ts has no JSON reporter, so the count is its diagnostic lines. `--pretty
  * false` gives one line per diagnostic in `file(line,col): error TSnnnn: `
  * form, with any elaboration indented under it; the indented continuations are
  * part of the same finding and are not counted.
@@ -417,7 +417,7 @@ function countTypeErrors(stdout, output) {
   }
   if (positionless > 0) {
     output.stderr(
-      `tsc reported ${positionless} diagnostic(s) with no file position, which ` +
+      `tsc-ts reported ${positionless} diagnostic(s) with no file position, which ` +
         `means the project did not load and nothing was type-checked. Fix that ` +
         `before the count means anything.\n`,
     );
