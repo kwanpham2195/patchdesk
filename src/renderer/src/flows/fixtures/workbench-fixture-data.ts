@@ -381,7 +381,10 @@ export const longWorkbenchFixtureData = {
 };
 
 export function canonicalWorkbenchModel(
-  data: typeof workbenchFixtureData,
+  data:
+    | typeof workbenchFixtureData
+    | typeof longWorkbenchFixtureData
+    | typeof analysisFixtureData,
 ): WorkbenchResponse {
   const headSha = data.pullRequest.headSha;
   const conversation: WorkbenchResponse["conversation"] = {

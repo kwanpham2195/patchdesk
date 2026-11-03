@@ -212,6 +212,8 @@ check the connection with `patchdesk mcp --check`, and tell the agent when to
 use Patchdesk. [Patchdesk MCP server](mcp.md) walks through each step, and
 covers other MCP hosts, each tool, and troubleshooting.
 
+If Patchdesk misbehaves, ask your coding agent to run `patchdesk triage`. It writes a file of version, paths and log locations (home directory shown as `~`), reads the matching source and logs, and offers a fix or a drafted issue; it files nothing without your yes.
+
 ## Where Patchdesk keeps its files
 
 - Config: `~/.config/patchdesk`

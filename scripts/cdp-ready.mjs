@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { devProfileFor } from "./dev-worktree-lib.mjs";
 import { processOutput } from "./gate-command-lib.mjs";
 
 /**
@@ -38,20 +39,20 @@ const REQUEST_TIMEOUT_MS = 2000;
 
 /**
  * The CDP port this session should ask about: `REMOTE_DEBUGGING_PORT` when it
- * names one, and 9233 otherwise.
+ * names one, else `fallback`: the checkout's own derived port in a worktree
+ * (`pnpm dev` prints it), 9233 in the main checkout.
  *
- * 9233 is the maintainer's own app. A session that needs its own dev app sets
- * `REMOTE_DEBUGGING_PORT` (924N) and its own user-data dir, and this check
- * follows it there rather than reporting on somebody else's window.
+ * 9233 is the maintainer's own app, so a worktree never defaults to it.
  *
  * @param {Record<string, string | undefined>} env
+ * @param {number} [fallback]
  * @returns {number}
  */
-export function cdpPort(env) {
+export function cdpPort(env, fallback = DEFAULT_CDP_PORT) {
   const configured = env["REMOTE_DEBUGGING_PORT"];
-  if (configured === undefined) return DEFAULT_CDP_PORT;
+  if (configured === undefined) return fallback;
   const port = Number.parseInt(configured.trim(), 10);
-  return Number.isInteger(port) && port > 0 ? port : DEFAULT_CDP_PORT;
+  return Number.isInteger(port) && port > 0 ? port : fallback;
 }
 
 /**
@@ -123,7 +124,10 @@ if (
   resolve(invokedPath) === fileURLToPath(import.meta.url)
 ) {
   process.exitCode = await checkCdpReady({
-    port: cdpPort(process.env),
+    port: cdpPort(
+      process.env,
+      devProfileFor(process.cwd(), process.env)?.cdpPort,
+    ),
     output: processOutput,
   });
 }

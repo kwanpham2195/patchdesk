@@ -16,12 +16,8 @@ const projectRoot = resolve(import.meta.dirname, "..");
  * invocation works from `pnpm check` and from a commit hook. With a base and
  * a head it is that commit pair, which is the shape CI uses.
  *
- * Knip is NOT part of `pnpm precommit`. Its number answers a whole-project
- * reachability question, so an ordinary mid-refactor commit -- move a helper
- * out of one file now, wire up its new caller in the next commit -- moves the
- * count for a reason that has nothing wrong with it. A gate that rejects that
- * commit gets switched off. `pnpm check`, the pre-handoff gate, and the pull
- * request gates are where the whole project is meant to hang together.
+ * It runs at pre-commit when its inputs are staged, and in the landing
+ * `pnpm check`.
  *
  * @param {{
  *   readonly args: ReadonlyArray<string>;

@@ -2,7 +2,7 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 
-import { whenLoginShellEnvironmentImported } from "./login-shell-import";
+import { importedProcessPath } from "./login-shell-import";
 
 const macDesktopPaths = [
   "/opt/homebrew/bin",
@@ -25,8 +25,7 @@ export async function discoverExecutable(
   if (isAbsolute(executable) || executable.includes("/")) {
     return (await executableFile(executable)) ? executable : undefined;
   }
-  if (suppliedPath === undefined) await whenLoginShellEnvironmentImported();
-  const pathValue = suppliedPath ?? process.env.PATH;
+  const pathValue = suppliedPath ?? (await importedProcessPath());
   const search = [
     ...(pathValue?.split(delimiter).filter((value) => value.length > 0) ?? []),
     ...(process.platform === "darwin" ? macDesktopPaths : []),
@@ -47,6 +46,20 @@ async function executableFile(path: string): Promise<boolean> {
   }
 }
 
+const developmentExecutables = new Map<string, string>();
+
+/**
+ * Pins a command name to one file for every PATH-only lookup. The login-shell
+ * import replaces PATH (ADR 0038), so a PATH entry cannot select the Codex
+ * replay executable; callers register this only for unpackaged builds.
+ */
+export function registerDevelopmentExecutable(
+  executable: string,
+  path: string,
+): void {
+  developmentExecutables.set(executable, path);
+}
+
 /**
  * Resolves a command only through the supplied inherited PATH. Given none it
  * reads this process's, which the login shell may still be replacing, so it
@@ -57,9 +70,11 @@ export async function discoverPathOnlyExecutable(
   executable: string,
   suppliedPath?: string,
 ): Promise<string | undefined> {
+  const pinned = developmentExecutables.get(executable);
+  if (pinned !== undefined)
+    return (await executableFile(pinned)) ? pinned : undefined;
   if (isAbsolute(executable) || executable.includes("/")) return undefined;
-  if (suppliedPath === undefined) await whenLoginShellEnvironmentImported();
-  const pathValue = suppliedPath ?? process.env.PATH;
+  const pathValue = suppliedPath ?? (await importedProcessPath());
   for (const directory of new Set(
     pathValue?.split(delimiter).filter((value) => value.length > 0) ?? [],
   )) {

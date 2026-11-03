@@ -1,0 +1,78 @@
+name: Triage report
+description: Filed by a coding agent that ran `patchdesk triage` and investigated the machine. For hand-written reports use a blank issue.
+labels:
+  - via-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This structure is what `patchdesk triage` agents follow. Keep one problem per issue
+        and redact tokens and home directory paths from anything you paste.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The problem in the user's own words.
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Diagnosis
+      description: What the investigation found, grounded in log lines and source at the matching tag or commit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, deterministic repro if one was found.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version, or commit for a dev build, the bug happened on (not the `patchdesk` command's own build), or unknown.
+      placeholder: 0.0.20
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, channel (installed, dev or worktree), provider CLI versions if relevant.
+      placeholder: macOS 15.3, installed, codex 0.50
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: The most relevant log lines only. Redacted.
+      render: shell
+
+  - type: input
+    id: related
+    attributes:
+      label: Related issues
+      description: Existing issues that look similar, and why this is not a duplicate.
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Fix applied or workaround
+      description: Anything that was run on the machine to unblock the user.
+
+  - type: input
+    id: agent
+    attributes:
+      label: Filed by
+      description: Which agent and model produced this report.
+      placeholder: claude (opus-5) via patchdesk triage

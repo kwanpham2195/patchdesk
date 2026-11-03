@@ -1,10 +1,25 @@
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { fileURLToPath, URL } from "node:url";
+import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { build, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+/** HEAD, with `+dirty` when the tree has uncommitted changes, so a dev report never points at source that no longer matches. */
+function buildCommit(): string {
+  try {
+    const run = (...args: string[]): string =>
+      execFileSync("git", args, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    return `${run("rev-parse", "HEAD")}${run("status", "--porcelain") === "" ? "" : "+dirty"}`;
+  } catch {
+    return "unknown";
+  }
+}
 
 function rendererGraphArtifact(): Plugin {
   return {
@@ -68,6 +83,7 @@ function mcpShimBundle(): Plugin {
             ),
           },
         },
+        define: { __PATCHDESK_COMMIT__: JSON.stringify(buildCommit()) },
         logLevel: "warn",
         build: {
           ssr: "src/mcp/main.ts",
@@ -184,6 +200,11 @@ export default defineConfig(({ command }) => ({
     },
   },
   renderer: {
+    // A worktree's `pnpm dev` hands its own port; strict so a clash fails instead of moving the origin.
+    server:
+      process.env.PATCHDESK_VITE_PORT === undefined
+        ? {}
+        : { port: Number(process.env.PATCHDESK_VITE_PORT), strictPort: true },
     plugins: [react(), tailwindcss(), rendererGraphArtifact()],
     build: {
       manifest: true,

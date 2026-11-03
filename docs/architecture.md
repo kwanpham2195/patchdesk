@@ -1,11 +1,10 @@
 # Architecture
 
-This document describes Patchdesk's process boundaries, code layers, and write rules.
+Owns Patchdesk's process boundaries, code layers, write rules and invariants; read it before you change code across layers, a write path or storage.
 
 For the vocabulary of the domain, read [the product glossary](product-description/glossary.md) first.
 It defines the exact meaning of Review, Review session, Insight, Finding, and every other domain term used here.
 For the history of architectural decisions, read the records in [docs/adr](adr/).
-For how agents should explore this repository, read [docs/agents/domain.md](agents/domain.md).
 
 The architecture has three layers of authority:
 
@@ -15,38 +14,7 @@ The architecture has three layers of authority:
 
 ## Process overview
 
-```mermaid
-flowchart TB
-    subgraph Electron
-        direction TB
-        subgraph Renderer["Renderer process (sandboxed React)"]
-            UI["Pull requests and Review workbench"]
-        end
-        subgraph Main["Main process (Node)"]
-            Bridge["Desktop bridge<br/>route allowlist"]
-            API["Local API<br/>Hono on 127.0.0.1, random port"]
-            Services["Services<br/>orchestration"]
-            Domain["Domain<br/>types and invariants"]
-            Adapters["Adapters<br/>GitHub, storage, catalogs"]
-        end
-    end
-    subgraph External["External"]
-        GitHub["GitHub<br/>REST and GraphQL over HTTPS"]
-        Codex["Local Codex CLI account<br/>app server"]
-        PiCli["Local pi CLI account<br/>RPC mode"]
-        Files["Local files<br/>JSON stores, worktree, logs"]
-    end
-    UI -- "IPC through preload" --> Bridge
-    Bridge -- "HTTP + capability + origin" --> API
-    API --> Services
-    Services --> Domain
-    Services --> Adapters
-    Services -- "artifact and checkout I/O" --> Files
-    Adapters -- "read and write" --> GitHub
-    Adapters --> Files
-    Services --> Codex
-    Services --> PiCli
-```
+![Patchdesk processes, shared services, native Insight providers, and storage boundaries](assets/architecture.svg)
 
 Patchdesk is a local-first workbench for pull-request review.
 A maintainer opens a Review for an open pull request, inspects the represented revision, and decides what to publish or merge.
@@ -103,7 +71,7 @@ It is the only place that knows about Electron.
 - `local-api.ts` also owns the app's recurring background work. `startRetentionSweepScheduler` sweeps each configured profile's retained data once every 24 hours, and `startWatchedPullRequestScheduler` polls the watched pull requests once at start and then on the interval Settings holds; `PATCH /v1/settings` reschedules it when that interval changes (ADR 0045). The server's `stop` settles both schedulers before it closes the HTTP server, and `electron-main.ts` is what turns them on.
 - `ipc-contract.ts` is the contract the preload and bridge bullets below describe: `DESKTOP_REQUEST_CHANNEL`, the closed `DesktopRequest` and `DesktopResponse` shapes, `PatchdeskDesktopApi`, and `APP_CAPABILITY_HEADER`. Every main-to-renderer channel name is a constant written here exactly once.
 - `github-capability-guards.ts` decides which GitHub write gateways the container may expose. `local-api-container.ts` builds the pending-review, direct-summary, and merge services only when the adapter structurally implements the matching gateway, and startup fails closed when the pending-review gateway is absent.
-- `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 30-second timeout.
+- `desktop-bridge.ts` is the only IPC surface the renderer can reach. It validates the requested route against an allowlist, forwards the request to the local API with the capability and renderer-origin headers, caps responses at 8 MiB, and applies a 60-second timeout.
 - `app-capability.ts` generates the per-launch capability and compares presented values with constant-time equality.
 - `preload.ts` exposes the minimal `window.patchdesk` bridge to the sandboxed renderer: `request`, `openExternalHttps`, `onMenuAction` for the native menu, `onNotificationClick`, `onWatchedPullRequestChange`, `qaScrollDiagnosticsEnabled`, `setWindowAppearance`, and `onWindowFullScreen` with the `windowFullScreenAtLoad` and `appearanceAtLoad` values it reads as the renderer loads — the renderer cannot see native full screen for itself.
 - `renderer-origin.ts` parses and verifies the renderer origin.
@@ -400,7 +368,7 @@ The root Vitest suite and Playwright browser suites cover the application.
 `tests/renderer/` uses jsdom and Testing Library, and `renderer-contracts.test.ts` pins the projection schemas that the live API must satisfy.
 `tests/scripts/` covers the packaging, release, and gate scripts, and `tests/workflows/` holds the Walkthrough generation flow from prompt to parsed output.
 
-`pnpm test:root` and `pnpm test:all` run the root suite. `pnpm check:package root` selects the only application package for final verification; `pnpm check` runs the full repository gate once through pre-commit. The retired API runtime has no separate suite.
+The retired API runtime has no separate suite.
 
 The outermost boundary is the built app.
 Playwright browser tests run against the built renderer bundle (`out/renderer`) served over loopback, with an installed test bridge (`tests/browser/bridge-fixture.ts`), plus a dedicated performance suite.

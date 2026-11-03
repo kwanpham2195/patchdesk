@@ -96,10 +96,12 @@ and exits 0:
 
 ```text
 Usage: patchdesk mcp [--check]
+       patchdesk triage
        patchdesk setup <status | add-checkout | relocate-checkout | add-repo | set-checkout> [--cwd <path>] [--json]
 
   patchdesk mcp                 Serve Patchdesk's tools to a coding agent over MCP (stdio).
   patchdesk mcp --check         Call list_repositories on the running app and print the result.
+  patchdesk triage              Write a context file of machine facts for a support agent and print its path.
   patchdesk setup status        Print the GitHub account, workspace, and repositories, and the steps left.
   patchdesk setup add-checkout Register the checkout at --cwd (default: here), without GitHub.
   patchdesk setup relocate-checkout --repository-id <id> --cwd <path> --confirm
@@ -437,6 +439,13 @@ request. If the checkout changed again before your Refresh, the Refresh moves
 to the newer code and drops the request.
 
 ## Troubleshooting
+
+`patchdesk triage` writes a Markdown file under the temp directory with the
+version, channel (installed, dev or worktree), commit, macOS version, whether
+the app answers on its socket, and the config, data, cache and log paths with
+each log's size and modified time, and prints the file's path. It only reads;
+it never writes to Patchdesk's stores. A coding agent follows
+[the triage playbook](../.github/triage/PLAYBOOK.md) from there.
 
 Run `patchdesk mcp --check` first whenever your agent reports the Patchdesk
 server as failed.

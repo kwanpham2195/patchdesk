@@ -6,6 +6,34 @@ import { setTimeout } from "node:timers/promises";
 import { acquireFullCheckLock } from "./full-check-lock.mjs";
 
 /**
+ * The environment for a test run. Hook repository variables must not redirect
+ * Git inside the isolated test repositories.
+ * @param {string} cwd
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function testEnvironment(cwd) {
+  const env = { ...process.env };
+  const repositoryVariables = execFileSync(
+    "git",
+    ["rev-parse", "--local-env-vars"],
+    { cwd, encoding: "utf8" },
+  )
+    .trim()
+    .split("\n");
+  for (const name of [
+    ...repositoryVariables,
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_AUTHOR_DATE",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+    "GIT_COMMITTER_DATE",
+  ])
+    delete env[name];
+  return env;
+}
+
+/**
  * Stream a command and wait for its owned process group to finish on interruption.
  * @param {string} command
  * @param {ReadonlyArray<string>} args
@@ -16,27 +44,10 @@ import { acquireFullCheckLock } from "./full-check-lock.mjs";
 export function runCheckCommand(command, args, cwd, signal) {
   if (signal.aborted) return Promise.resolve(130);
   return new Promise((finish, reject) => {
-    const env = { ...process.env };
-    if (command === "pnpm" && args[0] === "test:all") {
-      // Hook repository variables must not redirect Git inside isolated test repositories.
-      const repositoryVariables = execFileSync(
-        "git",
-        ["rev-parse", "--local-env-vars"],
-        { cwd, encoding: "utf8" },
-      )
-        .trim()
-        .split("\n");
-      for (const name of [
-        ...repositoryVariables,
-        "GIT_AUTHOR_NAME",
-        "GIT_AUTHOR_EMAIL",
-        "GIT_AUTHOR_DATE",
-        "GIT_COMMITTER_NAME",
-        "GIT_COMMITTER_EMAIL",
-        "GIT_COMMITTER_DATE",
-      ])
-        delete env[name];
-    }
+    const env =
+      command === "pnpm" && args[0] === "test:all"
+        ? testEnvironment(cwd)
+        : { ...process.env };
     const child = spawn(command, [...args], {
       cwd,
       env,

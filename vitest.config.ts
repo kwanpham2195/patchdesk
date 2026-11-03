@@ -9,6 +9,7 @@ export default defineConfig({
       "#src": fileURLToPath(new URL("./src", import.meta.url)),
       "#tests": fileURLToPath(new URL("./tests", import.meta.url)),
       "#scripts": fileURLToPath(new URL("./scripts", import.meta.url)),
+      "#tools": fileURLToPath(new URL("./tools", import.meta.url)),
     },
   },
   test: {

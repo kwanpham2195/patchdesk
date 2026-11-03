@@ -83,6 +83,7 @@ import { ReviewLifecycleGate } from "#src/services/review-lifecycle-gate";
 import { ReviewOperationCoordinator } from "#src/services/review-operation-coordinator";
 import { workbenchWindowChrome } from "./window-chrome";
 import { windowBackgroundColor } from "./window-appearance";
+import { configureCodexReplay } from "./codex-replay-dev";
 import { loadWindowBounds, saveWindowBounds } from "./window-state";
 import { CodexAppServerClient } from "#src/adapters/codex/codex-app-server-client";
 import { PiRpcClient } from "#src/adapters/pi-cli/pi-rpc-client";
@@ -470,7 +471,10 @@ function importLoginShellEnvironmentOnce(): Promise<void> {
 app.setName("Patchdesk");
 // Electron keys the single-instance lock on userData, so a separate dev profile lets an installed Patchdesk run beside `pnpm dev`. PatchdeskPaths split the same way (`-dev` roots), unless PATCHDESK_DEV_SHARED=1 (#804).
 if (!app.isPackaged && !app.commandLine.hasSwitch("user-data-dir"))
-  app.setPath("userData", join(app.getPath("appData"), "Patchdesk Dev"));
+  app.setPath(
+    "userData",
+    paths.userDataDirectory() ?? join(app.getPath("appData"), "Patchdesk Dev"),
+  );
 logs.write({
   process: "main",
   level: "info",
@@ -478,6 +482,19 @@ logs.write({
   message: "app roots in use",
   meta: { packaged: app.isPackaged, ...paths.rootsEnvironment() },
 });
+const replayModes = configureCodexReplay(
+  process.env,
+  app.isPackaged,
+  app.getAppPath(),
+);
+if (replayModes.length > 0)
+  logs.write({
+    process: "main",
+    level: "info",
+    topic: "codex-replay",
+    message: "dev Codex replay hooks enabled",
+    meta: { modes: replayModes },
+  });
 process.on("uncaughtException", (cause: unknown) => {
   logs.write({
     process: "main",

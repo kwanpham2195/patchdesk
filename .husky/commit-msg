@@ -1,0 +1,1 @@
+node scripts/check-context-budget.mjs --commit-msg "$1"

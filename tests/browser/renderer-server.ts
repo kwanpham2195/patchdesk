@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize } from "node:path";
 import type { Page } from "playwright/test";
+import { isPathContained } from "#src/adapters/storage/path-containment";
 
 /**
  * Serves the built renderer (`out/renderer`) over loopback on an ephemeral
@@ -18,7 +19,7 @@ export async function serveRenderer(): Promise<Server> {
         ? "index.html"
         : request.url;
     const file = normalize(join(rendererRoot, path));
-    if (!file.startsWith(rendererRoot)) {
+    if (!isPathContained(rendererRoot, file)) {
       response.writeHead(400).end();
       return;
     }
