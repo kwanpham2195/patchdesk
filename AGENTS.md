@@ -149,6 +149,7 @@ Process:
 
 - Every change goes through a PR, including static copy, alerts, messages, and instructions. Behaviour changes include before/after screenshots in the body (`before-and-after` skill). Prompt and schema changes are reviewed in chat first.
 - Throwaway PRs are always fine for live checks, including writes. Real PRs follow the scoped write approval under Standing authorization.
+- A PR body follows `.github/pull_request_template.md` and ends with the model and harness that did the work. Commit messages stay free of AI trailers.
 - `Closes #n` auto-closes only the first number after it; repeat the keyword per issue. A PR that fixes an issue says `Closes #n` in its body, and after it lands `gh issue view <n> --json state` must read `CLOSED`. A CHANGELOG citation alone closes nothing. Before fixing an old issue, check CHANGELOG and `git log` for its number.
 - Once an action is approved, do not re-ask for its sub-steps.
 - After live verification passes and before merging, get one final independent blocker-focused review for changes to storage, GitHub writes, locking, or the main process, and for PRs over 300 changed lines. Smaller renderer or copy PRs need a final self-review. Do not insert interim review rounds. Make one fix pass for blockers, then gate and land; list skipped nits in the recap. Report a test-count change against its baseline, not as a raw total.
