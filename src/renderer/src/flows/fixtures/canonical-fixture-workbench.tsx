@@ -13,10 +13,7 @@ import {
   fixtureLabelCatalog,
   fixtureReviewerActions,
 } from "./rail-fixture-actions";
-import {
-  canonicalWorkbenchModel,
-  type workbenchFixtureData,
-} from "./workbench-fixture-data";
+import { canonicalWorkbenchModel } from "./workbench-fixture-data";
 
 export function CanonicalFixtureWorkbench({
   data,
@@ -26,7 +23,7 @@ export function CanonicalFixtureWorkbench({
   assigneeActions,
   reviewerActions,
 }: {
-  readonly data: typeof workbenchFixtureData;
+  readonly data: Parameters<typeof canonicalWorkbenchModel>[0];
   readonly onNavigationStateChange: (state: NavigationState) => void;
   readonly modelOverrides?: Partial<
     Pick<

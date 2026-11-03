@@ -70,7 +70,7 @@ jobs:
       - name: Lint the whole repository
         run: pnpm lint
 
-      # tsc peaks near 2.8 GB on this project, above Node 22's default heap on the runner.
+      # TypeScript 7 runs natively; this heap limit applies only to its Node launcher.
       - name: Run typecheck
         run: pnpm typecheck
         env:
