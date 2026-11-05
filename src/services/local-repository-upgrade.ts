@@ -335,10 +335,8 @@ export class LocalRepositoryUpgrade {
           storageReason: "invalid_stored_value",
           file: profileFile,
         });
-      const digest = createHash("sha256").update(
-        JSON.stringify(["local-repository-bootstrap/1", profileBytes]),
-      );
       const workbenches = this.paths.profileWorkbenchesDirectory(profile.id);
+      let unreadableReviews = 0;
       let names: string[];
       try {
         names = await readdir(workbenches);
@@ -354,25 +352,34 @@ export class LocalRepositoryUpgrade {
       for (const name of names.sort()) {
         if (name === ".quarantine") continue;
         const id = parseReviewId(name);
-        if (id._tag === "err")
-          return refusal({
-            reason: "review_unreadable",
-            storageReason: "invalid_stored_value",
-            file: join(workbenches, name),
-          });
+        if (id._tag === "err") continue;
         const file = this.paths.reviewFile(profile.id, id.value);
         const raw = await readUpgradeInput(file);
-        if (raw._tag === "err")
+        if (raw._tag === "err") {
+          const storageReason = raw.error.reason;
+          if (storageReason !== "io") {
+            if (storageReason !== "not_found") unreadableReviews += 1;
+            continue;
+          }
           return refusal({
-            reason: "review_unreadable",
-            storageReason: raw.error.reason,
+            reason: "storage_unavailable",
+            storageReason,
             file,
           });
+        }
         const review = parseReview(raw.value.value);
+        if (review._tag === "err") {
+          unreadableReviews += 1;
+          continue;
+        }
         if (
-          review._tag === "err" ||
           review.value.id !== id.value ||
-          review.value.identity.profileId !== profile.id ||
+          review.value.identity.profileId !== profile.id
+        ) {
+          unreadableReviews += 1;
+          continue;
+        }
+        if (
           review.value.schemaVersion !== 2 ||
           review.value.identity.identityKey.kind !== "github"
         )
@@ -381,12 +388,35 @@ export class LocalRepositoryUpgrade {
             storageReason: "invalid_stored_value",
             file,
           });
-        digest.update(JSON.stringify([name, raw.value.bytes]));
         if (review.value.identity.source.kind === "pull_request") continue;
         const key = review.value.identity.identityKey;
         if (!keys.some((previous) => sameRepositoryIdentityKey(previous, key)))
           keys.push(key);
       }
+      if (unreadableReviews > 0) {
+        try {
+          this.logs.write({
+            process: "main",
+            level: "warn",
+            topic: "local-repository-upgrade",
+            message: "upgrade_reviews_skipped",
+            profileId: profile.id,
+            meta: {
+              reason: "upgrade_reviews_skipped",
+              count: unreadableReviews,
+            },
+          });
+        } catch {
+          // Diagnostics must not change activation outcomes.
+        }
+      }
+      const digest = createHash("sha256").update(
+        JSON.stringify([
+          "local-repository-bootstrap/1",
+          profileBytes,
+          keys.map((key) => [key.host, key.owner, key.repo]).sort(),
+        ]),
+      );
       const fingerprint = parseContentHash(digest.digest("hex"));
       return fingerprint._tag === "err"
         ? refusal({

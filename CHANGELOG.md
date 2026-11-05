@@ -4,6 +4,8 @@ User-visible changes per release; read it when you ship or look up a change.
 
 ## Unreleased
 
+- Fixed startup stopping on unreadable saved Reviews during workspace upgrade. Settings reports unavailable Reviews while keeping their files on disk. #817
+
 - Fixed long repository names overflowing Open local checkout, and kept long lists scrollable with Choose checkout visible.
 
 - Added `patchdesk triage`, which writes a context file of version, channel, commit, paths and log locations for a coding agent to diagnose a problem, with a playbook and an issue form. #870

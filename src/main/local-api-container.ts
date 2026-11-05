@@ -521,6 +521,26 @@ export async function buildLocalApiContainer(
       const journals = await observationJournals.listReviewIds(profile.id);
       if (journals._tag === "err") return { _tag: "recovery-failed" };
       for (const reviewId of journals.value) {
+        const review = await reviews.load(profile.id, reviewId);
+        if (review._tag === "err") {
+          if (review.error.reason === "io") return { _tag: "recovery-failed" };
+          const journal = await observationJournals.load(profile.id, reviewId);
+          if (journal._tag === "err" && journal.error.reason === "io")
+            return { _tag: "recovery-failed" };
+          try {
+            logs.write({
+              process: "main",
+              level: "warn",
+              topic: "review-observation-recovery",
+              message: "recovery_deferred_invalid_review",
+              profileId: profile.id,
+              meta: { reason: "invalid_review" },
+            });
+          } catch {
+            // Diagnostics must not affect recovery.
+          }
+          continue;
+        }
         const recovered = await reviewObservation.recover({
           profileId: profile.id,
           reviewId,

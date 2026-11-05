@@ -713,6 +713,12 @@ async function createWorkbenchWindow(
         });
       },
       ...appUpdate.bridgeOperations,
+      async revealReviewStorage(profileId) {
+        const failure = await shell.openPath(
+          paths.profileWorkbenchesDirectory(profileId),
+        );
+        if (failure !== "") throw new Error("Could not open Review storage");
+      },
       async selectDirectory(input) {
         const defaultPathField =
           input.defaultPath === undefined

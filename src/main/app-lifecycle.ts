@@ -146,8 +146,9 @@ const UPGRADE_REFUSAL_COPY = {
     action: "Edit this file so each repository has one path.",
   },
   review_unreadable: {
-    problem: "A saved Local Review cannot be read.",
-    action: "Restore a good copy of this file, or move it out of the folder.",
+    problem: "A saved Review belongs to a newer workspace format.",
+    action:
+      "Restore the workspace profile and repository list from the same backup.",
   },
   backup_conflict: {
     problem: "An earlier upgrade backup differs from the current profile.",

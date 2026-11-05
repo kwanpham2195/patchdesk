@@ -159,6 +159,7 @@ export type DesktopRequest =
   | SetNavigationStateDesktopRequest
   | SetNavigationDestinationDesktopRequest
   | OpenExternalHttpsDesktopRequest
+  | { readonly operation: "revealReviewStorage"; readonly profileId: string }
   | DismissAppUpdateDesktopRequest
   | InstallAppUpdateDesktopRequest;
 

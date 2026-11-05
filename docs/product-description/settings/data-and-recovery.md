@@ -27,6 +27,8 @@ stateDiagram-v2
 
 The active workspace profile is the target. With no active profile, both cleanup buttons are disabled, and the section shows `No active workspace`. The Logs row still shows its size, since the app log belongs to no workspace; Cache and Local review data show none.
 
+When saved Reviews cannot be read, the Storage card shows their count. Their files remain on this Mac, but those Reviews are unavailable until they can be recovered. Show folder opens the active workspace’s Review storage.
+
 The Storage card lists three rows, each with a one-line description and its size on disk: Cache (`Cache · 246 MB`, rebuildable pull request checkouts), Local review data (`Local review data · 1.6 MB`, completed and failed local Reviews), and Logs (`Logs · 19 MB`, the app log that Diagnostics shows). Cache and Local review data carry their clear button on the right; the Logs row is read-only. Each size is what that clear frees: Local review data counts only sessions no active work protects. Sizes use decimal units, with one decimal below 10. A size that cannot be measured is left off its row. Each confirmation states what stays and what goes. Clear cache is the lower-impact action: it removes rebuildable local files while saved Reviews and Diagnostic records stay. Clear local review data is stronger: completed and failed local Reviews are removed, but active work and Diagnostic records stay. Review activity moved to the Diagnostics overlay; see [Logs and diagnostics](logs-and-diagnostics.md).
 
 The section has no storage browser or per-session delete list. [Persistence and recovery](../foundations/persistence-and-recovery.md#edge-cases) owns background retention.
