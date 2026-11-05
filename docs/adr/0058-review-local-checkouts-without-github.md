@@ -81,6 +81,14 @@ invalid data under another interpretation.
 
 ### The upgrade writes only a registration catalog and the profile
 
+> **Amendment:** An invalid Review no longer stops activation. The upgrade
+> leaves it on disk and excludes it from the inventory, consistent with
+> [ADR 0019](0019-recover-from-invalid-local-data-by-rebuilding.md). Settings
+> reports unreadable Reviews. A storage I/O failure still stops activation.
+> A repository represented only by an unreadable Review is not registered by
+> the upgrade. The catalog fingerprint covers the profile and repository keys,
+> so an unrelated Review edit does not invalidate an interrupted upgrade.
+
 Workspace schema 1 and catalog format 1 are introduced before normal profile
 loading. The existing host and account become the connected variant. The
 upgrade reads the profile's watched repositories and the stored Local Reviews:

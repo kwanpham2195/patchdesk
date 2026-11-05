@@ -35,6 +35,7 @@ describe("desktop request bridge", () => {
         "http://renderer.test",
         {
           selectDirectory: async () => undefined,
+          revealReviewStorage: async () => undefined,
           setNavigationState: () => undefined,
           setNavigationDestination: () => undefined,
           openExternalHttps: async () => false,
@@ -79,6 +80,7 @@ describe("setNavigationDestination request", () => {
       "http://renderer.test",
       {
         selectDirectory: async () => undefined,
+        revealReviewStorage: async () => undefined,
         setNavigationState: () => undefined,
         setNavigationDestination: (destination) =>
           destinations.push(destination),

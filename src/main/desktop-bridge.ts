@@ -23,7 +23,11 @@ import {
   type LocalApiDesktopRequest,
 } from "./ipc-contract";
 import { definedProps } from "#src/domain/defined-props";
-import { parseReviewId } from "#src/domain/ids";
+import {
+  parseReviewId,
+  parseWorkspaceProfileId,
+  type WorkspaceProfileId,
+} from "#src/domain/ids";
 import type { NotificationDestination } from "./desktop-notifier";
 import type { StartedLocalApi } from "./app-lifecycle";
 
@@ -56,6 +60,10 @@ const requestSchema = union([
   strictObject({
     operation: literal("openExternalHttps"),
     url: pipe(string(), minLength(1), maxLength(2_048)),
+  }),
+  strictObject({
+    operation: literal("revealReviewStorage"),
+    profileId: pipe(string(), minLength(1), maxLength(128)),
   }),
   strictObject({
     operation: literal("dismissAppUpdate"),
@@ -223,6 +231,9 @@ export function installDesktopRequestBridge(
       destination: NotificationDestination,
     ) => void;
     readonly openExternalHttps: (url: string) => Promise<boolean>;
+    readonly revealReviewStorage: (
+      profileId: WorkspaceProfileId,
+    ) => Promise<void>;
     readonly dismissAppUpdate: (notice: "available" | "launch") => void;
     readonly installAppUpdate: () => void;
   },
@@ -258,19 +269,24 @@ export function installDesktopRequestBridge(
                       operation: parsed.output.operation,
                       url: parsed.output.url,
                     }
-                  : parsed.output.operation === "dismissAppUpdate"
+                  : parsed.output.operation === "revealReviewStorage"
                     ? {
                         operation: parsed.output.operation,
-                        notice: parsed.output.notice,
+                        profileId: parsed.output.profileId,
                       }
-                    : parsed.output.operation === "installAppUpdate"
-                      ? { operation: parsed.output.operation }
-                      : {
+                    : parsed.output.operation === "dismissAppUpdate"
+                      ? {
                           operation: parsed.output.operation,
-                          ...definedProps({
-                            defaultPath: parsed.output.defaultPath,
-                          }),
+                          notice: parsed.output.notice,
                         }
+                      : parsed.output.operation === "installAppUpdate"
+                        ? { operation: parsed.output.operation }
+                        : {
+                            operation: parsed.output.operation,
+                            ...definedProps({
+                              defaultPath: parsed.output.defaultPath,
+                            }),
+                          }
           : {
               path: parsed.output.path,
               ...definedProps({
@@ -316,6 +332,27 @@ export function installDesktopRequestBridge(
         if (request.operation === "installAppUpdate") {
           operations.installAppUpdate();
           return { ok: true, status: 200, body: {}, correlationId };
+        }
+        if (request.operation === "revealReviewStorage") {
+          const profile = parseWorkspaceProfileId(request.profileId);
+          if (profile._tag === "err")
+            return {
+              ok: false,
+              status: 400,
+              body: { error: "invalid_input" },
+              correlationId,
+            };
+          try {
+            await operations.revealReviewStorage(profile.value);
+            return { ok: true, status: 200, body: {}, correlationId };
+          } catch {
+            return {
+              ok: false,
+              status: 500,
+              body: { error: "storage_open_failed" },
+              correlationId,
+            };
+          }
         }
         if (request.operation === "openExternalHttps") {
           try {

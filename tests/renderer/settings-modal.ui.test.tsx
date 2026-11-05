@@ -436,6 +436,7 @@ function installDesktopApi(
   } = {},
 ): DesktopDouble {
   desktop = installDesktopDouble({
+    "/v1/sidebar/reviews": () => success({ rows: [], unreadable: 0 }),
     "/v1/storage/usage": () =>
       success(
         options.storageUsage?.() ?? {

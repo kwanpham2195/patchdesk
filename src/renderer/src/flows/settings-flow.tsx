@@ -9,6 +9,7 @@ import {
 import type { AppearancePreference } from "#src/renderer/src/appearance-preferences";
 import {
   Alert,
+  AlertAction,
   AlertDescription,
   AlertTitle,
 } from "#src/renderer/src/components/ui/alert";
@@ -37,6 +38,7 @@ import {
   FieldLabel,
 } from "#src/renderer/src/components/ui/field";
 import { useApiProbe } from "#src/renderer/src/hooks/use-api-probe";
+import { parseSidebarReviewsResponse } from "#src/renderer/src/renderer-contracts";
 import { NotificationsCard } from "./settings-notifications-card";
 import { UpdatesCard } from "./settings-updates-card";
 import {
@@ -304,6 +306,12 @@ function DataSection({
           <CardDescription>Space Patchdesk uses on this Mac.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          {dashboard?.profile.id === undefined ? null : (
+            <UnreadableReviewsNotice
+              profileId={dashboard.profile.id}
+              restartKey={cleanupsCompleted}
+            />
+          )}
           {cleanupAvailable ? null : (
             <Alert>
               <AlertTitle>No active workspace</AlertTitle>
@@ -365,6 +373,50 @@ function DataSection({
         }}
       />
     </>
+  );
+}
+
+function UnreadableReviewsNotice({
+  profileId,
+  restartKey,
+}: {
+  readonly profileId: string;
+  readonly restartKey: number;
+}): React.JSX.Element | null {
+  const [revealFailed, setRevealFailed] = useState(false);
+  const reviews = useApiProbe(
+    {
+      path: `/v1/sidebar/reviews?profileId=${encodeURIComponent(profileId)}`,
+      restartKey,
+    },
+    parseSidebarReviewsResponse,
+  );
+  if (reviews.kind !== "loaded" || reviews.value.unreadable === 0) return null;
+  return (
+    <Alert>
+      <AlertTitle>Some saved Reviews cannot be opened</AlertTitle>
+      <AlertDescription>
+        {reviews.value.unreadable} saved{" "}
+        {reviews.value.unreadable === 1 ? "Review is" : "Reviews are"}{" "}
+        unavailable. Their files remain on this Mac.
+        {revealFailed ? " Could not open the folder." : null}
+      </AlertDescription>
+      <AlertAction>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setRevealFailed(false);
+            void window.patchdesk
+              .request({ operation: "revealReviewStorage", profileId })
+              .then((response) => setRevealFailed(!response.ok))
+              .catch(() => setRevealFailed(true));
+          }}
+        >
+          Show folder
+        </Button>
+      </AlertAction>
+    </Alert>
   );
 }
 
