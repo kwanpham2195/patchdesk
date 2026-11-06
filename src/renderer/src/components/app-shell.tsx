@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
+  FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -256,7 +257,7 @@ export function AppShell({
             </Tooltip>
           ) : null}
           <BrandMark size={26} />
-          <span className="text-[13px] font-semibold tracking-tight">
+          <span className="truncate text-[13px] font-semibold tracking-tight">
             Patchdesk
           </span>
           <Separator orientation="vertical" className="mx-0.5 h-4" />
@@ -264,15 +265,26 @@ export function AppShell({
             {destinationTitle(destination)}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={navigationBlocked}
-            onClick={onOpenLocalCheckout}
-          >
-            Open local checkout
-          </Button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="max-sm:w-7 max-sm:px-0"
+                  disabled={navigationBlocked}
+                  onClick={onOpenLocalCheckout}
+                />
+              }
+            >
+              <FolderOpen className="hidden max-sm:block" />
+              <span className="max-sm:sr-only">Open local checkout</span>
+            </TooltipTrigger>
+            <TooltipContent className="sm:hidden">
+              Open local checkout
+            </TooltipContent>
+          </Tooltip>
           {profiles !== undefined && profiles.length > 0 ? (
             <TitlebarWorkspaceSwitcher
               profiles={profiles}
@@ -317,7 +329,7 @@ export function AppShell({
             >
               <Search />
               Navigate
-              <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground">
+              <Kbd className="ml-1.5 border max-sm:hidden border-border bg-muted text-[10px] text-muted-foreground">
                 ⌘K
               </Kbd>
             </TooltipTrigger>
@@ -454,7 +466,7 @@ function TitlebarWorkspaceSwitcher({
         <SelectTrigger
           ref={triggerRef}
           aria-label="Active workspace"
-          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted"
+          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted max-sm:max-w-24"
         >
           <User className="size-3" />
           <SelectValue placeholder="Select workspace">
