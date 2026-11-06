@@ -26,14 +26,17 @@ test.describe("scroll area scrollbar", () => {
     page,
   }) => {
     await installTestDesktopBridge(page, { kind: "static" });
-    await page.setViewportSize({ width: 1100, height: 900 });
+    // Short enough that the Workspace panel overflows even when GitHub is
+    // disconnected, as the static bridge is: that state omits the repository
+    // form, so the panel is about 500px tall.
+    await page.setViewportSize({ width: 1100, height: 600 });
     await page.goto(serverOrigin(server));
 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
-    // Workspace is the longest settings section, so its panel overflows at
-    // this window size -- and Base UI mounts the scrollbar only when it does.
+    // Base UI mounts the scrollbar only when the panel overflows, which the
+    // window height above guarantees.
     await dialog.getByRole("tab", { name: "Workspace" }).click();
 
     const region = page.getByTestId("settings-scroll-region");
