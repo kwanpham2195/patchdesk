@@ -625,7 +625,7 @@ function BootstrapOutcome({
       </div>
     );
   return (
-    <div className="mx-auto max-w-[112rem]">
+    <div className="mx-auto max-w-[112rem] p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">First run</p>
