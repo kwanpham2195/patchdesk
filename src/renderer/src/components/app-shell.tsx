@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { InlineError } from "@/components/ui/inline-error";
 import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
@@ -391,7 +392,7 @@ function useCompactDensity(): void {
   }, []);
 }
 
-/** The Visited pull requests column: beside the main pane when wide, over it when narrow. */
+/** The Visited pull requests column: beside the main pane when wide, in a sheet when narrow. */
 function VisitedColumnSlot({
   column,
   state,
@@ -409,25 +410,37 @@ function VisitedColumnSlot({
   readonly workspaceLabel: string | undefined;
   readonly host: GitHubHost | undefined;
 }): React.JSX.Element | null {
-  if (!column.shown) return null;
-  return (
-    <div
-      className={
-        column.narrow
-          ? "absolute inset-y-0 left-0 z-40 flex bg-shell pl-2 shadow-lg"
-          : "contents"
-      }
-    >
-      <VisitedPullRequests
-        state={state}
-        destination={destination}
-        onNavigate={onNavigate}
-        onOpenLocalReview={onOpenLocalReview}
-        workspaceLabel={workspaceLabel}
-        {...(host === undefined ? {} : { host })}
-      />
-    </div>
+  const list = (
+    <VisitedPullRequests
+      state={state}
+      destination={destination}
+      onNavigate={onNavigate}
+      onOpenLocalReview={onOpenLocalReview}
+      workspaceLabel={workspaceLabel}
+      {...(host === undefined ? {} : { host })}
+    />
   );
+  // A modal Sheet gives the narrow panel the app's usual overlay behaviour:
+  // Escape and an outside click close it and focus returns to the toggle.
+  if (column.narrow)
+    return (
+      <Sheet
+        open={column.shown}
+        onOpenChange={(open) => {
+          if (!open) column.toggle();
+        }}
+      >
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-[min(18rem,calc(100vw-1rem))] gap-0 bg-shell pl-2"
+        >
+          <SheetTitle className="sr-only">Reviews you have opened</SheetTitle>
+          {list}
+        </SheetContent>
+      </Sheet>
+    );
+  return column.shown ? list : null;
 }
 
 /** Collapses or expands the Visited pull requests column. */
@@ -493,7 +506,8 @@ function TitlebarWorkspaceSwitcher({
         <SelectTrigger
           ref={triggerRef}
           aria-label="Active workspace"
-          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted max-sm:max-w-24 max-[419px]:gap-0.5 max-[419px]:px-0.5"
+          size="sm-compact-narrow"
+          className="border-0 bg-transparent text-xs hover:bg-muted"
         >
           <User className="size-3" />
           <SelectValue placeholder="Select workspace">

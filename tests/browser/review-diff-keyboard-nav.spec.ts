@@ -444,6 +444,10 @@ async function headerOverlapsViewport(
 
 async function hoverReadyGutterControl(page: Page): Promise<Locator> {
   const line = page.locator('div[data-line-type="change-deletion"]').nth(5);
+  // Centered first: a click that has to scroll the button into view moves the
+  // pointer off the line, Pierre drops the hover button, and the click then
+  // retries against a detached element until the test times out.
+  await line.evaluate((element) => element.scrollIntoView({ block: "center" }));
   // Pierre's own gutter button, drawn in the file's shadow root on the hovered line.
   const addComment = page.locator("[data-utility-button]").first();
   // Playwright visibility requires a non-empty bounding box.
