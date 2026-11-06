@@ -4,6 +4,8 @@ User-visible changes per release; read it when you ship or look up a change.
 
 ## Unreleased
 
+- Fixed the Review navigator collapsing to no visible files below 1100 CSS pixels. Short or highly zoomed windows now scroll the workbench so its diff stays reachable. #817
+
 - Fixed a first launch with nothing set up showing "Dashboard could not be loaded" instead of Set up your workspace, and that error screen having no margin around its heading. #817
 - Fixed the titlebar showing a clipped "P…" wordmark in a zoomed window: the wordmark and destination title now hide below 940 pixels wide, and a long workspace name is cut instead of pushing the buttons together. The narrow Visited panel now starts below the macOS window buttons. #817
 - Fixed narrow and zoomed windows: the Visited pull requests column opens as a side panel that Escape or a click outside closes, the Pull requests header, the first-run setup buttons and the Settings tabs no longer get cut off at 320 pixels, and the Review workbench file tree shows more than two rows. #817
