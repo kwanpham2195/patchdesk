@@ -30,7 +30,7 @@ export type ReviewStoreFailure = StorageFailure | ReviewStoreConflict;
 export type ReviewListing = {
   readonly reviews: ReadonlyArray<Review>;
   readonly unreadable: number;
-  /** The skipped records that were read but no longer parse as a Review; `unreadable` counts them too. */
+  /** The skipped records whose bytes were read but cannot be trusted as a Review (invalid JSON, a sensitive value or a failed Review parse); `unreadable` counts them too, and a record that could not be read at all (I/O) is only in `unreadable`. */
   readonly invalid: ReadonlyArray<ReviewId>;
 };
 
@@ -180,11 +180,14 @@ export class ReviewStore {
     let unreadable = 0;
     for (const [index, review] of loaded.entries()) {
       if (review._tag === "err") {
+        const { reason } = review.error;
         // A vanished file is an ordinary race with deletion, not a lost record.
-        if (review.error.reason !== "not_found") unreadable += 1;
+        if (reason !== "not_found") unreadable += 1;
         const reviewId = reviewIds[index];
         if (
-          review.error.reason === "invalid_stored_value" &&
+          (reason === "invalid_stored_value" ||
+            reason === "invalid_json" ||
+            reason === "sensitive_value") &&
           reviewId !== undefined
         )
           invalid.push(reviewId);

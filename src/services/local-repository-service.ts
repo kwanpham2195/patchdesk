@@ -248,7 +248,11 @@ export class LocalRepositoryService {
     )
       return this.refused(profile.id, "checkout_registered_elsewhere");
     const listed = await this.dependencies.reviews.list(profile.id);
-    if (listed._tag === "err" || listed.value.unreadable > 0)
+    // A record that was read but cannot be parsed has no trustworthy repository, so only one that could not be read at all (I/O) blocks relocation.
+    if (
+      listed._tag === "err" ||
+      listed.value.unreadable > listed.value.invalid.length
+    )
       return this.refused(profile.id, "storage");
     const affectedReviews = listed.value.reviews.flatMap((review) =>
       isLocalReview(review) &&

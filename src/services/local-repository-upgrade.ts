@@ -183,10 +183,10 @@ export class LocalRepositoryUpgrade {
     let catalog: LocalRepositoryCatalog;
     if (existing._tag === "ok") {
       catalog = existing.value;
+      // Only the profile's own repositories must match: a Review-derived key can change between an interrupted run and its retry (a Review turns unreadable or is restored) and must not refuse startup.
       if (
         catalog.bootstrapInputFingerprint !== inputs.value.fingerprint ||
-        catalog.repositories.length !== inputs.value.keys.length ||
-        !inputs.value.keys.every((key) =>
+        !inputs.value.profileKeys.every((key) =>
           catalog.repositories.some((repository) =>
             sameRepositoryIdentityKey(repository.identityKey, key),
           ),
@@ -246,13 +246,6 @@ export class LocalRepositoryUpgrade {
     const rechecked = await this.inventory(profile.value, raw.value.bytes);
     if (rechecked._tag === "err")
       return err({ ...rechecked.error, backup: backupFile });
-    if (rechecked.value.fingerprint !== catalog.bootstrapInputFingerprint)
-      return refusal({
-        reason: "inputs_changed",
-        storageReason: "invalid_stored_value",
-        file: profileFile,
-        backup: backupFile,
-      });
     const activated: WorkspaceProfileConfig = {
       ...profile.value,
       schemaVersion: 1,
@@ -291,6 +284,9 @@ export class LocalRepositoryUpgrade {
       {
         readonly fingerprint: ContentHash;
         readonly profileBytes: string;
+        /** Keys from the profile's own repositories; the only keys a reused catalog must contain. */
+        readonly profileKeys: ReadonlyArray<GitHubRepositoryKey>;
+        /** `profileKeys` plus the keys of readable local Reviews; a first-time catalog registers all of them. */
         readonly keys: ReadonlyArray<GitHubRepositoryKey>;
       },
       Refusal
@@ -320,6 +316,7 @@ export class LocalRepositoryUpgrade {
       )
         keys.push(key);
     }
+    const profileKeys = [...keys];
     try {
       const profileInput = await readUpgradeInput(profileFile);
       if (profileInput._tag === "err")
@@ -411,11 +408,7 @@ export class LocalRepositoryUpgrade {
         }
       }
       const digest = createHash("sha256").update(
-        JSON.stringify([
-          "local-repository-bootstrap/1",
-          profileBytes,
-          keys.map((key) => [key.host, key.owner, key.repo]).sort(),
-        ]),
+        JSON.stringify(["local-repository-bootstrap/1", profileBytes]),
       );
       const fingerprint = parseContentHash(digest.digest("hex"));
       return fingerprint._tag === "err"
@@ -424,7 +417,12 @@ export class LocalRepositoryUpgrade {
             storageReason: "invalid_stored_value",
             file: profileFile,
           })
-        : ok({ fingerprint: fingerprint.value, profileBytes, keys });
+        : ok({
+            fingerprint: fingerprint.value,
+            profileBytes,
+            profileKeys,
+            keys,
+          });
     } catch {
       return refusal({
         reason: "storage_unavailable",

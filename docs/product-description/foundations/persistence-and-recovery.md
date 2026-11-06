@@ -67,7 +67,9 @@ Walkthrough retains generated content and captured hunks separately from its per
 
 An invalid stored session or Review moves to quarantine when its owner can safely identify it. Quarantine keeps the bad evidence out of the app while preserving it for diagnosis or later trash.
 
-During the workspace upgrade, invalid Review records stay in place and are excluded from the repository inventory. They do not prevent startup. A storage I/O failure still stops the upgrade. Settings reports the count of unreadable Reviews in the active workspace.
+During the workspace upgrade, invalid Review records stay in place and are excluded from the repository inventory. They do not prevent startup. A storage I/O failure still stops the upgrade. Settings reports the count of unreadable Reviews in the active workspace. An interrupted upgrade retried after a Review turned unreadable or was restored still activates; only a changed profile or a missing registration for one of the profile's own repositories refuses it.
+
+A record that was read but is not a trustworthy Review (invalid JSON, a secret-shaped value or a failed Review parse) is skipped by the shared Review lists and by Choose checkout's relocation check, and is not listed among the Reviews a relocation affects. A record that could not be read at all (an I/O failure) still refuses those operations.
 
 An uncertain GitHub write remains locked after restart. Recovery reads GitHub and classifies exact intent evidence. Absence of proof does not become permission to repeat the write.
 

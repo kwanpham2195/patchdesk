@@ -62,9 +62,10 @@ type OpenSharedReview = {
  * stored form (absent for the configured one), on `branch` when given, the
  * one the maintainer opened last first. The dialog's bases, an agent's reused
  * base, and `list_local_reviews` all read this one list. It only reads.
- * A record that no longer parses as a Review, such as a shared Review stored
- * before its base became a full ref (#591), is skipped with one warning per
- * process; any other unreadable record refuses the list.
+ * A record whose bytes were read but cannot be trusted as a Review, such as a
+ * shared Review stored before its base became a full ref (#591) or a truncated
+ * file, is skipped with one warning per process; a record that could not be
+ * read at all (I/O) refuses the list.
  */
 export async function listOpenSharedReviews(
   store: SharedReviewStore,
@@ -76,7 +77,7 @@ export async function listOpenSharedReviews(
   Result<ReadonlyArray<OpenSharedReview>, { readonly reason: "storage" }>
 > {
   const listed = await store.reviews.list(profileId);
-  // An unreadable row may be the maintainer's Review, so only rows that no longer parse, which nothing can open as a shared Review, are skipped.
+  // A row that could not be read at all may be the maintainer's Review, so it refuses; a row whose bytes were read but are not a trustworthy Review, which nothing can open as a shared Review, is skipped.
   if (
     listed._tag === "err" ||
     listed.value.unreadable > listed.value.invalid.length
@@ -91,7 +92,7 @@ export async function listOpenSharedReviews(
       level: "warn",
       topic: "local-review-list",
       message:
-        "a saved Review record no longer parses; shared Review lookups skip it",
+        "a saved Review record is not a valid Review; shared Review lookups skip it",
       profileId,
       meta: { reviewId },
     });
