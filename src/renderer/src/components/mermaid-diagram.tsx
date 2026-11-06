@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from "react";
-import type { Mermaid } from "mermaid";
 
 import { useLightbox } from "#src/renderer/src/use-lightbox";
 
-let mermaidPromise: Promise<Mermaid> | undefined;
+type DiagramSvg = {
+  readonly inline: string;
+  readonly expanded: string;
+};
 
 export function MermaidDiagram({
   source,
@@ -11,38 +13,41 @@ export function MermaidDiagram({
   readonly source: string;
 }): React.JSX.Element {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const [svg, setSvg] = useState<string>();
+  const [svg, setSvg] = useState<DiagramSvg>();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
-    const renderContainer = document.createElement("div");
-    renderContainer.style.position = "fixed";
-    renderContainer.style.left = "-10000px";
-    renderContainer.style.top = "0";
-    renderContainer.style.width = "800px";
-    renderContainer.style.height = "600px";
-    renderContainer.style.overflow = "hidden";
-    renderContainer.style.visibility = "hidden";
-    document.body.append(renderContainer);
     setSvg(undefined);
     setFailed(false);
-    void loadMermaid()
-      .then((mermaid) =>
-        mermaid.render(`patchdesk-mermaid-${id}`, source, renderContainer),
-      )
-      .then((result) => {
-        if (active) setSvg(result.svg);
+    void import("pele")
+      .then(async ({ parse, render }) => {
+        await document.fonts.ready;
+        if (!active) return;
+        const options = {
+          links: false,
+          images: false,
+          autoDirection: false,
+          maxEdges: 500,
+          fontFamily: getComputedStyle(document.body).fontFamily,
+        };
+        const diagram = parse(source, options);
+        setSvg({
+          inline: render(diagram, {
+            ...options,
+            idPrefix: `patchdesk-mermaid-${id}`,
+          }).svg,
+          expanded: render(diagram, {
+            ...options,
+            idPrefix: `patchdesk-mermaid-${id}-expanded`,
+          }).svg,
+        });
       })
       .catch(() => {
         if (active) setFailed(true);
-      })
-      .finally(() => {
-        renderContainer.remove();
       });
     return () => {
       active = false;
-      renderContainer.remove();
     };
   }, [id, source]);
 
@@ -60,7 +65,7 @@ function ClickableMermaid({
   source,
   failed,
 }: {
-  readonly svg?: string;
+  readonly svg?: DiagramSvg;
   readonly source: string;
   readonly failed: boolean;
 }): React.JSX.Element {
@@ -98,8 +103,8 @@ function ClickableMermaid({
             open(
               <div
                 aria-hidden="true"
-                className="[&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:w-[85vw]"
-                dangerouslySetInnerHTML={{ __html: svg }}
+                className="mermaid-diagram [&>svg]:h-auto [&>svg]:max-h-[85vh] [&>svg]:w-[85vw]"
+                dangerouslySetInnerHTML={{ __html: svg.expanded }}
               />,
             )
           }
@@ -107,8 +112,8 @@ function ClickableMermaid({
           <div role="img" aria-label="Mermaid diagram">
             <div
               aria-hidden="true"
-              className="min-w-[201px] w-full [&>svg]:block [&>svg]:h-auto [&>svg]:min-w-[201px] [&>svg]:w-full"
-              dangerouslySetInnerHTML={{ __html: svg }}
+              className="mermaid-diagram min-w-[201px] w-full [&>svg]:mx-auto [&>svg]:block [&>svg]:h-auto [&>svg]:max-w-full"
+              dangerouslySetInnerHTML={{ __html: svg.inline }}
             />
           </div>
         </button>
@@ -124,18 +129,4 @@ function ClickableMermaid({
       {lightbox()}
     </>
   );
-}
-
-function loadMermaid(): Promise<Mermaid> {
-  if (mermaidPromise !== undefined) return mermaidPromise;
-  mermaidPromise = import("mermaid").then(({ default: mermaid }) => {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      suppressErrorRendering: true,
-      theme: "dark",
-    });
-    return mermaid;
-  });
-  return mermaidPromise;
 }

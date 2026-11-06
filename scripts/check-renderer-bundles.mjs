@@ -65,8 +65,8 @@ const forbidden = [
   "/node_modules/.pnpm/shiki@",
   "/node_modules/marked/",
   "/node_modules/.pnpm/marked@",
-  "/node_modules/mermaid/",
-  "/node_modules/.pnpm/mermaid@",
+  "/node_modules/pele/",
+  "/node_modules/.pnpm/pele@",
 ];
 for (const fileName of staticClosure) {
   const chunk = chunks.get(fileName);
