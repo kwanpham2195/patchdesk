@@ -23,6 +23,7 @@ const pullRequest = (() => {
   return parsed.value;
 })();
 
+const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
   HTMLDialogElement.prototype,
   "showModal",
@@ -33,6 +34,11 @@ const originalCloseDescriptor = Object.getOwnPropertyDescriptor(
 );
 
 beforeEach(() => {
+  // jsdom lacks the font readiness API used before measuring diagram labels.
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: { ready: Promise.resolve() },
+  });
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value(this: HTMLDialogElement): void {
@@ -50,6 +56,8 @@ beforeEach(() => {
 let desktop: ReturnType<typeof installDesktopDouble> | undefined;
 afterEach(() => {
   cleanup();
+  if (originalFonts === undefined) Reflect.deleteProperty(document, "fonts");
+  else Object.defineProperty(document, "fonts", originalFonts);
   desktop?.restore();
   desktop = undefined;
   restoreDialogMethod("showModal", originalShowModalDescriptor);
@@ -427,68 +435,33 @@ describe("PullRequestDescription", () => {
 
   it("keeps rendered Mermaid source and lightbox controls independent", async () => {
     const user = userEvent.setup();
-    const originalGetBBox = Object.getOwnPropertyDescriptor(
-      SVGElement.prototype,
-      "getBBox",
+    renderWithImageCache(
+      <PullRequestDescriptionPreview
+        markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
+        pullRequest={pullRequest}
+      />,
     );
-    const originalGetComputedTextLength = Object.getOwnPropertyDescriptor(
-      SVGElement.prototype,
-      "getComputedTextLength",
-    );
-    Object.defineProperty(SVGElement.prototype, "getBBox", {
-      configurable: true,
-      value: () => ({ x: 0, y: 0, width: 100, height: 30 }),
+    const diagramButton = await screen.findByRole("button", {
+      name: "Mermaid diagram",
     });
-    Object.defineProperty(SVGElement.prototype, "getComputedTextLength", {
-      configurable: true,
-      value: () => 100,
-    });
-    try {
-      renderWithImageCache(
-        <PullRequestDescriptionPreview
-          markdown={"```mermaid\ngraph TD\n  A[Start] --> B[Review]\n```"}
-          pullRequest={pullRequest}
-        />,
-      );
-      const diagramButton = await screen.findByRole("button", {
-        name: "Mermaid diagram",
-      });
-      const summary = screen.getByText("Mermaid source");
-      expect(summary.tagName).toBe("SUMMARY");
-      expect(summary.closest("button")).toBeNull();
-      summary.focus();
-      await user.keyboard("{Enter}");
-      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
-      await user.click(summary);
-      const detailsElement = summary.parentElement;
-      if (!(detailsElement instanceof HTMLDetailsElement)) {
-        throw new Error(
-          "expected the Mermaid summary's parent to be <details>",
-        );
-      }
-      expect(detailsElement.open).toBe(true);
-      diagramButton.focus();
-      await user.keyboard("{Enter}");
-      const dialog = screen.getByRole("dialog", { name: "Image viewer" });
-      expect(dialog).toBeTruthy();
-      fireEvent(dialog, new Event("cancel", { cancelable: true }));
-      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
-    } finally {
-      if (originalGetBBox === undefined) {
-        Reflect.deleteProperty(SVGElement.prototype, "getBBox");
-      } else {
-        Object.defineProperty(SVGElement.prototype, "getBBox", originalGetBBox);
-      }
-      if (originalGetComputedTextLength === undefined) {
-        Reflect.deleteProperty(SVGElement.prototype, "getComputedTextLength");
-      } else {
-        Object.defineProperty(
-          SVGElement.prototype,
-          "getComputedTextLength",
-          originalGetComputedTextLength,
-        );
-      }
+    const summary = screen.getByText("Mermaid source");
+    expect(summary.tagName).toBe("SUMMARY");
+    expect(summary.closest("button")).toBeNull();
+    summary.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
+    await user.click(summary);
+    const detailsElement = summary.parentElement;
+    if (!(detailsElement instanceof HTMLDetailsElement)) {
+      throw new Error("expected the Mermaid summary's parent to be <details>");
     }
+    expect(detailsElement.open).toBe(true);
+    diagramButton.focus();
+    await user.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", { name: "Image viewer" });
+    expect(dialog).toBeTruthy();
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
   });
 
   it("renders Mermaid fences as a diagram surface with readable source fallback", async () => {

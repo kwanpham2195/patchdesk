@@ -496,3 +496,14 @@ html[data-appearance] body {
     animation-duration: 0.01ms !important;
   }
 }
+
+.mermaid-diagram {
+  --pele-bg: var(--background);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground);
+  --pele-surface: var(--muted);
+  --pele-surface-alt: var(--accent);
+  --pele-border: var(--muted-foreground);
+  --pele-accent: var(--primary);
+}

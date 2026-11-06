@@ -4,6 +4,8 @@ User-visible changes per release; read it when you ship or look up a change.
 
 ## Unreleased
 
+- Changed Mermaid diagrams to use Pele and match the app's light or dark appearance, while keeping source disclosure and full-size viewing. #890
+
 - Fixed the Review navigator collapsing to no visible files below 1100 CSS pixels. Short or highly zoomed windows now scroll the workbench so its diff stays reachable. #817
 
 - Fixed a first launch with nothing set up showing "Dashboard could not be loaded" instead of Set up your workspace, and that error screen having no margin around its heading. #817

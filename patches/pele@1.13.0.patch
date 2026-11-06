@@ -1,0 +1,36 @@
+diff --git a/dist/diagrams/flowchart/types.d.ts b/dist/diagrams/flowchart/types.d.ts
+index 78bbe5216764f06e7cbe8a132dadf5d9a9232548..6b36333f8849c590001b3974b0397a956e1cd26e 100644
+--- a/dist/diagrams/flowchart/types.d.ts
++++ b/dist/diagrams/flowchart/types.d.ts
+@@ -72,9 +72,9 @@ export interface FlowchartModel {
+     subgraphs: FlowSubgraph[];
+     classes: Map<string, FlowClassDef>;
+     tooltips: Map<string, string>;
+-    defaultEdgeStyle?: string[];
+-    defaultInterpolate?: string;
+-    title?: string;
+-    accTitle?: string;
+-    accDescr?: string;
++    defaultEdgeStyle?: string[] | undefined;
++    defaultInterpolate?: string | undefined;
++    title?: string | undefined;
++    accTitle?: string | undefined;
++    accDescr?: string | undefined;
+ }
+diff --git a/dist/diagrams/sankey/db.d.ts b/dist/diagrams/sankey/db.d.ts
+index b90c41d76a0cd1a95d0e1d5fa6dc0c6ed9aecc62..f717939071226c32d47360aa3c590dfeb927ebf9 100644
+--- a/dist/diagrams/sankey/db.d.ts
++++ b/dist/diagrams/sankey/db.d.ts
+@@ -11,9 +11,9 @@ export interface SankeyModel {
+     type: 'sankey';
+     nodes: SankeyNode[];
+     links: SankeyLink[];
+-    title?: string;
+-    accTitle?: string;
+-    accDescr?: string;
++    title?: string | undefined;
++    accTitle?: string | undefined;
++    accDescr?: string | undefined;
+ }
+ export declare class SankeyDb implements SankeyModel {
+     readonly type: 'sankey';

@@ -89,9 +89,9 @@
     "knip": "^6.32.3",
     "lucide-react": "^1.25.0",
     "marked": "18.0.7",
-    "mermaid": "11.16.1",
     "oxfmt": "0.63.0",
     "oxlint": "1.78.0",
+    "pele": "1.13.0",
     "playwright": "^1.54.2",
     "react": "^19.1.1",
     "react-doctor": "^0.9.11",
@@ -109,6 +109,9 @@
   "pnpm": {
     "overrides": {
       "oxfmt@0.63.0>tinypool": "2.1.2"
+    },
+    "patchedDependencies": {
+      "pele@1.13.0": "patches/pele@1.13.0.patch"
     }
   },
   "build": {
