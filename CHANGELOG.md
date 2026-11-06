@@ -5,6 +5,7 @@ User-visible changes per release; read it when you ship or look up a change.
 ## Unreleased
 
 - Fixed the titlebar overflowing the window at high zoom: below 640 CSS pixels wide, Open local checkout shows as an icon and the Navigate shortcut hint is hidden. #817
+- Fixed the main pane being cut off in a narrow or zoomed window: below 640 CSS pixels the Visited pull requests column starts closed and opens over the main pane from its toggle, without changing the saved choice, and the titlebar no longer overlaps down to 320 pixels. #817
 - Fixed one corrupt saved Review breaking the shared Review list, `list_local_reviews` and Choose checkout for every repository, and an interrupted workspace upgrade refusing startup when a Review became unreadable or was restored before the retry. #817
 - Fixed startup stopping on unreadable saved Reviews during workspace upgrade. Settings reports unavailable Reviews while keeping their files on disk. #817
 
