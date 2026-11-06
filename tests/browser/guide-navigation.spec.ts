@@ -302,7 +302,9 @@ test("Guide narrow navigation remains reachable inside a long file and selects h
 }) => {
   const server = await serveRenderer();
   try {
-    await page.setViewportSize({ width: 560, height: 600 });
+    // The Visited column closes below 640px, so the main pane is the window
+    // less its margin; 320px keeps the narrow pane the 560px window once left.
+    await page.setViewportSize({ width: 320, height: 600 });
     await page.goto(`${serverOrigin(server)}/#guide-fixture`);
     const picker = page.getByRole("combobox", { name: "Choose Guide group" });
     await expect(picker).toContainText("1. Recover pending requests");
