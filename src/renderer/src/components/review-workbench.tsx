@@ -704,7 +704,7 @@ export function ReviewWorkbench({
                   className={cn(
                     "grid h-full min-h-0 flex-1",
                     navigatorVisible
-                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)]"
+                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)] max-sm:grid-rows-[minmax(0,2fr)_minmax(0,3fr)]"
                       : "grid-cols-1",
                   )}
                 >

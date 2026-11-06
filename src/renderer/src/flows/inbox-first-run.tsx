@@ -58,7 +58,7 @@ export function WorkspaceFirstRun({
           ? "Pull requests are paused. Your watched repositories and saved pull requests are kept: connect GitHub to see them again. Local reviews work without it."
           : "Review a local Git checkout, or connect GitHub to review pull requests."}
       </p>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button onClick={onOpenLocalCheckout}>Open local checkout</Button>
         <Button
           variant="outline"

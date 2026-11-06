@@ -131,7 +131,7 @@ export function SettingsModal({
         >
           <TabsList
             variant="line"
-            className="mx-10 mt-8"
+            className="mx-10 mt-8 max-sm:mx-4 max-sm:mt-4"
             aria-label="Settings sections"
           >
             <TabsTrigger value="general">General</TabsTrigger>
@@ -146,7 +146,10 @@ export function SettingsModal({
           >
             {/* Keyed by tab: the scrollbar keeps the previous tab's overflow
                 when shorter content replaces it in the same viewport. */}
-            <ScrollArea key={section} className="h-full px-10 py-8">
+            <ScrollArea
+              key={section}
+              className="h-full px-10 py-8 max-sm:px-4 max-sm:py-4"
+            >
               <TabsContent
                 value={section}
                 data-testid={`settings-section-${section}`}

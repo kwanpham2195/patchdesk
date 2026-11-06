@@ -442,7 +442,6 @@ html[data-appearance] body {
 }
 
 .app-frame {
-  position: relative;
   display: flex;
   padding: 0.25rem 0.5rem 0;
   min-height: calc(100vh - 3rem);

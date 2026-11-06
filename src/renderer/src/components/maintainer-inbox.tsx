@@ -406,7 +406,7 @@ function InboxHeader({
           Pull requests
         </h1>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
         {repos === undefined || repos.length === 0 ? null : (
           <Select
             value={
@@ -428,7 +428,7 @@ function InboxHeader({
                 render={
                   <SelectTrigger
                     size="sm"
-                    className="max-w-72 text-xs"
+                    className="max-w-72 text-xs max-sm:max-w-full"
                     aria-label="Repository"
                   >
                     <SelectValue placeholder="Select a repository" />
