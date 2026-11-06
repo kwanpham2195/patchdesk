@@ -140,8 +140,9 @@ async function disconnectedActiveProfile(
     return parsed.success
       ? profiles.find((profile) => profile.id === parsed.output.profileId)
       : undefined;
-  } catch {
-    return undefined;
+  } catch (cause: unknown) {
+    // Nothing is saved yet, so the list holds only the unsaved default profile, which is disconnected.
+    return isApiErrorCode(cause, "no_profile") ? profiles[0] : undefined;
   }
 }
 

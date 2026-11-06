@@ -4,6 +4,8 @@ User-visible changes per release; read it when you ship or look up a change.
 
 ## Unreleased
 
+- Fixed a first launch with nothing set up showing "Dashboard could not be loaded" instead of Set up your workspace, and that error screen having no margin around its heading. #817
+- Fixed the titlebar showing a clipped "P…" wordmark in a zoomed window: the wordmark and destination title now hide below 940 pixels wide, and a long workspace name is cut instead of pushing the buttons together. The narrow Visited panel now starts below the macOS window buttons. #817
 - Fixed narrow and zoomed windows: the Visited pull requests column opens as a side panel that Escape or a click outside closes, the Pull requests header, the first-run setup buttons and the Settings tabs no longer get cut off at 320 pixels, and the Review workbench file tree shows more than two rows. #817
 - Fixed the titlebar overflowing the window at high zoom: below 640 CSS pixels wide, Open local checkout shows as an icon and the Navigate shortcut hint is hidden. #817
 - Fixed the main pane being cut off in a narrow or zoomed window: below 640 CSS pixels the Visited pull requests column starts closed and opens over the main pane from its toggle, without changing the saved choice, and the titlebar no longer overlaps down to 320 pixels. #817

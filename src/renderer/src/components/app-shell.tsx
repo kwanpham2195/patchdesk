@@ -247,14 +247,14 @@ export function AppShell({
             </Tooltip>
           ) : null}
           <BrandMark size={26} className="max-[359px]:hidden" />
-          <span className="truncate text-[13px] font-semibold tracking-tight max-sm:hidden">
+          <span className="truncate text-[13px] font-semibold tracking-tight max-[939px]:hidden">
             Patchdesk
           </span>
           <Separator
             orientation="vertical"
-            className="mx-0.5 h-4 max-sm:hidden"
+            className="mx-0.5 h-4 max-[939px]:hidden"
           />
-          <span className="truncate text-[13px] text-muted-foreground max-sm:hidden">
+          <span className="truncate text-[13px] text-muted-foreground max-[939px]:hidden">
             {destinationTitle(destination)}
           </span>
         </div>
@@ -433,7 +433,7 @@ function VisitedColumnSlot({
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="w-[min(18rem,calc(100vw-1rem))] gap-0 bg-shell pl-2"
+          className="w-[min(18rem,calc(100vw-1rem))] gap-0 bg-shell pt-12 pl-2"
         >
           <SheetTitle className="sr-only">Reviews you have opened</SheetTitle>
           {list}
