@@ -46,11 +46,8 @@ import {
   VisitedPullRequests,
   type LocalRepositoryOpen,
 } from "@/components/visited-pull-requests";
-import {
-  loadVisitedPullRequestsCollapsed,
-  saveVisitedPullRequestsCollapsed,
-} from "@/visited-pull-requests-preferences";
 import type { ProfileSwitchState } from "@/hooks/use-profile-switch";
+import { useVisitedColumn } from "@/hooks/use-visited-column";
 import { useWindowFullScreen } from "@/hooks/use-window-full-screen";
 import { useVisitedPullRequestRows } from "@/hooks/use-visited-pull-request-rows";
 import { isTextEntryTarget } from "#src/renderer/src/text-entry-target";
@@ -131,19 +128,16 @@ export function AppShell({
   const reviewCommands = useReviewCommandRegistry();
   const mainRef = useRef<HTMLElement | null>(null);
   const navigateOpenerRef = useRef<HTMLButtonElement | null>(null);
-  const [visitedCollapsed, setVisitedCollapsed] = useState(
-    loadVisitedPullRequestsCollapsed,
-  );
   const [initialDestinationKey] = useState(() => destinationKey(destination));
   const lastSeenDestination = useRef(initialDestinationKey);
   const focusedDestination = useRef<string | null>(initialDestinationKey);
   const windowFullScreen = useWindowFullScreen();
-  const [visitedExpandCount, setVisitedExpandCount] = useState(0);
+  const visitedColumn = useVisitedColumn(destinationKey(destination));
   // Loaded even while the column is collapsed, because the palette searches the
   // same rows; both keys only grow, so their sum moves whenever either does.
   const visitedRows = useVisitedPullRequestRows(
     activeProfileId ?? "",
-    visitedReloadKey + visitedExpandCount,
+    visitedReloadKey + visitedColumn.opened,
   );
   const activeProfileLabel = profiles?.find(
     (profile) => profile.id === activeProfileId,
@@ -231,13 +225,8 @@ export function AppShell({
       >
         <div className="flex min-w-0 items-center gap-2">
           <VisitedToggle
-            collapsed={visitedCollapsed}
-            onToggle={() => {
-              const next = !visitedCollapsed;
-              setVisitedCollapsed(next);
-              saveVisitedPullRequestsCollapsed(next);
-              if (!next) setVisitedExpandCount((count) => count + 1);
-            }}
+            collapsed={!visitedColumn.shown}
+            onToggle={visitedColumn.toggle}
           />
           {destination.kind === "workbench" ? (
             <Tooltip>
@@ -256,12 +245,15 @@ export function AppShell({
               <TooltipContent>{backLabel}</TooltipContent>
             </Tooltip>
           ) : null}
-          <BrandMark size={26} />
-          <span className="truncate text-[13px] font-semibold tracking-tight">
+          <BrandMark size={26} className="max-[359px]:hidden" />
+          <span className="truncate text-[13px] font-semibold tracking-tight max-sm:hidden">
             Patchdesk
           </span>
-          <Separator orientation="vertical" className="mx-0.5 h-4" />
-          <span className="truncate text-[13px] text-muted-foreground">
+          <Separator
+            orientation="vertical"
+            className="mx-0.5 h-4 max-sm:hidden"
+          />
+          <span className="truncate text-[13px] text-muted-foreground max-sm:hidden">
             {destinationTitle(destination)}
           </span>
         </div>
@@ -271,8 +263,7 @@ export function AppShell({
               render={
                 <Button
                   variant="outline"
-                  size="sm"
-                  className="max-sm:w-7 max-sm:px-0"
+                  size="sm-to-icon"
                   disabled={navigationBlocked}
                   onClick={onOpenLocalCheckout}
                 />
@@ -318,7 +309,7 @@ export function AppShell({
                   ref={navigateOpenerRef}
                   data-settings-opener="navigate"
                   variant="outline"
-                  size="sm"
+                  size="sm-to-icon"
                   disabled={navigationBlocked}
                   onClick={() => {
                     setCommandQuery("");
@@ -328,8 +319,8 @@ export function AppShell({
               }
             >
               <Search />
-              Navigate
-              <Kbd className="ml-1.5 border max-sm:hidden border-border bg-muted text-[10px] text-muted-foreground">
+              <span className="max-sm:sr-only">Navigate</span>
+              <Kbd className="ml-1.5 border border-border bg-muted text-[10px] text-muted-foreground max-sm:hidden">
                 ⌘K
               </Kbd>
             </TooltipTrigger>
@@ -343,18 +334,15 @@ export function AppShell({
         <BusyIndicator />
       </header>
       <div className="app-frame min-h-0 flex-1">
-        {visitedCollapsed ? null : (
-          <VisitedPullRequests
-            state={visitedRows}
-            destination={destination}
-            onNavigate={onNavigate}
-            onOpenLocalReview={onOpenLocalReview}
-            workspaceLabel={activeProfileLabel}
-            {...(pullRequestDefaultHost === undefined
-              ? {}
-              : { host: pullRequestDefaultHost })}
-          />
-        )}
+        <VisitedColumnSlot
+          column={visitedColumn}
+          state={visitedRows}
+          destination={destination}
+          onNavigate={onNavigate}
+          onOpenLocalReview={onOpenLocalReview}
+          workspaceLabel={activeProfileLabel}
+          host={pullRequestDefaultHost}
+        />
         <main
           ref={mainRef}
           id="main-content"
@@ -401,6 +389,45 @@ function useCompactDensity(): void {
       delete document.documentElement.dataset.patchdeskDensity;
     };
   }, []);
+}
+
+/** The Visited pull requests column: beside the main pane when wide, over it when narrow. */
+function VisitedColumnSlot({
+  column,
+  state,
+  destination,
+  onNavigate,
+  onOpenLocalReview,
+  workspaceLabel,
+  host,
+}: {
+  readonly column: ReturnType<typeof useVisitedColumn>;
+  readonly state: React.ComponentProps<typeof VisitedPullRequests>["state"];
+  readonly destination: AppDestination;
+  readonly onNavigate: AppShellProps["onNavigate"];
+  readonly onOpenLocalReview: AppShellProps["onOpenLocalReview"];
+  readonly workspaceLabel: string | undefined;
+  readonly host: GitHubHost | undefined;
+}): React.JSX.Element | null {
+  if (!column.shown) return null;
+  return (
+    <div
+      className={
+        column.narrow
+          ? "absolute inset-y-0 left-0 z-40 flex bg-shell pl-2 shadow-lg"
+          : "contents"
+      }
+    >
+      <VisitedPullRequests
+        state={state}
+        destination={destination}
+        onNavigate={onNavigate}
+        onOpenLocalReview={onOpenLocalReview}
+        workspaceLabel={workspaceLabel}
+        {...(host === undefined ? {} : { host })}
+      />
+    </div>
+  );
 }
 
 /** Collapses or expands the Visited pull requests column. */
@@ -466,11 +493,13 @@ function TitlebarWorkspaceSwitcher({
         <SelectTrigger
           ref={triggerRef}
           aria-label="Active workspace"
-          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted max-sm:max-w-24"
+          className="h-7 gap-1 border-0 bg-transparent px-1.5 text-xs hover:bg-muted max-sm:max-w-24 max-[419px]:gap-0.5 max-[419px]:px-0.5"
         >
           <User className="size-3" />
           <SelectValue placeholder="Select workspace">
-            {activeProfileLabel ?? "Workspace"}
+            <span className="max-[419px]:sr-only">
+              {activeProfileLabel ?? "Workspace"}
+            </span>
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
