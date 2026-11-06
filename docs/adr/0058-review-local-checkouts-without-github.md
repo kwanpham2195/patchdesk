@@ -86,8 +86,12 @@ invalid data under another interpretation.
 > [ADR 0019](0019-recover-from-invalid-local-data-by-rebuilding.md). Settings
 > reports unreadable Reviews. A storage I/O failure still stops activation.
 > A repository represented only by an unreadable Review is not registered by
-> the upgrade. The catalog fingerprint covers the profile and repository keys,
-> so an unrelated Review edit does not invalidate an interrupted upgrade.
+> the upgrade. The catalog fingerprint covers the profile bytes only. A retry
+> of an interrupted upgrade refuses a catalog only when the fingerprint differs
+> or a repository the profile itself lists is missing from it; keys derived from
+> Reviews are registered on the first run and never compared afterwards, so a
+> Review that turns unreadable or is restored between attempts does not refuse
+> startup.
 
 Workspace schema 1 and catalog format 1 are introduced before normal profile
 loading. The existing host and account become the connected variant. The
