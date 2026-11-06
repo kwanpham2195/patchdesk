@@ -8,6 +8,8 @@ The Diff view is the main place to read a Review's code. It shows the represente
 
 The maintainer chooses a file in Browse, reads its hunks, moves through files or changes with the navigator or keyboard, and optionally selects one commit to narrow the patch. When the selected file is a non-deleted Markdown file whose complete head text Patchdesk has verified and loaded, the diff toolbar offers Diff and Preview for it. Patchdesk hydrates file content only for the current patch generation, keeps the selected file visible, and shows discussion annotations and Finding cards at their mapped lines. The maintainer can return to the full pull-request diff without changing the represented Review.
 
+Below 1100 CSS pixels of window width, the navigator sits above the diff and takes less than half of their shared height, up to 240 pixels. Its tabs and file tree use tighter spacing. The navigator toggle still gives the whole area to the diff. In windows below 600 CSS pixels tall, including high zoom, the workbench scrolls vertically so the diff remains reachable below the header.
+
 When the current Analysis cites a file, Browse and that file's header show how many Findings point at it. A Finding card in the diff offers Open in Analysis, and a Finding in Analysis offers the way back to its lines in the diff.
 
 When an open pull request conflicts with its base branch, a Merge conflicts notice sits above the diff. It is headed Merge conflicts and reads: "`<head>` no longer merges cleanly into `<base>`. Resolve locally and push." When either branch name is missing, it drops the branch clause and reads "Resolve the conflicts locally and push." The diff itself reads as it always does.

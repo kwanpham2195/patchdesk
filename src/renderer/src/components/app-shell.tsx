@@ -430,13 +430,9 @@ function VisitedColumnSlot({
           if (!open) column.toggle();
         }}
       >
-        <SheetContent
-          side="left"
-          showCloseButton={false}
-          className="w-[min(18rem,calc(100vw-1rem))] gap-0 bg-shell pt-12 pl-2"
-        >
+        <SheetContent side="left" variant="shell-panel" showCloseButton={false}>
           <SheetTitle className="sr-only">Reviews you have opened</SheetTitle>
-          {list}
+          <div className="flex min-h-0 flex-1">{list}</div>
         </SheetContent>
       </Sheet>
     );

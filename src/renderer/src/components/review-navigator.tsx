@@ -127,9 +127,9 @@ export function ReviewNavigator({
           // reported value can only ever be one of those.
           onSectionChange(value as ReviewNavigatorSection)
         }
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col max-[1100px]:gap-0"
       >
-        <div className="flex items-center px-3 pt-3">
+        <div className="flex items-center px-3 pt-3 max-[1100px]:pt-0">
           <TabsList
             variant="line"
             aria-label="Review navigator"
@@ -182,7 +182,7 @@ export function ReviewNavigator({
         </div>
         <TabsContent
           value="files"
-          className="min-h-0 flex-1 overflow-hidden px-1 py-3"
+          className="min-h-0 flex-1 overflow-hidden px-1 py-3 max-[1100px]:py-0"
           keepMounted
         >
           {browseFiles.length === 0 ? (

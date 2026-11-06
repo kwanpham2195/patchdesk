@@ -632,7 +632,7 @@ export function ReviewWorkbench({
   return (
     <UnsentReviewTextContext.Provider value={unsentTextFields.report}>
       <section
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
         aria-label="Review workbench"
       >
         <ReviewWorkbenchHeader
@@ -673,7 +673,7 @@ export function ReviewWorkbench({
         </div>
 
         <div
-          className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+          className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden [@media(max-height:600px)]:min-h-100"
           data-review-workbench-content
         >
           {activeTab === "conversation" ? (
@@ -704,7 +704,7 @@ export function ReviewWorkbench({
                   className={cn(
                     "grid h-full min-h-0 flex-1",
                     navigatorVisible
-                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)] max-sm:grid-rows-[minmax(0,2fr)_minmax(0,3fr)]"
+                      ? "min-[1100px]:grid-cols-[var(--review-navigator-width)_0.75rem_minmax(0,1fr)] max-[1100px]:grid-rows-[minmax(0,min(15rem,49%))_minmax(0,1fr)]"
                       : "grid-cols-1",
                   )}
                 >
